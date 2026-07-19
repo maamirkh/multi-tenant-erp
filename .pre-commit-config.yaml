@@ -24,13 +24,6 @@ repos:
         args: [--fix]
         files: ^backend/
 
-  # --- Python type checking ---
-  - repo: local
-    hooks:
-      - id: mypy
-        name: mypy
-        entry: bash -c 'cd backend && python -m mypy .'
-        language: system
-        types: [python]
-        pass_filenames: false
-        files: ^backend/
+  # --- Python type checking (run via CI, not pre-commit) ---
+  # mypy removed from pre-commit: too slow for commit-time checks.
+  # Run manually: cd backend && python -m mypy .

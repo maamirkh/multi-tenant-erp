@@ -1,0 +1,134 @@
+openapi: "3.1.0"
+info:
+  title: DevSphere ERP — Health Check Contract
+  version: "1.0.0"
+  description: |
+    API contract for the health check endpoint established in Epic 1 — Foundation Platform.
+    This is the only API endpoint delivered in this Epic.
+
+paths:
+  /api/v1/health:
+    get:
+      summary: Platform Health Check
+      description: |
+        Returns the operational status of the API and its dependencies.
+        Used by infrastructure tooling, Docker Compose health checks, and monitoring systems.
+        Available in all environments without authentication.
+      operationId: getHealth
+      tags:
+        - Health
+      responses:
+        "200":
+          description: All systems operational
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                data:
+                  status: "healthy"
+                  database: "connected"
+                  version: "1.0.0"
+                  timestamp: "2026-07-11T10:00:00.000Z"
+                message: "Platform is operational."
+                meta:
+                  request_id: "550e8400-e29b-41d4-a716-446655440000"
+                  timestamp: "2026-07-11T10:00:00.000Z"
+        "503":
+          description: One or more dependencies are unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                data:
+                  status: "degraded"
+                  database: "disconnected"
+                  version: "1.0.0"
+                  timestamp: "2026-07-11T10:00:00.000Z"
+                message: "Platform is degraded. One or more dependencies are unavailable."
+                meta:
+                  request_id: "550e8400-e29b-41d4-a716-446655440001"
+                  timestamp: "2026-07-11T10:00:00.000Z"
+
+components:
+  schemas:
+    HealthStatus:
+      type: string
+      enum:
+        - healthy
+        - degraded
+      description: |
+        - `healthy`: All systems operational
+        - `degraded`: One or more dependencies are unavailable but the API is still responding
+
+    DatabaseStatus:
+      type: string
+      enum:
+        - connected
+        - disconnected
+      description: |
+        - `connected`: Database connection successful
+        - `disconnected`: Database connection failed or timed out
+
+    HealthData:
+      type: object
+      required:
+        - status
+        - database
+        - version
+        - timestamp
+      properties:
+        status:
+          $ref: "#/components/schemas/HealthStatus"
+        database:
+          $ref: "#/components/schemas/DatabaseStatus"
+        version:
+          type: string
+          description: Current API version string
+          example: "1.0.0"
+        timestamp:
+          type: string
+          format: date-time
+          description: UTC timestamp of the health check response
+          example: "2026-07-11T10:00:00.000Z"
+
+    ResponseMeta:
+      type: object
+      required:
+        - request_id
+        - timestamp
+      properties:
+        request_id:
+          type: string
+          format: uuid
+          description: Unique identifier for this request, for log correlation
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        timestamp:
+          type: string
+          format: date-time
+          description: UTC timestamp when the response was generated
+          example: "2026-07-11T10:00:00.000Z"
+
+    HealthResponse:
+      type: object
+      required:
+        - data
+        - message
+        - meta
+      properties:
+        data:
+          $ref: "#/components/schemas/HealthData"
+        message:
+          type: string
+          description: Human-readable summary of the health status
+          example: "Platform is operational."
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+
+  headers:
+    X-Request-ID:
+      description: Unique identifier for this request; matches meta.request_id in the response body
+      schema:
+        type: string
+        format: uuid

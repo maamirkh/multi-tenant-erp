@@ -1,0 +1,104 @@
+[tool.poetry]
+name = "devsphere-erp-backend"
+version = "0.1.0"
+description = "DevSphere ERP — Backend API (Foundation Platform)"
+authors = ["DevSphere Team"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = { version = "*", extras = ["standard"] }
+pydantic = { version = "*", extras = ["email"] }
+pydantic-settings = "*"
+sqlalchemy = "*"
+alembic = "*"
+psycopg2-binary = "*"
+uvicorn = { version = "*", extras = ["standard"] }
+python-dotenv = "*"
+argon2-cffi = ">=23.1"
+pyjwt = { version = ">=2.8", extras = ["crypto"] }
+slowapi = ">=0.1.9"
+boto3 = ">=1.26"
+tzdata = ">=2024.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "*"
+pytest-cov = "*"
+pytest-asyncio = "*"
+httpx = "*"
+black = "*"
+ruff = "*"
+mypy = "*"
+pre-commit = "*"
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = [
+    # Exception class names use the 'Exception' suffix as prescribed by the
+    # approved spec (ApplicationException, NotFoundException, etc.).
+    # Renaming them to 'Error' suffix would break the approved API contract.
+    "N818",
+    # Pydantic generic models require 'class Foo(BaseModel, Generic[T])'.
+    # PEP 695 type parameter syntax ('class Foo[T](BaseModel)') is not yet
+    # reliably supported by Pydantic v2 + mypy across all use cases.
+    "UP040",
+    # Line length is enforced by Black; E501 false-positives on long Field()
+    # descriptions in settings.py and long docstrings/URL strings that cannot
+    # be shortened without reducing readability.
+    "E501",
+    # StrEnum (UP042) requires Python 3.11+ stdlib; using str+Enum for
+    # broader compatibility and explicit Pydantic v2 serialisation control.
+    "UP042",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test files may import fixtures at module scope after os.environ setup (E402)
+# and use assignment expressions for readability (F841 in some test helpers).
+"tests/conftest.py" = ["E402"]
+"tests/security/test_argon2_params.py" = ["E402"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+ignore_missing_imports = true
+explicit_package_bases = true
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+asyncio_mode = "auto"
+addopts = "--tb=short"
+pythonpath = ["."]
+
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "tests/*",
+    "migrations/*",
+    ".venv/*",
+    "*/__init__.py",
+    # Auth interfaces are Protocol/stub classes — no executable logic to cover.
+    # They will be implemented in the Authentication Epic.
+    "core/auth/interfaces.py",
+    # Base service is a placeholder — implemented per-module in later Epics.
+    "core/services/base.py",
+]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+skip_covered = false
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
