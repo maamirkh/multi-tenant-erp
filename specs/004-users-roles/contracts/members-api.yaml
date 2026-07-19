@@ -1,0 +1,284 @@
+# Members API Contract — Epic 4 Users & Roles
+# OpenAPI 3.1 Fragment
+
+paths:
+  /api/v1/companies/{company_id}/members:
+    get:
+      operationId: listMembers
+      summary: List company members with pagination and filters
+      tags: [Members]
+      parameters:
+        - name: company_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { type: string, enum: [active, inactive, suspended, locked, pending_invitation, archived] }
+        - name: role_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: department
+          in: query
+          schema: { type: string }
+        - name: search
+          in: query
+          description: Search by name, email, employee_id
+          schema: { type: string }
+        - name: cursor
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+        - name: sort_by
+          in: query
+          schema: { type: string, enum: [name, created_at, role_rank, department], default: name }
+        - name: sort_order
+          in: query
+          schema: { type: string, enum: [asc, desc], default: asc }
+      responses:
+        200:
+          description: Paginated member list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/MemberListItem' }
+                  next_cursor: { type: string, nullable: true }
+                  total_count: { type: integer }
+        401: { $ref: '#/components/responses/Unauthorized' }
+        403: { $ref: '#/components/responses/Forbidden' }
+
+    post:
+      operationId: addMember
+      summary: Add a new member to the company
+      tags: [Members]
+      parameters:
+        - name: company_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddMemberRequest' }
+      responses:
+        201:
+          description: Member created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemberResponse' }
+        400: { $ref: '#/components/responses/ValidationError' }
+        403: { $ref: '#/components/responses/Forbidden' }
+        409:
+          description: User already a member of this company
+
+  /api/v1/companies/{company_id}/members/{member_id}:
+    get:
+      operationId: getMember
+      summary: Get member details
+      tags: [Members]
+      responses:
+        200:
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemberDetailResponse' }
+        404: { $ref: '#/components/responses/NotFound' }
+
+    patch:
+      operationId: updateMember
+      summary: Update member employee info and role
+      tags: [Members]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateMemberRequest' }
+      responses:
+        200:
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemberDetailResponse' }
+        403: { $ref: '#/components/responses/Forbidden' }
+        409:
+          description: Cannot modify member with equal or higher rank
+
+  /api/v1/companies/{company_id}/members/{member_id}/deactivate:
+    post:
+      operationId: deactivateMember
+      summary: Deactivate a member
+      tags: [Members, Lifecycle]
+      responses:
+        200: { description: Member deactivated }
+        403: { description: Insufficient rank }
+        409: { description: Invalid state transition or last owner }
+
+  /api/v1/companies/{company_id}/members/{member_id}/suspend:
+    post:
+      operationId: suspendMember
+      summary: Suspend a member
+      tags: [Members, Lifecycle]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        200: { description: Member suspended }
+        403: { description: Insufficient rank }
+        409: { description: Invalid state transition }
+
+  /api/v1/companies/{company_id}/members/{member_id}/lock:
+    post:
+      operationId: lockMember
+      summary: Lock a member
+      tags: [Members, Lifecycle]
+      responses:
+        200: { description: Member locked }
+        403: { description: Insufficient rank }
+        409: { description: Invalid state transition }
+
+  /api/v1/companies/{company_id}/members/{member_id}/reactivate:
+    post:
+      operationId: reactivateMember
+      summary: Reactivate an inactive/suspended/locked member
+      tags: [Members, Lifecycle]
+      responses:
+        200: { description: Member reactivated }
+        403: { description: Insufficient rank }
+        409: { description: Invalid state transition }
+
+  /api/v1/companies/{company_id}/members/{member_id}/archive:
+    post:
+      operationId: archiveMember
+      summary: Soft-delete (archive) a member
+      tags: [Members, Lifecycle]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        200: { description: Member archived }
+        403: { description: Insufficient rank or last owner }
+        409: { description: Invalid state transition }
+
+  /api/v1/companies/{company_id}/members/{member_id}/restore:
+    post:
+      operationId: restoreMember
+      summary: Restore an archived member
+      tags: [Members, Lifecycle]
+      responses:
+        200: { description: Member restored to active }
+        403: { description: Insufficient rank }
+        409: { description: Member not in archived state }
+
+  /api/v1/companies/{company_id}/transfer-ownership:
+    post:
+      operationId: transferOwnership
+      summary: Transfer company ownership to another member
+      tags: [Members, Ownership]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransferOwnershipRequest' }
+      responses:
+        200: { description: Ownership transferred }
+        403: { description: Only current owner can transfer }
+        400: { description: Target not an active member }
+
+components:
+  schemas:
+    AddMemberRequest:
+      type: object
+      required: [email, role_id]
+      properties:
+        email: { type: string, format: email }
+        role_id: { type: string, format: uuid }
+        employee_id: { type: string, maxLength: 50 }
+        job_title: { type: string, maxLength: 100 }
+        department: { type: string, maxLength: 100 }
+        work_phone: { type: string, maxLength: 20 }
+        hire_date: { type: string, format: date }
+        notes: { type: string, maxLength: 2000 }
+
+    UpdateMemberRequest:
+      type: object
+      properties:
+        role_id: { type: string, format: uuid }
+        employee_id: { type: string, maxLength: 50 }
+        job_title: { type: string, maxLength: 100 }
+        department: { type: string, maxLength: 100 }
+        work_phone: { type: string, maxLength: 20 }
+        hire_date: { type: string, format: date }
+        notes: { type: string, maxLength: 2000 }
+
+    TransferOwnershipRequest:
+      type: object
+      required: [target_member_id]
+      properties:
+        target_member_id: { type: string, format: uuid }
+
+    MemberListItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        display_name: { type: string }
+        email: { type: string }
+        avatar_url: { type: string, nullable: true }
+        role: { $ref: '#/components/schemas/RoleSummary' }
+        status: { type: string }
+        department: { type: string, nullable: true }
+        job_title: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    MemberDetailResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        company_id: { type: string, format: uuid }
+        display_name: { type: string }
+        email: { type: string }
+        avatar_url: { type: string, nullable: true }
+        role: { $ref: '#/components/schemas/RoleSummary' }
+        status: { type: string }
+        employee_id: { type: string, nullable: true }
+        job_title: { type: string, nullable: true }
+        department: { type: string, nullable: true }
+        work_phone: { type: string, nullable: true }
+        hire_date: { type: string, format: date, nullable: true }
+        notes: { type: string, nullable: true }
+        invited_by: { type: string, format: uuid, nullable: true }
+        invitation_accepted_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    MemberResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        role: { $ref: '#/components/schemas/RoleSummary' }
+        status: { type: string }
+        created_at: { type: string, format: date-time }
+
+    RoleSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        rank: { type: integer }

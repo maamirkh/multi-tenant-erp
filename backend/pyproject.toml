@@ -58,13 +58,13 @@ ignore = [
     # StrEnum (UP042) requires Python 3.11+ stdlib; using str+Enum for
     # broader compatibility and explicit Pydantic v2 serialisation control.
     "UP042",
+    # N806: Allow UPPER_CASE local variables for constants-in-function patterns.
+    "N806",
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Test files may import fixtures at module scope after os.environ setup (E402)
-# and use assignment expressions for readability (F841 in some test helpers).
-"tests/conftest.py" = ["E402"]
-"tests/security/test_argon2_params.py" = ["E402"]
+# Test files may use late imports and assign-for-side-effect patterns.
+"tests/**" = ["F841", "E402"]
 
 [tool.mypy]
 strict = true

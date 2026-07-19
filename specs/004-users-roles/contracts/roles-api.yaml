@@ -1,0 +1,175 @@
+# Roles & Permissions API Contract — Epic 4 Users & Roles
+# OpenAPI 3.1 Fragment
+
+paths:
+  /api/v1/companies/{company_id}/roles:
+    get:
+      operationId: listRoles
+      summary: List all roles for a company
+      tags: [Roles]
+      parameters:
+        - name: company_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: include_inactive
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/RoleListItem' }
+
+    post:
+      operationId: createRole
+      summary: Create a custom role
+      tags: [Roles]
+      parameters:
+        - name: company_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateRoleRequest' }
+      responses:
+        201:
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoleDetailResponse' }
+        400: { description: Validation error (rank too high, name taken) }
+        403: { description: Insufficient rank to create roles }
+        409: { description: Max custom roles reached }
+
+  /api/v1/companies/{company_id}/roles/{role_id}:
+    get:
+      operationId: getRole
+      summary: Get role details with permissions and member count
+      tags: [Roles]
+      responses:
+        200:
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoleDetailResponse' }
+        404: { description: Role not found }
+
+    patch:
+      operationId: updateRole
+      summary: Update a custom role
+      tags: [Roles]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateRoleRequest' }
+      responses:
+        200:
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoleDetailResponse' }
+        403: { description: Cannot modify system roles or insufficient rank }
+        409: { description: Slug conflict }
+
+    delete:
+      operationId: deleteRole
+      summary: Delete a custom role (must have 0 assigned members)
+      tags: [Roles]
+      responses:
+        204: { description: Role deleted }
+        403: { description: Cannot delete system roles }
+        409: { description: Role has assigned members }
+
+  /api/v1/permissions:
+    get:
+      operationId: listPermissions
+      summary: List all available permissions grouped by module
+      tags: [Permissions]
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/PermissionGroupResponse' }
+
+components:
+  schemas:
+    CreateRoleRequest:
+      type: object
+      required: [name, rank, permission_ids]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 50 }
+        description: { type: string, maxLength: 500 }
+        rank: { type: integer, minimum: 1, maximum: 99 }
+        permission_ids:
+          type: array
+          items: { type: string, format: uuid }
+
+    UpdateRoleRequest:
+      type: object
+      properties:
+        name: { type: string, minLength: 2, maxLength: 50 }
+        description: { type: string, maxLength: 500 }
+        rank: { type: integer, minimum: 1, maximum: 99 }
+        permission_ids:
+          type: array
+          items: { type: string, format: uuid }
+        is_active: { type: boolean }
+
+    RoleListItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        rank: { type: integer }
+        is_system: { type: boolean }
+        is_active: { type: boolean }
+        member_count: { type: integer }
+        created_at: { type: string, format: date-time }
+
+    RoleDetailResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        company_id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        description: { type: string, nullable: true }
+        rank: { type: integer }
+        is_system: { type: boolean }
+        is_active: { type: boolean }
+        member_count: { type: integer }
+        permissions:
+          type: array
+          items: { $ref: '#/components/schemas/PermissionResponse' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    PermissionResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        label: { type: string }
+        module: { type: string }
+        action: { type: string }
+        description: { type: string, nullable: true }
+
+    PermissionGroupResponse:
+      type: object
+      properties:
+        module: { type: string }
+        permissions:
+          type: array
+          items: { $ref: '#/components/schemas/PermissionResponse' }
