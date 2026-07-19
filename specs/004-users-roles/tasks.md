@@ -703,12 +703,12 @@ graph TD
 
 ### Implementation
 
-- [ ] T134 Create tenant isolation test suite in `backend/tests/security/users_roles/test_tenant_isolation.py` — test that member from Company A cannot access Company B members (returns 404, not 403); test cross-company role access; test cross-company permission access; test audit log isolation
-- [ ] T135 [P] Create rank enforcement test suite in `backend/tests/security/users_roles/test_rank_enforcement.py` — test lower-rank cannot manage higher-rank member; test equal-rank cannot manage; test self-role-change prevented; test custom role rank cannot exceed creator rank
-- [ ] T136 [P] Create owner protection test suite in `backend/tests/security/users_roles/test_owner_protection.py` — test last Owner cannot be deactivated; test last Owner cannot be suspended; test last Owner cannot be demoted; test last Owner cannot be archived
-- [ ] T137 [P] Create avatar upload security tests in `backend/tests/security/users_roles/test_avatar_upload_security.py` — test file with wrong extension but valid magic bytes; test file with right extension but wrong magic bytes; test oversized file; test non-image file
-- [ ] T138 Create member listing performance test in `backend/tests/performance/users_roles/test_member_list_performance.py` — seed 1000 members, measure p95 latency for GET /members, assert < 500ms
-- [ ] T139 [P] Create role listing performance test in `backend/tests/performance/users_roles/test_role_list_performance.py` — seed 50 roles (8 system + 42 custom), measure p95 latency for GET /roles, assert < 200ms
+- [X] T134 Create tenant isolation test suite in `backend/tests/security/users_roles/test_tenant_isolation.py` — test that member from Company A cannot access Company B members (returns 404, not 403); test cross-company role access; test cross-company permission access; test audit log isolation
+- [X] T135 [P] Create rank enforcement test suite in `backend/tests/security/users_roles/test_rank_enforcement.py` — test lower-rank cannot manage higher-rank member; test equal-rank cannot manage; test self-role-change prevented; test custom role rank cannot exceed creator rank
+- [X] T136 [P] Create owner protection test suite in `backend/tests/security/users_roles/test_owner_protection.py` — test last Owner cannot be deactivated; test last Owner cannot be suspended; test last Owner cannot be demoted; test last Owner cannot be archived
+- [X] T137 [P] Create avatar upload security tests in `backend/tests/security/users_roles/test_avatar_upload_security.py` — test file with wrong extension but valid magic bytes; test file with right extension but wrong magic bytes; test oversized file; test non-image file
+- [X] T138 Create member listing performance test in `backend/tests/performance/users_roles/test_member_list_performance.py` — seed 1000 members, measure p95 latency for GET /members, assert < 500ms
+- [X] T139 [P] Create role listing performance test in `backend/tests/performance/users_roles/test_role_list_performance.py` — seed 50 roles (8 system + 42 custom), measure p95 latency for GET /roles, assert < 200ms
 
 **Checkpoint**: All security invariants validated. Performance targets met.
 
@@ -734,15 +734,15 @@ graph TD
 
 ### Tasks
 
-- [ ] T140 Run full backend test suite and fix any failing tests — `pytest tests/ -k "users_roles" -v`
-- [ ] T141 [P] Run frontend tests and fix any failing tests — `cd frontend && npm test -- --testPathPattern users-roles`
-- [ ] T142 Run type checking and linting — `mypy backend/modules/users_roles/` and `ruff check backend/modules/users_roles/`
-- [ ] T143 [P] Verify Docker Compose works end-to-end — `docker compose up`, run migrations, verify all endpoints respond, verify frontend pages render
-- [ ] T144 [P] Create module documentation in `docs/modules/users-roles.md` — module overview, API endpoint summary, role hierarchy, permission model, configuration reference, integration points
-- [ ] T145 Update CLAUDE.md with Epic 4 technology additions (if not already updated by agent context script)
-- [ ] T146 Run quickstart.md scenarios manually — verify all 8 integration scenarios from `specs/004-users-roles/quickstart.md` work correctly
-- [ ] T147 Code cleanup — remove any TODO/FIXME comments, verify no dead code, ensure consistent code style across module
-- [ ] T148 Final regression test — run complete test suite (`pytest tests/ -v`), verify zero failures, verify zero warnings
+- [X] T140 Run full backend test suite and fix any failing tests — `pytest tests/ -k "users_roles" -v`
+- [X] T141 [P] Run frontend tests and fix any failing tests — `cd frontend && npm test -- --testPathPattern users-roles`
+- [X] T142 Run type checking and linting — `mypy backend/modules/users_roles/` and `ruff check backend/modules/users_roles/`
+- [X] T143 [P] Verify Docker Compose works end-to-end — `docker compose up`, run migrations, verify all endpoints respond, verify frontend pages render
+- [X] T144 [P] Create module documentation in `docs/modules/users-roles.md` — module overview, API endpoint summary, role hierarchy, permission model, configuration reference, integration points
+- [X] T145 Update CLAUDE.md with Epic 4 technology additions (if not already updated by agent context script)
+- [X] T146 Run quickstart.md scenarios manually — verify all 8 integration scenarios from `specs/004-users-roles/quickstart.md` work correctly
+- [X] T147 Code cleanup — remove any TODO/FIXME comments, verify no dead code, ensure consistent code style across module
+- [X] T148 Final regression test — run complete test suite (`pytest tests/ -v`), verify zero failures, verify zero warnings
 
 **Checkpoint**: Epic 4 is complete, tested, documented, and production-ready.
 
@@ -884,8 +884,8 @@ With multiple developers:
 | Phase 13 | FE Profile | ☐ | ☐ | ☐ | ☐ | ☐ |
 | Phase 14 | FE Ownership | ☐ | ☐ | ☐ | ☐ | ☐ |
 | Phase 15 | Integration | ☐ | ☐ | ☐ | ☐ | ☐ |
-| Phase 16 | Security/Perf | ☐ | ☐ | ☐ | ☐ | ☐ |
-| Phase 17 | Polish | ☐ | ☐ | ☐ | ☐ | ☐ |
+| Phase 16 | Security/Perf | ☑ | ☑ | ☑ | ☑ | ☑ |
+| Phase 17 | Polish | ☑ | ☑ | ☑ | ☑ | ☑ |
 
 **Task Status Legend**:
 - ☐ Not Started

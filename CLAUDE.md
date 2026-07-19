@@ -212,5 +212,8 @@ See `.specify/memory/constitution.md` for code quality, testing, performance, se
 ## Recent Changes
 - 001-foundation-platform: Added Python 3.12+ (backend), TypeScript 5.x (frontend) + FastAPI, Pydantic v2, SQLAlchemy, Alembic, Next.js (App Router), Tailwind CSS, shadcn/ui
 - 001-foundation-platform: Added PostgreSQL 16 LTS (Docker Compose in development; Neon PostgreSQL in production)
+- 002-auth-identity: JWT authentication (PyJWT), Argon2 password hashing (argon2-cffi), session management, rate limiting (SlowAPI), token refresh, account lockout
+- 003-companies: Multi-tenant company management, company audit logs, event outbox pattern, S3 logo upload (boto3), company settings, address management
+- 004-users-roles: Company membership (CompanyMember), RBAC role hierarchy (8 system roles + custom), permission registry (14 permissions), member lifecycle state machine, ownership transfer, user profile/avatar (S3), user preferences, audit trail for all member/role mutations
 
 ## Active Technologies
