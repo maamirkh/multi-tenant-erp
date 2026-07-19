@@ -11,6 +11,10 @@
 .env.staging
 *.env
 
+# --- Database files ---
+*.db
+*.sqlite3
+
 # --- Python ---
 __pycache__/
 *.pyc
