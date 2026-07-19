@@ -79,3 +79,6 @@ logs/
 
 # --- Specify / SDD (keep specs and history in git) ---
 # Spec artifacts are committed — no exclusions needed here
+
+# --- Claude Code local settings ---
+.claude/settings.local.json
