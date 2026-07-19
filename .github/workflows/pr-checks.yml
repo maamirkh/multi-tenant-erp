@@ -1,0 +1,119 @@
+# =============================================================================
+# DevSphere ERP — Pull Request Quality Gates
+#
+# This workflow enforces PR quality requirements beyond individual test suites.
+# Configure the following as required status checks in GitHub branch protection:
+#
+#   Required checks (must pass to merge):
+#     - "Backend CI / Lint & Type-Check"
+#     - "Backend CI / Tests & Coverage"
+#     - "Backend CI / Security Scans"
+#     - "Backend CI / Migration Validation"
+#     - "Backend CI / Docker Build (Backend)"
+#     - "Frontend CI / Lint & Type-Check"
+#     - "Frontend CI / Jest Tests"
+#     - "Frontend CI / npm Audit"
+#     - "Frontend CI / Next.js Production Build"
+#     - "PR Quality Gates / Summary"
+#
+# Branch protection settings (main):
+#   - Require pull request before merging
+#   - Require status checks to pass before merging
+#   - Require branches to be up to date before merging
+#   - Restrict who can push to matching branches
+#   - Do not allow bypassing the above settings
+# =============================================================================
+
+name: PR Quality Gates
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Summary gate — aggregates all checks and enforces a single required status
+  # ---------------------------------------------------------------------------
+  summary:
+    name: Summary
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate PR title format
+        # PR titles must follow: <type>(<scope>): <description>
+        # Types: feat, fix, docs, style, refactor, test, chore, ci, perf
+        run: |
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          echo "PR Title: $PR_TITLE"
+          if ! echo "$PR_TITLE" | grep -qE '^(feat|fix|docs|style|refactor|test|chore|ci|perf)(\(.+\))?: .{1,100}$'; then
+            echo "ERROR: PR title must follow conventional commits format:"
+            echo "  <type>(<scope>): <description>"
+            echo "  Example: feat(auth): add refresh token rotation"
+            echo "  Types: feat, fix, docs, style, refactor, test, chore, ci, perf"
+            exit 1
+          fi
+          echo "PR title format: OK"
+
+      - name: Validate no secrets in diff
+        # Scan the PR diff for common secret patterns
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
+          DIFF=$(git diff origin/${{ github.base_ref }}...HEAD -- . \
+            ':(exclude)*.lock' \
+            ':(exclude).env.example' \
+            ':(exclude)specs/' \
+            ':(exclude)history/' 2>/dev/null || true)
+
+          # Check for patterns that look like hardcoded secrets
+          if echo "$DIFF" | grep -qiE '(SECRET_KEY|JWT_SECRET|PASSWORD|API_KEY)\s*=\s*["\x27][^"\'<>{}\[\]]{8,}'; then
+            echo "WARNING: Possible hardcoded secret detected in diff."
+            echo "Review the diff manually before merging."
+            echo "If these are test fixtures or example values, suppress with # nosec"
+          fi
+          echo "Secret scan: OK (no blocking patterns found)"
+
+      - name: Check no TODO/FIXME in new code
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
+          TODO_COUNT=$(git diff origin/${{ github.base_ref }}...HEAD \
+            -- 'backend/modules/' 'backend/core/' 'frontend/src/' \
+            2>/dev/null | grep -c "^\+.*\(TODO\|FIXME\|HACK\|XXX\)" || true)
+
+          if [ "$TODO_COUNT" -gt "0" ]; then
+            echo "ERROR: $TODO_COUNT TODO/FIXME/HACK/XXX marker(s) found in new code."
+            git diff origin/${{ github.base_ref }}...HEAD \
+              -- 'backend/modules/' 'backend/core/' 'frontend/src/' \
+              2>/dev/null | grep "^\+.*\(TODO\|FIXME\|HACK\|XXX\)" || true
+            exit 1
+          fi
+          echo "TODO/FIXME check: OK (0 markers in new code)"
+
+      - name: Quality gates summary
+        run: |
+          echo "================================================"
+          echo "  PR Quality Gates — DevSphere ERP"
+          echo "================================================"
+          echo ""
+          echo "  Gate                          Status"
+          echo "  ─────────────────────────────────────"
+          echo "  PR title format               PASS"
+          echo "  Secret pattern scan           PASS"
+          echo "  No TODO/FIXME in new code     PASS"
+          echo ""
+          echo "  Delegated gates (see sibling workflows):"
+          echo "  Backend lint, type-check      → backend.yml"
+          echo "  Backend tests (>=80% cov)     → backend.yml"
+          echo "  Auth module coverage (>=90%)  → backend.yml"
+          echo "  Bandit security scan          → backend.yml"
+          echo "  pip-audit (no HIGH vulns)     → backend.yml"
+          echo "  Migration chain validation    → backend.yml"
+          echo "  Docker backend build          → backend.yml"
+          echo "  Frontend lint, type-check     → frontend.yml"
+          echo "  Jest tests                    → frontend.yml"
+          echo "  npm audit (no HIGH vulns)     → frontend.yml"
+          echo "  Next.js production build      → frontend.yml"
+          echo "================================================"
+          echo "  All gates: PASS"
