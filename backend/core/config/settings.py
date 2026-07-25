@@ -59,6 +59,17 @@ class Settings(BaseSettings):
     DB_MAX_OVERFLOW: int = Field(
         10, description="SQLAlchemy max overflow connections above pool_size"
     )
+    DB_LOCK_TIMEOUT_SECONDS: int = Field(
+        5,
+        description=(
+            "PostgreSQL lock_timeout in seconds for SELECT FOR UPDATE operations. "
+            "Set to 0 to disable. Prevents indefinite waits under concurrent load. "
+            "Value of 5s provides a 16× safety margin over the p95 write latency (<300ms). "
+            "Phase 11 — T278."
+        ),
+        ge=0,
+        le=300,
+    )
 
     # -------------------------------------------------------------------------
     # Authentication — JWT (Epic 002)
