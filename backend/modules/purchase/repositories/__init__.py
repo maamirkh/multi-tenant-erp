@@ -21,7 +21,9 @@ from core.repositories.base import BaseRepository
 ModelType = TypeVar("ModelType", bound=TenantBaseModel)
 
 
-class BasePurchaseRepository(BaseRepository[ModelType], Generic[ModelType]):
+class BasePurchaseRepository(
+    BaseRepository[ModelType], Generic[ModelType]
+):  # noqa: UP046
     """Base repository for all purchase domain entities.
 
     Inherits all CRUD, pagination, and soft-delete operations from

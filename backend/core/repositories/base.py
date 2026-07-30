@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 ModelType = TypeVar("ModelType", bound=TenantBaseModel)
 
 
-class BaseRepository(Generic[ModelType]):
+class BaseRepository(Generic[ModelType]):  # noqa: UP046
     """Generic CRUD repository with tenant isolation and soft-delete support.
 
     Type parameter ``ModelType`` must be a concrete ``TenantBaseModel``

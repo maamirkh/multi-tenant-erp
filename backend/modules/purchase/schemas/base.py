@@ -27,7 +27,7 @@ class PurchaseBaseSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class PaginatedResponse(BaseModel, Generic[DataT]):
+class PaginatedResponse(BaseModel, Generic[DataT]):  # noqa: UP046
     """Generic paginated list response wrapper.
 
     Used consistently across all purchase list endpoints.

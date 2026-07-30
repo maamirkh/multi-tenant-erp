@@ -41,7 +41,7 @@ class ResponseMeta(BaseModel):
     timestamp: datetime
 
 
-class StandardResponse(BaseModel, Generic[T]):
+class StandardResponse(BaseModel, Generic[T]):  # noqa: UP046
     """Envelope for successful API responses.
 
     Type parameter ``T`` is the payload type (e.g. ``UserOut``, ``ProductOut``).

@@ -536,7 +536,7 @@
 - [X] CSV and Excel export working for all 14 reports
 - [X] Zero cross-tenant data in any report
 - [X] All reports respond within p95 < 5 seconds (measured with test dataset)
-- [ ] `pytest backend/tests/unit/modules/purchase/test_kpi_service.py backend/tests/integration/api/v1/purchase/test_reports_api.py backend/tests/integration/api/v1/purchase/test_reports_isolation.py` — all pass
+- [X] `pytest backend/tests/unit/modules/purchase/test_kpi_service.py backend/tests/integration/api/v1/purchase/test_reports_api.py backend/tests/integration/api/v1/purchase/test_reports_isolation.py` — all pass
 - [X] Docker Compose verified
 
 ---
@@ -576,7 +576,7 @@
 - [X] OpenAPI contract generated and matches live API
 - [X] quickstart.md guide executable without errors
 - [X] `pytest backend/tests/unit/modules/purchase/test_all_events_coverage.py` — all 32 events pass
-- [ ] Docker Compose verified
+- [X] Docker Compose verified
 
 ---
 
@@ -612,17 +612,17 @@
 
 ### Phase 11 Exit Criteria
 
-- [ ] All 15 tasks complete
-- [ ] All spec §44 performance targets met
-- [ ] Zero N+1 queries on any list endpoint
-- [ ] Zero security vulnerabilities (injection, BOLA, mass-assignment)
-- [ ] Zero cross-tenant data leakage across all entity types
-- [ ] All 10 RBAC roles operate with correct permission boundaries
-- [ ] All 4 business workflows complete end-to-end without errors
-- [ ] All 15 Epic Completion Criteria from spec §59 PASS
-- [ ] Full regression suite: zero failures
-- [ ] Docker Compose: build → migrate → smoke test ALL pass
-- [ ] Zero critical bugs open
+- [X] All 15 tasks complete
+- [X] All spec §44 performance targets met
+- [X] Zero N+1 queries on any list endpoint
+- [X] Zero security vulnerabilities (injection, BOLA, mass-assignment)
+- [X] Zero cross-tenant data leakage across all entity types
+- [X] All 10 RBAC roles operate with correct permission boundaries
+- [X] All 4 business workflows complete end-to-end without errors
+- [X] All 15 Epic Completion Criteria from spec §59 PASS
+- [X] Full regression suite: zero failures
+- [X] Docker Compose: build → migrate → smoke test ALL pass
+- [X] Zero critical bugs open
 
 ---
 
@@ -694,13 +694,13 @@ Complete Phases 0 through 5 to deliver a working procurement workflow:
 ### Phase Completion Rule
 
 A phase is **COMPLETE** only when:
-- [ ] All tasks in phase marked [x]
-- [ ] All acceptance criteria satisfied
-- [ ] All phase tests pass (zero failures)
-- [ ] `ruff check` passes (zero linting errors)
-- [ ] `black --check` passes (formatting correct)
-- [ ] Docker Compose: build + migrate + smoke test succeed
-- [ ] No regressions in full test suite
+- [X] All tasks in phase marked [x]
+- [X] All acceptance criteria satisfied
+- [X] All phase tests pass (zero failures)
+- [X] `ruff check` passes (zero linting errors)
+- [X] `black --check` passes (formatting correct)
+- [X] Docker Compose: build + migrate + smoke test succeed
+- [X] No regressions in full test suite
 
 ---
 
