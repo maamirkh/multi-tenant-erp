@@ -1,0 +1,1 @@
+"""Purchase module application services."""

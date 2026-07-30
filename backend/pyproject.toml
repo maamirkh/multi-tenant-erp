@@ -65,7 +65,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 # Test files may use late imports and assign-for-side-effect patterns.
-"tests/**" = ["F841", "E402"]
+"tests/**" = ["F841", "E402", "N801"]
 
 [tool.mypy]
 strict = true

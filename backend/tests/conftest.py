@@ -35,6 +35,7 @@ import core.events.outbox  # noqa: E402, F401
 import modules.auth.models  # noqa: E402, F401
 import modules.companies.models  # noqa: E402, F401
 import modules.inventory.models  # noqa: E402, F401
+import modules.purchase.models  # noqa: E402, F401
 import modules.users_roles.models  # noqa: E402, F401
 from core.config.settings import Settings
 from core.database.base import Base
@@ -61,6 +62,16 @@ try:
         return "TEXT"
 
     SQLiteTypeCompiler.visit_INET = _visit_inet  # type: ignore[attr-defined]
+except ImportError:
+    pass
+
+try:
+    from sqlalchemy.dialects.postgresql import TSVECTOR as _TSVECTOR  # noqa: F401
+
+    def _visit_tsvector(self, type_: object, **kw: object) -> str:  # type: ignore[override]
+        return "TEXT"
+
+    SQLiteTypeCompiler.visit_TSVECTOR = _visit_tsvector  # type: ignore[attr-defined]
 except ImportError:
     pass
 
@@ -181,6 +192,8 @@ def test_client(db_session: Session) -> Generator[TestClient, None, None]:
             JWT_SECRET_KEY="test-jwt-secret-key-min-32-chars-ok!",
             ENVIRONMENT="testing",
             DEBUG=True,
+            # Use max expiry to survive WSL2 clock drift in CI/local environments.
+            JWT_ACCESS_TOKEN_EXPIRE_MINUTES=1440,
         )
     )
     app.dependency_overrides[get_db] = override_get_db
