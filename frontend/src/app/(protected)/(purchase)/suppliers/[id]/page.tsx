@@ -11,9 +11,7 @@ import {
   reactivateSupplier,
   archiveSupplier,
   getSupplierContacts,
-  addSupplierContact,
   getSupplierAddresses,
-  addSupplierAddress,
   getSupplierDocuments,
   addSupplierDocument,
   deleteSupplierDocument,
@@ -119,24 +117,24 @@ export default function SupplierDetailPage({ params }: PageProps) {
         await createSupplier(companyId, {
           supplier_code: form.supplier_code,
           legal_name: form.legal_name,
-          trading_name: form.trading_name || undefined,
+          ...(form.trading_name ? { trading_name: form.trading_name } : {}),
           supplier_type: form.supplier_type,
           currency_code: form.currency_code,
-          website: form.website || undefined,
-          notes: form.notes || undefined,
-          lead_time_days: form.lead_time_days ? parseInt(form.lead_time_days) : undefined,
+          ...(form.website ? { website: form.website } : {}),
+          ...(form.notes ? { notes: form.notes } : {}),
+          ...(form.lead_time_days ? { lead_time_days: parseInt(form.lead_time_days) } : {}),
         });
         setSuccess("Supplier created");
         window.location.href = `/companies/${companyId}/purchase/suppliers`;
       } else {
         const res = await updateSupplier(companyId, supplierId!, {
           legal_name: form.legal_name,
-          trading_name: form.trading_name || undefined,
+          ...(form.trading_name ? { trading_name: form.trading_name } : {}),
           supplier_type: form.supplier_type,
           currency_code: form.currency_code,
-          website: form.website || undefined,
-          notes: form.notes || undefined,
-          lead_time_days: form.lead_time_days ? parseInt(form.lead_time_days) : undefined,
+          ...(form.website ? { website: form.website } : {}),
+          ...(form.notes ? { notes: form.notes } : {}),
+          ...(form.lead_time_days ? { lead_time_days: parseInt(form.lead_time_days) } : {}),
         });
         setSupplier(res.data);
         setSuccess("Supplier updated");
@@ -487,7 +485,7 @@ export default function SupplierDetailPage({ params }: PageProps) {
                 try {
                   const res = await addSupplierDocument(companyId, supplierId, {
                     document_type: docType,
-                    expiry_date: expiry || undefined,
+                    ...(expiry ? { expiry_date: expiry } : {}),
                   });
                   setDocuments((prev) => [...prev, res.data]);
                   setSuccess("Document added");

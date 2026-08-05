@@ -145,7 +145,7 @@ export default function AdjustmentDetailPage() {
           value={
             adj.old_quantity != null
               ? Number(adj.old_quantity).toLocaleString()
-              : undefined
+              : null
           }
         />
         <Field
@@ -153,7 +153,7 @@ export default function AdjustmentDetailPage() {
           value={
             adj.new_quantity != null
               ? Number(adj.new_quantity).toLocaleString()
-              : undefined
+              : null
           }
         />
         <Field label="Product ID" value={adj.product_id} />

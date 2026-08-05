@@ -210,9 +210,9 @@ Wait for consent; never auto-create ADRs. Group related decisions (stacks, authe
 See `.specify/memory/constitution.md` for code quality, testing, performance, security, and architecture principles.
 
 ## Recent Changes
+- 008-accounting-finance: Added Python 3.12+ (backend), TypeScript 5.x (frontend) + FastAPI 0.115+, Pydantic v2, SQLAlchemy 2.x (async), Alembic, APScheduler (recurring journals), Next.js 15 (App Router), TailwindCSS, shadcn/ui
+- 007-sales-management: Added Python 3.12+ (backend), TypeScript 5.x (frontend) + FastAPI 0.115+, Pydantic v2, SQLAlchemy 2.x (async), Alembic, Next.js 15 (App Router), TailwindCSS, shadcn/ui
 - 006-purchase-management Phase 10 (2026-07-30): Integration Foundation — 33 domain events documented in contracts/events.md; OpenAPI spec in contracts/purchase-v1.yaml (106 endpoints); purchase.po_email_supplier email stub in po_service.py; purchase.gr_barcode_scan barcode endpoint (stub, 501); supplier bulk import tests (T239: CSV + 10k rows); PO export tests (T240); quickstart.md developer guide; InProcessEventBus patterns established for future message-broker swap.
-- 006-purchase-management: Added Python 3.12+ (backend), TypeScript 5.x (frontend) + FastAPI 0.115+, Pydantic v2, SQLAlchemy 2.x (async), Alembic, Next.js 15 (App Router), TailwindCSS, shadcn/ui
-- 005-inventory-management: Added Python 3.12+ (backend), TypeScript 5.x (frontend) + FastAPI 0.115+, Pydantic v2, SQLAlchemy 2.x (async), Alembic, Next.js 15 (App Router), TailwindCSS, shadcn/ui
-- 001-foundation-platform: Added Python 3.12+ (backend), TypeScript 5.x (frontend) + FastAPI, Pydantic v2, SQLAlchemy, Alembic, Next.js (App Router), Tailwind CSS, shadcn/ui
 
 ## Active Technologies
+- Python 3.12+ (backend), TypeScript 5.x (frontend) + FastAPI 0.115+, Pydantic v2, SQLAlchemy 2.x (async), Alembic, APScheduler (recurring journals), Next.js 15 (App Router), TailwindCSS, shadcn/ui (008-accounting-finance)

@@ -23,7 +23,7 @@ export default function NewPurchaseRequestPage() {
   const [department, setDepartment] = useState("");
   const [requiredByDate, setRequiredByDate] = useState("");
   const [notes, setNotes] = useState("");
-  const [currencyCode, setCurrencyCode] = useState("USD");
+  const [currencyCode, _setCurrencyCode] = useState("USD");
   const [lines, setLines] = useState<PRLineForm[]>([emptyLine()]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

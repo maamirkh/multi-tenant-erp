@@ -1,6 +1,8 @@
 """FastAPI application factory for DevSphere ERP backend."""
 
 import logging
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -45,9 +47,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     """
     if settings is None:
         settings = get_settings()
-    # working
+
     # Step 2: configure logging before anything else.
     configure_logging(settings)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+        # Startup
+        _validate_auth_configuration(settings)
+
+        # Run database migrations before accepting traffic.
+        run_migrations()
+
+        logger.info(
+            "Application started",
+            extra={
+                "environment": settings.ENVIRONMENT,
+                "version": settings.API_VERSION,
+                "debug": settings.DEBUG,
+            },
+        )
+
+        yield
+
+        # Shutdown
+        logger.info(
+            "Application shutting down",
+            extra={
+                "environment": settings.ENVIRONMENT,
+                "version": settings.API_VERSION,
+            },
+        )
 
     app = FastAPI(
         title="DevSphere ERP API",
@@ -56,6 +86,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         docs_url="/docs" if settings.DEBUG else None,
         redoc_url="/redoc" if settings.DEBUG else None,
         openapi_url="/openapi.json" if settings.DEBUG else None,
+        lifespan=lifespan,
     )
 
     # Step 4: store settings on app state so handlers can access them.
@@ -97,33 +128,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Step 7: include routers.
     _register_routers(app)
-
-    # Lifecycle events.
-    @app.on_event("startup")
-    async def on_startup() -> None:
-        _validate_auth_configuration(settings)
-
-        # Run database migrations before accepting traffic.
-        run_migrations()
-
-        logger.info(
-            "Application started",
-            extra={
-                "environment": settings.ENVIRONMENT,
-                "version": settings.API_VERSION,
-                "debug": settings.DEBUG,
-            },
-        )
-
-    @app.on_event("shutdown")
-    async def on_shutdown() -> None:
-        logger.info(
-            "Application shutting down",
-            extra={
-                "environment": settings.ENVIRONMENT,
-                "version": settings.API_VERSION,
-            },
-        )
 
     return app
 

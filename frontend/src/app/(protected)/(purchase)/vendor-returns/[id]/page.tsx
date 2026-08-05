@@ -58,8 +58,8 @@ export default function VendorReturnDetailPage() {
       if (!res.ok) throw new Error(await res.text());
       const json = await res.json();
       setRma(json.data);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
@@ -86,8 +86,8 @@ export default function VendorReturnDetailPage() {
         throw new Error(err.detail ?? `Failed to ${action}`);
       }
       await fetchRMA();
-    } catch (e: any) {
-      setActionError(e.message);
+    } catch (e: unknown) {
+      setActionError(e instanceof Error ? e.message : String(e));
     } finally {
       setActionLoading("");
     }

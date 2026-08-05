@@ -41,7 +41,7 @@ const STATUS_COLORS: Record<string, string> = {
 export default function PurchaseRequestDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const [pr, setPr] = useState<PurchaseRequest | null>(null);
+  const [pr, _setPr] = useState<PurchaseRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);

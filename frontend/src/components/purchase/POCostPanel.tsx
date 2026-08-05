@@ -36,8 +36,8 @@ export default function POCostPanel({ companyId, poId }: POCostPanelProps) {
         if (!res.ok) throw new Error(await res.text());
         const json = await res.json();
         setSummary(json.data);
-      } catch (e: any) {
-        setError(e.message);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : String(e));
       } finally {
         setLoading(false);
       }

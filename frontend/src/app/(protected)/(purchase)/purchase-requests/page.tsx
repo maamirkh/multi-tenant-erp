@@ -23,7 +23,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function PurchaseRequestsPage() {
-  const [prs, setPrs] = useState<PurchaseRequest[]>([]);
+  const [prs, _setPrs] = useState<PurchaseRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

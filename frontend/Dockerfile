@@ -38,7 +38,7 @@ ENV NODE_ENV=production
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm ci --only=production --ignore-scripts
+RUN npm ci --ignore-scripts
 
 COPY . .
 
