@@ -47,6 +47,23 @@ def _sales_url(company_id: str, path: str) -> str:
     return f"/api/v1/companies/{company_id}/sales{path}"
 
 
+def _create_company(client: TestClient, token: str) -> str:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Sales Security Test Co {suffix}",
+            "email": f"contact-{suffix}@sales-sec-test.example.com",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
 # ---------------------------------------------------------------------------
 # T236-A: Authentication enforcement — all sales endpoints require auth
 # ---------------------------------------------------------------------------
@@ -151,7 +168,7 @@ class TestSQLInjectionResistance:
         email = f"sec-sql-{uuid.uuid4().hex[:6]}@example.com"
         create_test_user(db_session, email, password=_TEST_PASSWORD)
         token = _login(test_client, email)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
         return test_client, token, cid
 
     @pytest.mark.parametrize("payload", SQL_INJECTION_PAYLOADS)
@@ -213,7 +230,7 @@ class TestXSSResistance:
         email = f"sec-xss-{uuid.uuid4().hex[:6]}@example.com"
         create_test_user(db_session, email, password=_TEST_PASSWORD)
         token = _login(test_client, email)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
         return test_client, token, cid
 
     @pytest.mark.parametrize("payload", XSS_PAYLOADS)
@@ -272,8 +289,8 @@ class TestBOLATenantIsolation:
         create_test_user(db_session, email_b, password=_TEST_PASSWORD)
         token_a = _login(test_client, email_a)
         token_b = _login(test_client, email_b)
-        cid_a = str(uuid.uuid4())
-        cid_b = str(uuid.uuid4())
+        cid_a = _create_company(test_client, token_a)
+        cid_b = _create_company(test_client, token_b)
         return test_client, token_a, cid_a, token_b, cid_b
 
     def test_cross_tenant_customer_returns_404(self, two_tenants: tuple) -> None:
@@ -430,7 +447,7 @@ class TestOversizedPayloadRejection:
         email = f"sec-sz-{uuid.uuid4().hex[:6]}@example.com"
         create_test_user(db_session, email, password=_TEST_PASSWORD)
         token = _login(test_client, email)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
         return test_client, token, cid
 
     def test_oversized_customer_code_rejected(self, auth_creds: tuple) -> None:

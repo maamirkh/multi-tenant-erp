@@ -47,6 +47,23 @@ def _login(client: TestClient, email: str, password: str) -> str:
     return resp.json()["data"]["access_token"]
 
 
+def _create_company(client: TestClient, token: str) -> uuid.UUID:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Inventory Test Co {suffix}",
+            "email": f"contact-{suffix}@inv-test.example.com",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return uuid.UUID(resp.json()["data"]["id"])
+
+
 def _seed_company_a(db: Session, company_id: uuid.UUID) -> dict:
     """Seed a comprehensive dataset for company A."""
     uom = UOM(
@@ -151,8 +168,10 @@ class TestTenantIsolationFull:
         self, test_client: TestClient, db_session: Session
     ) -> None:
         """Company B product list must not include Company A products."""
-        company_a_id = uuid.uuid4()
-        company_b_id = uuid.uuid4()
+        email_a = f"iso-prod-a-{uuid.uuid4().hex[:8]}@test.com"
+        create_test_user(db_session, email=email_a, password="TestPass123!")
+        token_a = _login(test_client, email_a, "TestPass123!")
+        company_a_id = _create_company(test_client, token_a)
 
         _seed_company_a(db_session, company_a_id)
 
@@ -160,6 +179,7 @@ class TestTenantIsolationFull:
         create_test_user(db_session, email=email_b, password="TestPass123!")
         token_b = _login(test_client, email_b, "TestPass123!")
         headers_b = {"Authorization": f"Bearer {token_b}"}
+        company_b_id = _create_company(test_client, token_b)
 
         resp = test_client.get(_url(company_b_id, "/products"), headers=headers_b)
         assert resp.status_code == 200
@@ -171,8 +191,10 @@ class TestTenantIsolationFull:
         self, test_client: TestClient, db_session: Session
     ) -> None:
         """Company B warehouse list must not include Company A warehouses."""
-        company_a_id = uuid.uuid4()
-        company_b_id = uuid.uuid4()
+        email_a = f"iso-wh-a-{uuid.uuid4().hex[:8]}@test.com"
+        create_test_user(db_session, email=email_a, password="TestPass123!")
+        token_a = _login(test_client, email_a, "TestPass123!")
+        company_a_id = _create_company(test_client, token_a)
 
         _seed_company_a(db_session, company_a_id)
 
@@ -180,6 +202,7 @@ class TestTenantIsolationFull:
         create_test_user(db_session, email=email_b, password="TestPass123!")
         token_b = _login(test_client, email_b, "TestPass123!")
         headers_b = {"Authorization": f"Bearer {token_b}"}
+        company_b_id = _create_company(test_client, token_b)
 
         resp = test_client.get(_url(company_b_id, "/warehouses"), headers=headers_b)
         assert resp.status_code == 200
@@ -192,8 +215,10 @@ class TestTenantIsolationFull:
         self, test_client: TestClient, db_session: Session
     ) -> None:
         """Company B stock positions must not include Company A positions."""
-        company_a_id = uuid.uuid4()
-        company_b_id = uuid.uuid4()
+        email_a = f"iso-pos-a-{uuid.uuid4().hex[:8]}@test.com"
+        create_test_user(db_session, email=email_a, password="TestPass123!")
+        token_a = _login(test_client, email_a, "TestPass123!")
+        company_a_id = _create_company(test_client, token_a)
 
         ids = _seed_company_a(db_session, company_a_id)
 
@@ -201,6 +226,7 @@ class TestTenantIsolationFull:
         create_test_user(db_session, email=email_b, password="TestPass123!")
         token_b = _login(test_client, email_b, "TestPass123!")
         headers_b = {"Authorization": f"Bearer {token_b}"}
+        company_b_id = _create_company(test_client, token_b)
 
         # Try to access Company A's warehouse via Company B's namespace
         resp = test_client.get(
@@ -216,8 +242,10 @@ class TestTenantIsolationFull:
         self, test_client: TestClient, db_session: Session
     ) -> None:
         """Company B stock movements must not include Company A movements."""
-        company_a_id = uuid.uuid4()
-        company_b_id = uuid.uuid4()
+        email_a = f"iso-mov-a-{uuid.uuid4().hex[:8]}@test.com"
+        create_test_user(db_session, email=email_a, password="TestPass123!")
+        token_a = _login(test_client, email_a, "TestPass123!")
+        company_a_id = _create_company(test_client, token_a)
 
         ids = _seed_company_a(db_session, company_a_id)
 
@@ -225,6 +253,7 @@ class TestTenantIsolationFull:
         create_test_user(db_session, email=email_b, password="TestPass123!")
         token_b = _login(test_client, email_b, "TestPass123!")
         headers_b = {"Authorization": f"Bearer {token_b}"}
+        company_b_id = _create_company(test_client, token_b)
 
         resp = test_client.get(
             _url(company_b_id, f"/stock/movements?product_id={ids['product_id']}"),
@@ -238,8 +267,10 @@ class TestTenantIsolationFull:
         self, test_client: TestClient, db_session: Session
     ) -> None:
         """Company B adjustments must not include Company A adjustments."""
-        company_a_id = uuid.uuid4()
-        company_b_id = uuid.uuid4()
+        email_a = f"iso-adj-a-{uuid.uuid4().hex[:8]}@test.com"
+        create_test_user(db_session, email=email_a, password="TestPass123!")
+        token_a = _login(test_client, email_a, "TestPass123!")
+        company_a_id = _create_company(test_client, token_a)
 
         _seed_company_a(db_session, company_a_id)
 
@@ -247,6 +278,7 @@ class TestTenantIsolationFull:
         create_test_user(db_session, email=email_b, password="TestPass123!")
         token_b = _login(test_client, email_b, "TestPass123!")
         headers_b = {"Authorization": f"Bearer {token_b}"}
+        company_b_id = _create_company(test_client, token_b)
 
         resp = test_client.get(_url(company_b_id, "/adjustments"), headers=headers_b)
         assert resp.status_code == 200
@@ -257,8 +289,10 @@ class TestTenantIsolationFull:
         self, test_client: TestClient, db_session: Session
     ) -> None:
         """Company B alerts must not include Company A alerts."""
-        company_a_id = uuid.uuid4()
-        company_b_id = uuid.uuid4()
+        email_a = f"iso-alrt-a-{uuid.uuid4().hex[:8]}@test.com"
+        create_test_user(db_session, email=email_a, password="TestPass123!")
+        token_a = _login(test_client, email_a, "TestPass123!")
+        company_a_id = _create_company(test_client, token_a)
 
         _seed_company_a(db_session, company_a_id)
 
@@ -266,6 +300,7 @@ class TestTenantIsolationFull:
         create_test_user(db_session, email=email_b, password="TestPass123!")
         token_b = _login(test_client, email_b, "TestPass123!")
         headers_b = {"Authorization": f"Bearer {token_b}"}
+        company_b_id = _create_company(test_client, token_b)
 
         resp = test_client.get(_url(company_b_id, "/alerts"), headers=headers_b)
         assert resp.status_code == 200
@@ -276,8 +311,10 @@ class TestTenantIsolationFull:
         self, test_client: TestClient, db_session: Session
     ) -> None:
         """Company B transfers must not include Company A transfers."""
-        company_a_id = uuid.uuid4()
-        company_b_id = uuid.uuid4()
+        email_a = f"iso-xfer-a-{uuid.uuid4().hex[:8]}@test.com"
+        create_test_user(db_session, email=email_a, password="TestPass123!")
+        token_a = _login(test_client, email_a, "TestPass123!")
+        company_a_id = _create_company(test_client, token_a)
 
         _seed_company_a(db_session, company_a_id)
 
@@ -285,6 +322,7 @@ class TestTenantIsolationFull:
         create_test_user(db_session, email=email_b, password="TestPass123!")
         token_b = _login(test_client, email_b, "TestPass123!")
         headers_b = {"Authorization": f"Bearer {token_b}"}
+        company_b_id = _create_company(test_client, token_b)
 
         resp = test_client.get(
             _url(company_b_id, "/stock-transfers"), headers=headers_b
@@ -319,8 +357,10 @@ class TestTenantIsolationFull:
         """Company B category list must not include Company A categories."""
         from modules.inventory.models.category import Category
 
-        company_a_id = uuid.uuid4()
-        company_b_id = uuid.uuid4()
+        email_a = f"iso-cat-a-{uuid.uuid4().hex[:8]}@test.com"
+        create_test_user(db_session, email=email_a, password="TestPass123!")
+        token_a = _login(test_client, email_a, "TestPass123!")
+        company_a_id = _create_company(test_client, token_a)
 
         # Seed a category for company A directly
         cat = Category(
@@ -337,6 +377,7 @@ class TestTenantIsolationFull:
         create_test_user(db_session, email=email_b, password="TestPass123!")
         token_b = _login(test_client, email_b, "TestPass123!")
         headers_b = {"Authorization": f"Bearer {token_b}"}
+        company_b_id = _create_company(test_client, token_b)
 
         resp = test_client.get(_url(company_b_id, "/categories"), headers=headers_b)
         assert resp.status_code == 200

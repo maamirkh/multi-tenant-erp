@@ -55,6 +55,23 @@ def _login(client: TestClient, email: str, password: str) -> str:
     return resp.json()["data"]["access_token"]
 
 
+def _create_company(client: TestClient, token: str) -> uuid.UUID:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Perf Test Co {suffix}",
+            "email": f"contact-{suffix}@perf-test.example.com",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return uuid.UUID(resp.json()["data"]["id"])
+
+
 def _seed_environment(
     db: Session, company_id: uuid.UUID
 ) -> tuple[uuid.UUID, uuid.UUID]:
@@ -131,11 +148,10 @@ class TestConcurrentWrites:
         password = "TestPass123!"
         create_test_user(db_session, email=email, password=password)
 
-        company_id = uuid.uuid4()
-        product_id, warehouse_id = _seed_environment(db_session, company_id)
-
         token = _login(test_client, email, password)
         headers = {"Authorization": f"Bearer {token}"}
+        company_id = _create_company(test_client, token)
+        product_id, warehouse_id = _seed_environment(db_session, company_id)
 
         # Issue 50 sequential stock receipt requests via API
         success_count = 0
@@ -217,7 +233,9 @@ class TestConcurrentWrites:
         password = "TestPass123!"
         create_test_user(db_session, email=email, password=password)
 
-        company_id = uuid.uuid4()
+        token = _login(test_client, email, password)
+        headers = {"Authorization": f"Bearer {token}"}
+        company_id = _create_company(test_client, token)
         product_id, warehouse_id = _seed_environment(db_session, company_id)
 
         # Set initial stock via direct DB manipulation (skip service layer)
@@ -232,9 +250,6 @@ class TestConcurrentWrites:
         )
         pos.qty_on_hand = Decimal("100")
         db_session.flush()
-
-        token = _login(test_client, email, password)
-        headers = {"Authorization": f"Bearer {token}"}
 
         reserve_qty = Decimal("5")
         cycles = 10

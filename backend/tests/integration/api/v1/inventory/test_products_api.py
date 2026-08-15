@@ -50,12 +50,32 @@ def _make_uom(db: Session, company_id: uuid.UUID) -> UOM:
     return uom
 
 
-def _setup_user_and_company(db: Session) -> tuple[str, str, uuid.UUID, str]:
+def _create_company(client: TestClient, token: str) -> uuid.UUID:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Inventory Test Co {suffix}",
+            "email": f"contact-{suffix}@inventory-test.example.com",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return uuid.UUID(resp.json()["data"]["id"])
+
+
+def _setup_user_and_company(
+    db: Session, client: TestClient
+) -> tuple[str, str, uuid.UUID, str]:
     """Create a user + company and return (email, password, company_id, password)."""
     email = f"user-{uuid.uuid4().hex[:8]}@test.com"
     password = "TestPass123!"
     user = create_test_user(db, email=email, password=password)
-    company_id = uuid.uuid4()
+    token = _login(client, email, password)
+    company_id = _create_company(client, token)
     return email, password, company_id, password
 
 
@@ -101,7 +121,9 @@ class TestProductCreate:
     def test_create_product_returns_201(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _ = _setup_user_and_company(db_session)
+        email, password, company_id, _ = _setup_user_and_company(
+            db_session, test_client
+        )
         uom = _make_uom(db_session, company_id)
         token = _login(test_client, email, password)
 
@@ -123,7 +145,9 @@ class TestProductCreate:
     def test_create_product_duplicate_sku_returns_409(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _ = _setup_user_and_company(db_session)
+        email, password, company_id, _ = _setup_user_and_company(
+            db_session, test_client
+        )
         uom = _make_uom(db_session, company_id)
         token = _login(test_client, email, password)
 
@@ -150,7 +174,9 @@ class TestProductCreate:
     def test_create_product_invalid_type_returns_422(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _ = _setup_user_and_company(db_session)
+        email, password, company_id, _ = _setup_user_and_company(
+            db_session, test_client
+        )
         uom = _make_uom(db_session, company_id)
         token = _login(test_client, email, password)
 
@@ -169,7 +195,9 @@ class TestProductCreate:
     def test_create_product_missing_name_returns_422(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _ = _setup_user_and_company(db_session)
+        email, password, company_id, _ = _setup_user_and_company(
+            db_session, test_client
+        )
         uom = _make_uom(db_session, company_id)
         token = _login(test_client, email, password)
 
@@ -189,7 +217,9 @@ class TestProductRead:
     def test_get_product_returns_200(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _ = _setup_user_and_company(db_session)
+        email, password, company_id, _ = _setup_user_and_company(
+            db_session, test_client
+        )
         uom = _make_uom(db_session, company_id)
         token = _login(test_client, email, password)
 
@@ -215,7 +245,9 @@ class TestProductRead:
     def test_get_product_not_found_returns_404(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _ = _setup_user_and_company(db_session)
+        email, password, company_id, _ = _setup_user_and_company(
+            db_session, test_client
+        )
         token = _login(test_client, email, password)
 
         resp = test_client.get(
@@ -227,7 +259,9 @@ class TestProductRead:
     def test_list_products_returns_paginated_response(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _ = _setup_user_and_company(db_session)
+        email, password, company_id, _ = _setup_user_and_company(
+            db_session, test_client
+        )
         uom = _make_uom(db_session, company_id)
         token = _login(test_client, email, password)
 
@@ -257,7 +291,9 @@ class TestProductUpdate:
     def test_update_product_name(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _ = _setup_user_and_company(db_session)
+        email, password, company_id, _ = _setup_user_and_company(
+            db_session, test_client
+        )
         uom = _make_uom(db_session, company_id)
         token = _login(test_client, email, password)
 
@@ -307,7 +343,9 @@ class TestProductLifecycle:
     def test_full_lifecycle_draft_to_archived(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _ = _setup_user_and_company(db_session)
+        email, password, company_id, _ = _setup_user_and_company(
+            db_session, test_client
+        )
         uom = _make_uom(db_session, company_id)
         token = _login(test_client, email, password)
         cid = str(company_id)
@@ -345,7 +383,9 @@ class TestProductLifecycle:
     def test_invalid_transition_returns_409(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _ = _setup_user_and_company(db_session)
+        email, password, company_id, _ = _setup_user_and_company(
+            db_session, test_client
+        )
         uom = _make_uom(db_session, company_id)
         token = _login(test_client, email, password)
         cid = str(company_id)
@@ -362,7 +402,9 @@ class TestProductLifecycle:
     def test_delete_draft_product(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _ = _setup_user_and_company(db_session)
+        email, password, company_id, _ = _setup_user_and_company(
+            db_session, test_client
+        )
         uom = _make_uom(db_session, company_id)
         token = _login(test_client, email, password)
         cid = str(company_id)
@@ -390,7 +432,9 @@ class TestProductLifecycle:
 
 class TestProductSearch:
     def test_search_by_name(self, test_client: TestClient, db_session: Session) -> None:
-        email, password, company_id, _ = _setup_user_and_company(db_session)
+        email, password, company_id, _ = _setup_user_and_company(
+            db_session, test_client
+        )
         uom = _make_uom(db_session, company_id)
         token = _login(test_client, email, password)
         cid = str(company_id)
@@ -428,7 +472,9 @@ class TestProductSearch:
     def test_search_pagination(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _ = _setup_user_and_company(db_session)
+        email, password, company_id, _ = _setup_user_and_company(
+            db_session, test_client
+        )
         uom = _make_uom(db_session, company_id)
         token = _login(test_client, email, password)
         cid = str(company_id)
@@ -465,7 +511,9 @@ class TestVariantsAPI:
     def test_add_and_list_variants(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _ = _setup_user_and_company(db_session)
+        email, password, company_id, _ = _setup_user_and_company(
+            db_session, test_client
+        )
         uom = _make_uom(db_session, company_id)
         token = _login(test_client, email, password)
         cid = str(company_id)
@@ -502,7 +550,9 @@ class TestVariantsAPI:
     def test_duplicate_variant_sku_returns_409(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _ = _setup_user_and_company(db_session)
+        email, password, company_id, _ = _setup_user_and_company(
+            db_session, test_client
+        )
         uom = _make_uom(db_session, company_id)
         token = _login(test_client, email, password)
         cid = str(company_id)
@@ -541,7 +591,9 @@ class TestBarcodesAPI:
     def test_add_and_list_barcodes(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _ = _setup_user_and_company(db_session)
+        email, password, company_id, _ = _setup_user_and_company(
+            db_session, test_client
+        )
         uom = _make_uom(db_session, company_id)
         token = _login(test_client, email, password)
         cid = str(company_id)
@@ -582,7 +634,9 @@ class TestBarcodesAPI:
     def test_duplicate_barcode_returns_409(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _ = _setup_user_and_company(db_session)
+        email, password, company_id, _ = _setup_user_and_company(
+            db_session, test_client
+        )
         uom = _make_uom(db_session, company_id)
         token = _login(test_client, email, password)
         cid = str(company_id)
@@ -647,8 +701,8 @@ class TestProductTenantIsolation:
     def test_company_a_cannot_see_company_b_products(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email_a, pass_a, company_a, _ = _setup_user_and_company(db_session)
-        email_b, pass_b, company_b, _ = _setup_user_and_company(db_session)
+        email_a, pass_a, company_a, _ = _setup_user_and_company(db_session, test_client)
+        email_b, pass_b, company_b, _ = _setup_user_and_company(db_session, test_client)
 
         uom_a = _make_uom(db_session, company_a)
         uom_b = _make_uom(db_session, company_b)

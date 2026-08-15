@@ -55,6 +55,23 @@ def _return_url(company_id: str, path: str = "") -> str:
     return f"/api/v1/companies/{company_id}/sales/returns{path}"
 
 
+def _create_company(client: TestClient, token: str):
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Sales Test Co {suffix}",
+            "email": f"contact-{suffix}@sales-test.example.com",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
 def _create_return_payload(
     customer_id: str | None = None, reason_code_id: str | None = None
 ) -> dict:
@@ -83,10 +100,10 @@ class TestCreateReturnAPI:
     def test_create_return_201(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email=email)
         token = _login(test_client, email)
+        company_id = _create_company(test_client, token)
         resp = test_client.post(
             _return_url(str(company_id)),
             json=_create_return_payload(),
@@ -108,10 +125,10 @@ class TestCreateReturnAPI:
     def test_create_return_includes_lines(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email=email)
         token = _login(test_client, email)
+        company_id = _create_company(test_client, token)
         resp = test_client.post(
             _return_url(str(company_id)),
             json=_create_return_payload(),
@@ -132,10 +149,10 @@ class TestListReturnsAPI:
     def test_list_returns_200(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email=email)
         token = _login(test_client, email)
+        company_id = _create_company(test_client, token)
         test_client.post(
             _return_url(str(company_id)),
             json=_create_return_payload(),
@@ -149,10 +166,10 @@ class TestListReturnsAPI:
     def test_list_filter_status(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email=email)
         token = _login(test_client, email)
+        company_id = _create_company(test_client, token)
         test_client.post(
             _return_url(str(company_id)),
             json=_create_return_payload(),
@@ -173,10 +190,10 @@ class TestListReturnsAPI:
 
 class TestGetReturnAPI:
     def test_get_return_200(self, test_client: TestClient, db_session: Session) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email=email)
         token = _login(test_client, email)
+        company_id = _create_company(test_client, token)
         create_resp = test_client.post(
             _return_url(str(company_id)),
             json=_create_return_payload(),
@@ -190,10 +207,10 @@ class TestGetReturnAPI:
         assert resp.json()["data"]["id"] == return_id
 
     def test_get_return_404(self, test_client: TestClient, db_session: Session) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email=email)
         token = _login(test_client, email)
+        company_id = _create_company(test_client, token)
         resp = test_client.get(
             _return_url(str(company_id), f"/{uuid4()}"),
             headers=_auth(token),
@@ -224,10 +241,10 @@ class TestReturnTransitionsAPI:
     def test_submit_return_200(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email=email)
         token = _login(test_client, email)
+        company_id = _create_company(test_client, token)
         ret_id = _create_and_get_id(test_client, str(company_id), token)
         resp = test_client.post(
             _return_url(str(company_id), f"/{ret_id}/submit"),
@@ -240,10 +257,10 @@ class TestReturnTransitionsAPI:
     def test_approve_return_200(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email=email)
         token = _login(test_client, email)
+        company_id = _create_company(test_client, token)
         ret_id = _create_and_get_id(test_client, str(company_id), token)
         test_client.post(
             _return_url(str(company_id), f"/{ret_id}/submit"),
@@ -261,10 +278,10 @@ class TestReturnTransitionsAPI:
     def test_reject_return_200(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email=email)
         token = _login(test_client, email)
+        company_id = _create_company(test_client, token)
         ret_id = _create_and_get_id(test_client, str(company_id), token)
         test_client.post(
             _return_url(str(company_id), f"/{ret_id}/submit"),
@@ -282,10 +299,10 @@ class TestReturnTransitionsAPI:
     def test_cancel_draft_return_200(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email=email)
         token = _login(test_client, email)
+        company_id = _create_company(test_client, token)
         ret_id = _create_and_get_id(test_client, str(company_id), token)
         resp = test_client.post(
             _return_url(str(company_id), f"/{ret_id}/cancel"),
@@ -298,10 +315,10 @@ class TestReturnTransitionsAPI:
     def test_invalid_transition_409(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email=email)
         token = _login(test_client, email)
+        company_id = _create_company(test_client, token)
         ret_id = _create_and_get_id(test_client, str(company_id), token)
         # Try to approve from DRAFT (invalid)
         resp = test_client.post(
@@ -314,10 +331,10 @@ class TestReturnTransitionsAPI:
     def test_cancel_after_cancel_409(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email=email)
         token = _login(test_client, email)
+        company_id = _create_company(test_client, token)
         ret_id = _create_and_get_id(test_client, str(company_id), token)
         test_client.post(
             _return_url(str(company_id), f"/{ret_id}/cancel"),
@@ -339,10 +356,10 @@ class TestReturnTransitionsAPI:
 
 class TestReturnLinesAPI:
     def test_list_lines_200(self, test_client: TestClient, db_session: Session) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email=email)
         token = _login(test_client, email)
+        company_id = _create_company(test_client, token)
         ret_id = _create_and_get_id(test_client, str(company_id), token)
         resp = test_client.get(
             _return_url(str(company_id), f"/{ret_id}/lines"),
@@ -356,10 +373,10 @@ class TestReturnLinesAPI:
     def test_lines_for_unknown_return_404(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email=email)
         token = _login(test_client, email)
+        company_id = _create_company(test_client, token)
         resp = test_client.get(
             _return_url(str(company_id), f"/{uuid4()}/lines"),
             headers=_auth(token),
@@ -376,9 +393,6 @@ class TestReturnTenantIsolation:
     def test_company_b_cannot_access_company_a_return(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_a = uuid4()
-        company_b = uuid4()
-
         email_a = _unique_email()
         email_b = _unique_email()
         create_test_user(db_session, email=email_a)
@@ -386,6 +400,11 @@ class TestReturnTenantIsolation:
 
         token_a = _login(test_client, email_a)
         token_b = _login(test_client, email_b)
+        # Two distinct real companies, each owned by a different user —
+        # required now that company-scoped routes enforce membership (see
+        # api/v1/router.py's get_current_company_member gate).
+        company_a = _create_company(test_client, token_a)
+        company_b = _create_company(test_client, token_b)
 
         create_resp = test_client.post(
             _return_url(str(company_a)),

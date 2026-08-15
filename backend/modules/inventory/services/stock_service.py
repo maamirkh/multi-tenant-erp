@@ -177,6 +177,10 @@ class StockLedgerService:
         if currency_code is not None:
             pos.currency_code = currency_code
         self._db.flush()
+        # Missing-commit defect fixed during Epic 1-8 live verification
+        # (2026-08-14) — see warehouse_service.py::create_warehouse's comment
+        # for the full root-cause explanation.
+        self._db.commit()
 
         if self._alert_svc is not None:
             self._alert_svc.evaluate(company_id=company_id, position=pos)
@@ -292,6 +296,10 @@ class StockLedgerService:
             pos.qty_on_hand = Decimal(str(pos.qty_on_hand)) - quantity
 
         self._db.flush()
+        # Missing-commit defect fixed during pre-Epic-9 hardening audit
+        # (2026-08-14) — see warehouse_service.py::create_warehouse's comment
+        # for the full root-cause explanation.
+        self._db.commit()
 
         if self._alert_svc is not None:
             self._alert_svc.evaluate(company_id=company_id, position=pos)
@@ -562,6 +570,7 @@ class StockLedgerService:
         snapshot.total_warehouses = len(warehouses_seen)
         snapshot.status = "COMPLETED"
         self._db.flush()
+        self._db.commit()
 
         logger.info(
             "Snapshot created: %s — %d positions captured",
@@ -612,6 +621,7 @@ class StockLedgerService:
         if reorder_level is not None:
             pos.reorder_level = reorder_level
         self._db.flush()
+        self._db.commit()
         return pos
 
     # ------------------------------------------------------------------

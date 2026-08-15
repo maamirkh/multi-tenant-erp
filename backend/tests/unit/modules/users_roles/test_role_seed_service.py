@@ -63,17 +63,22 @@ class TestSeedPermissions:
     """Test permission seeding."""
 
     def test_seeds_14_permissions(self):
-        """seed_permissions creates all 14 initial permissions."""
+        """seed_permissions creates every permission in INITIAL_PERMISSIONS.
+
+        Was hardcoded to 14 (the count before Epic 8 added 20 accounting
+        permissions in Phase 14, tasks.md T277) — now derived from
+        INITIAL_PERMISSIONS itself so it can't go stale again.
+        """
         service = _make_service()
         result = service.seed_permissions()
 
-        assert len(result) == 14
-        # Verify db.add was called 14 times (once per permission)
-        assert service._db.add.call_count == 14
+        assert len(result) == len(INITIAL_PERMISSIONS)
+        # Verify db.add was called once per permission
+        assert service._db.add.call_count == len(INITIAL_PERMISSIONS)
 
     def test_seed_permissions_idempotent(self):
         """seed_permissions skips existing permissions."""
-        # Create mock existing permissions for all 14
+        # Create mock existing permissions for all of INITIAL_PERMISSIONS
         existing = []
         for perm_def in INITIAL_PERMISSIONS:
             p = MagicMock(spec=Permission)
@@ -84,7 +89,7 @@ class TestSeedPermissions:
         service = _make_service(existing_permissions=existing)
         result = service.seed_permissions()
 
-        assert len(result) == 14
+        assert len(result) == len(INITIAL_PERMISSIONS)
         # No new permissions should be added
         assert service._db.add.call_count == 0
 

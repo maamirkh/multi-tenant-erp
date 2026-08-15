@@ -44,11 +44,29 @@ def _url(company_id: str | uuid.UUID, path: str) -> str:
     return f"/api/v1/companies/{company_id}/inventory{path}"
 
 
-def _setup(db: Session) -> tuple[str, str, uuid.UUID]:
+def _create_company(client: TestClient, token: str) -> uuid.UUID:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Inventory Test Co {suffix}",
+            "email": f"contact-{suffix}@inventory-test.example.com",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return uuid.UUID(resp.json()["data"]["id"])
+
+
+def _setup(db: Session, client: TestClient) -> tuple[str, str, uuid.UUID]:
     email = f"stock-{uuid.uuid4().hex[:8]}@test.com"
     password = "TestPass123!"
     create_test_user(db, email=email, password=password)
-    company_id = uuid.uuid4()
+    token = _login(client, email, password)
+    company_id = _create_company(client, token)
     return email, password, company_id
 
 
@@ -116,7 +134,7 @@ class TestOpeningStock:
     def test_record_opening_stock_success(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
         product_id = uuid.uuid4()
@@ -140,7 +158,7 @@ class TestOpeningStock:
     def test_opening_stock_unknown_warehouse_404(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
 
         resp = test_client.post(
@@ -157,7 +175,7 @@ class TestOpeningStock:
     def test_opening_stock_inactive_warehouse_404(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         wh.status = "INACTIVE"
         db_session.flush()
@@ -177,7 +195,7 @@ class TestOpeningStock:
     def test_second_opening_stock_applies_wac(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
         pid = uuid.uuid4()
@@ -228,7 +246,7 @@ class TestStockAdjustments:
     def test_adjustment_in_increases_qty(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         pid = uuid.uuid4()
         tok = self._seed_stock(test_client, db_session, email, pwd, cid, wh, pid)
@@ -249,7 +267,7 @@ class TestStockAdjustments:
     def test_adjustment_out_decreases_qty(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         pid = uuid.uuid4()
         tok = self._seed_stock(test_client, db_session, email, pwd, cid, wh, pid)
@@ -270,7 +288,7 @@ class TestStockAdjustments:
     def test_adjustment_out_insufficient_stock_409(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         pid = uuid.uuid4()
         tok = self._seed_stock(
@@ -306,7 +324,7 @@ class TestStockPositionListing:
     def test_list_positions_for_company(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
         self._seed(test_client, db_session, cid, wh.id, uuid.uuid4(), "50", tok)
@@ -319,7 +337,7 @@ class TestStockPositionListing:
     def test_list_positions_by_warehouse(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh1 = _make_warehouse(db_session, cid)
         wh2 = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
@@ -336,7 +354,7 @@ class TestStockPositionListing:
     def test_list_positions_by_product(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh1 = _make_warehouse(db_session, cid)
         wh2 = _make_warehouse(db_session, cid)
         pid = uuid.uuid4()
@@ -361,7 +379,7 @@ class TestStockMovementListing:
     def test_list_movements_returns_ledger(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         pid = uuid.uuid4()
         tok = _login(test_client, email, pwd)
@@ -396,7 +414,7 @@ class TestInventorySnapshots:
     def test_create_snapshot_empty_company(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
 
         resp = test_client.post(
@@ -412,7 +430,7 @@ class TestInventorySnapshots:
     def test_create_snapshot_captures_positions(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         pid = uuid.uuid4()
         tok = _login(test_client, email, pwd)
@@ -438,7 +456,7 @@ class TestInventorySnapshots:
         assert data["total_warehouses"] == 1
 
     def test_list_snapshots(self, test_client: TestClient, db_session: Session):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
 
         test_client.post(_url(cid, "/stock/snapshots"), json={}, headers=_auth(tok))
@@ -449,7 +467,7 @@ class TestInventorySnapshots:
         assert len(resp.json()["data"]) >= 2
 
     def test_get_snapshot_lines(self, test_client: TestClient, db_session: Session):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
 

@@ -347,6 +347,10 @@ class ReturnService:
             self._db.add(line)
 
         self._db.flush()
+        # Missing-commit defect fixed during pre-Epic-9 hardening audit
+        # (2026-08-14) — see inventory/services/warehouse_service.py::
+        # create_warehouse's comment for the full root-cause explanation.
+        self._db.commit()
 
         # ---- Publish event --------------------------------------------------
         try:
@@ -388,6 +392,7 @@ class ReturnService:
         sales_return.approval_version += 1
         sales_return.updated_at = utcnow()
         self._db.flush()
+        self._db.commit()
 
         try:
             get_event_bus().publish(
@@ -425,6 +430,7 @@ class ReturnService:
         sales_return.status = "APPROVED"
         sales_return.updated_at = utcnow()
         self._db.flush()
+        self._db.commit()
 
         try:
             get_event_bus().publish(
@@ -468,6 +474,7 @@ class ReturnService:
                 + f"\nRejected: {data.rejection_reason}"
             ).strip()
         self._db.flush()
+        self._db.commit()
 
         try:
             get_event_bus().publish(
@@ -534,6 +541,7 @@ class ReturnService:
 
         # ---- Inventory restock (T189) ---------------------------------------
         self._restock_inventory(company_id, sales_return.id, lines)
+        self._db.commit()
 
         total_accepted_lines = sum(
             1 for ln in lines if Decimal(str(ln.quantity_accepted)) > 0
@@ -606,6 +614,7 @@ class ReturnService:
                 + f"\nCompletion notes: {data.notes}"
             ).strip()
         self._db.flush()
+        self._db.commit()
 
         try:
             get_event_bus().publish(
@@ -663,6 +672,7 @@ class ReturnService:
         sales_return.status = "CANCELLED"
         sales_return.updated_at = utcnow()
         self._db.flush()
+        self._db.commit()
 
         logger.info(
             "Return cancelled: %s (company=%s cancelled_by=%s)",

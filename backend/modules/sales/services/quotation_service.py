@@ -217,6 +217,10 @@ class QuotationLineService:
 
         # Recalculate quotation totals
         _recalculate_totals(quotation, self._line_repo)
+        # Missing-commit defect fixed during pre-Epic-9 hardening audit
+        # (2026-08-14) — see inventory/services/warehouse_service.py::
+        # create_warehouse's comment for the full root-cause explanation.
+        self.db.commit()
         return line
 
     def update_line(
@@ -261,6 +265,7 @@ class QuotationLineService:
 
         self.db.flush()
         _recalculate_totals(quotation, self._line_repo)
+        self.db.commit()
         return line
 
     def delete_line(
@@ -283,6 +288,7 @@ class QuotationLineService:
             line.deleted_by = str(deleted_by)
         self.db.flush()
         _recalculate_totals(quotation, self._line_repo)
+        self.db.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -509,6 +515,7 @@ class QuotationService:
 
         # Capture initial revision
         self._capture_revision(quotation, created_by, change_summary="Initial creation")
+        self.db.commit()
 
         self._event_bus.publish(
             QuotationCreated(
@@ -602,6 +609,7 @@ class QuotationService:
 
         # Capture revision snapshot
         self._capture_revision(quotation, updated_by, change_summary="Header updated")
+        self.db.commit()
         return quotation
 
     # ------------------------------------------------------------------
@@ -628,6 +636,7 @@ class QuotationService:
         self.db.flush()
 
         self._capture_revision(quotation, sent_by, change_summary="Sent to customer")
+        self.db.commit()
         self._event_bus.publish(
             QuotationSent(
                 aggregate_id=UUID(str(quotation.id)),
@@ -663,6 +672,7 @@ class QuotationService:
         self._capture_revision(
             quotation, accepted_by, change_summary="Accepted by customer"
         )
+        self.db.commit()
         self._event_bus.publish(
             QuotationAccepted(
                 aggregate_id=UUID(str(quotation.id)),
@@ -696,6 +706,7 @@ class QuotationService:
             rejected_by,
             change_summary=f"Rejected: {request.reason}",
         )
+        self.db.commit()
         self._event_bus.publish(
             QuotationRejected(
                 aggregate_id=UUID(str(quotation.id)),
@@ -730,6 +741,7 @@ class QuotationService:
             cancelled_by,
             change_summary=f"Cancelled: {request.reason}",
         )
+        self.db.commit()
         self._event_bus.publish(
             QuotationCancelled(
                 aggregate_id=UUID(str(quotation.id)),
@@ -766,6 +778,7 @@ class QuotationService:
         self._capture_revision(
             quotation, actor, change_summary="Expired: validity date passed"
         )
+        self.db.commit()
         self._event_bus.publish(
             QuotationExpired(
                 aggregate_id=UUID(str(quotation.id)),
@@ -811,6 +824,7 @@ class QuotationService:
             converted_by,
             change_summary=f"Converted to order {order_number}",
         )
+        self.db.commit()
         self._event_bus.publish(
             QuotationConverted(
                 aggregate_id=UUID(str(quotation.id)),

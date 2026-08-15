@@ -41,11 +41,29 @@ def _url(company_id: str | uuid.UUID, path: str) -> str:
     return f"/api/v1/companies/{company_id}/inventory{path}"
 
 
-def _setup(db: Session) -> tuple[str, str, uuid.UUID]:
+def _create_company(client: TestClient, token: str) -> uuid.UUID:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Inventory Test Co {suffix}",
+            "email": f"contact-{suffix}@inventory-test.example.com",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return uuid.UUID(resp.json()["data"]["id"])
+
+
+def _setup(db: Session, client: TestClient) -> tuple[str, str, uuid.UUID]:
     email = f"wh-{uuid.uuid4().hex[:8]}@test.com"
     password = "TestPass123!"
     create_test_user(db, email=email, password=password)
-    company_id = uuid.uuid4()
+    token = _login(client, email, password)
+    company_id = _create_company(client, token)
     return email, password, company_id
 
 
@@ -84,7 +102,7 @@ class TestWarehouseUnauthenticated:
 
 class TestWarehouseCrud:
     def test_create_warehouse(self, test_client: TestClient, db_session: Session):
-        email, password, cid = _setup(db_session)
+        email, password, cid = _setup(db_session, test_client)
         token = _login(test_client, email, password)
 
         resp = test_client.post(
@@ -105,7 +123,7 @@ class TestWarehouseCrud:
     def test_create_normalises_code_to_uppercase(
         self, test_client: TestClient, db_session: Session
     ):
-        email, password, cid = _setup(db_session)
+        email, password, cid = _setup(db_session, test_client)
         token = _login(test_client, email, password)
 
         resp = test_client.post(
@@ -119,7 +137,7 @@ class TestWarehouseCrud:
     def test_duplicate_code_returns_409(
         self, test_client: TestClient, db_session: Session
     ):
-        email, password, cid = _setup(db_session)
+        email, password, cid = _setup(db_session, test_client)
         token = _login(test_client, email, password)
 
         test_client.post(
@@ -135,7 +153,7 @@ class TestWarehouseCrud:
         assert resp.status_code == 409
 
     def test_get_warehouse(self, test_client: TestClient, db_session: Session):
-        email, password, cid = _setup(db_session)
+        email, password, cid = _setup(db_session, test_client)
         token = _login(test_client, email, password)
 
         create_resp = test_client.post(
@@ -152,7 +170,7 @@ class TestWarehouseCrud:
     def test_get_wrong_company_returns_404(
         self, test_client: TestClient, db_session: Session
     ):
-        email, password, cid1 = _setup(db_session)
+        email, password, cid1 = _setup(db_session, test_client)
         token = _login(test_client, email, password)
 
         create_resp = test_client.post(
@@ -162,12 +180,16 @@ class TestWarehouseCrud:
         )
         wh_id = create_resp.json()["data"]["id"]
 
+        # cid2 is a fake company_id the user is not a member of — denied either
+        # at the membership gate (403) or, if it got past that, at the
+        # repository's company_id scoping (404). Both are correct "access
+        # denied" outcomes (see tests/security/inventory/test_security.py).
         cid2 = uuid.uuid4()
         resp = test_client.get(_url(cid2, f"/warehouses/{wh_id}"), headers=_auth(token))
-        assert resp.status_code == 404
+        assert resp.status_code in (403, 404)
 
     def test_list_warehouses(self, test_client: TestClient, db_session: Session):
-        email, password, cid = _setup(db_session)
+        email, password, cid = _setup(db_session, test_client)
         token = _login(test_client, email, password)
 
         for code in ["WH-LIST-A", "WH-LIST-B"]:
@@ -184,7 +206,7 @@ class TestWarehouseCrud:
         assert "WH-LIST-B" in codes
 
     def test_update_warehouse(self, test_client: TestClient, db_session: Session):
-        email, password, cid = _setup(db_session)
+        email, password, cid = _setup(db_session, test_client)
         token = _login(test_client, email, password)
 
         create_resp = test_client.post(
@@ -207,7 +229,7 @@ class TestWarehouseCrud:
     def test_create_with_full_address(
         self, test_client: TestClient, db_session: Session
     ):
-        email, password, cid = _setup(db_session)
+        email, password, cid = _setup(db_session, test_client)
         token = _login(test_client, email, password)
 
         resp = test_client.post(
@@ -248,7 +270,7 @@ class TestWarehouseStatusTransitions:
         return resp.json()["data"]["id"]
 
     def test_deactivate(self, test_client: TestClient, db_session: Session):
-        email, password, cid = _setup(db_session)
+        email, password, cid = _setup(db_session, test_client)
         token = _login(test_client, email, password)
         wh_id = self._create_wh(test_client, token, cid, "WH-DEACT")
 
@@ -260,7 +282,7 @@ class TestWarehouseStatusTransitions:
         assert resp.json()["data"]["status"] == "INACTIVE"
 
     def test_reactivate(self, test_client: TestClient, db_session: Session):
-        email, password, cid = _setup(db_session)
+        email, password, cid = _setup(db_session, test_client)
         token = _login(test_client, email, password)
         wh_id = self._create_wh(test_client, token, cid, "WH-REACT")
 
@@ -276,7 +298,7 @@ class TestWarehouseStatusTransitions:
         assert resp.json()["data"]["status"] == "ACTIVE"
 
     def test_archive(self, test_client: TestClient, db_session: Session):
-        email, password, cid = _setup(db_session)
+        email, password, cid = _setup(db_session, test_client)
         token = _login(test_client, email, password)
         wh_id = self._create_wh(test_client, token, cid, "WH-ARCH")
 
@@ -295,7 +317,7 @@ class TestWarehouseStatusTransitions:
     def test_invalid_transition_returns_409(
         self, test_client: TestClient, db_session: Session
     ):
-        email, password, cid = _setup(db_session)
+        email, password, cid = _setup(db_session, test_client)
         token = _login(test_client, email, password)
         wh_id = self._create_wh(test_client, token, cid, "WH-INV")
 
@@ -309,7 +331,7 @@ class TestWarehouseStatusTransitions:
     def test_activate_already_active_returns_409(
         self, test_client: TestClient, db_session: Session
     ):
-        email, password, cid = _setup(db_session)
+        email, password, cid = _setup(db_session, test_client)
         token = _login(test_client, email, password)
         wh_id = self._create_wh(test_client, token, cid, "WH-ACTACT")
 
@@ -339,7 +361,7 @@ class TestWarehouseLocations:
         return resp.json()["data"]["id"]
 
     def test_add_location(self, test_client: TestClient, db_session: Session):
-        email, password, cid = _setup(db_session)
+        email, password, cid = _setup(db_session, test_client)
         token = _login(test_client, email, password)
         wh_id = self._create_wh(test_client, token, cid, "WH-LOCA")
 
@@ -362,7 +384,7 @@ class TestWarehouseLocations:
     def test_duplicate_location_code_returns_409(
         self, test_client: TestClient, db_session: Session
     ):
-        email, password, cid = _setup(db_session)
+        email, password, cid = _setup(db_session, test_client)
         token = _login(test_client, email, password)
         wh_id = self._create_wh(test_client, token, cid, "WH-LOCDUP")
 
@@ -379,7 +401,7 @@ class TestWarehouseLocations:
         assert resp.status_code == 409
 
     def test_list_locations(self, test_client: TestClient, db_session: Session):
-        email, password, cid = _setup(db_session)
+        email, password, cid = _setup(db_session, test_client)
         token = _login(test_client, email, password)
         wh_id = self._create_wh(test_client, token, cid, "WH-LOCLIST")
 
@@ -400,7 +422,7 @@ class TestWarehouseLocations:
         assert "C-02" in codes
 
     def test_update_location(self, test_client: TestClient, db_session: Session):
-        email, password, cid = _setup(db_session)
+        email, password, cid = _setup(db_session, test_client)
         token = _login(test_client, email, password)
         wh_id = self._create_wh(test_client, token, cid, "WH-LOCUPD")
 
@@ -424,7 +446,7 @@ class TestWarehouseLocations:
     def test_locations_for_nonexistent_warehouse_returns_404(
         self, test_client: TestClient, db_session: Session
     ):
-        email, password, cid = _setup(db_session)
+        email, password, cid = _setup(db_session, test_client)
         token = _login(test_client, email, password)
 
         resp = test_client.get(
@@ -436,7 +458,7 @@ class TestWarehouseLocations:
     def test_location_code_normalised_to_uppercase(
         self, test_client: TestClient, db_session: Session
     ):
-        email, password, cid = _setup(db_session)
+        email, password, cid = _setup(db_session, test_client)
         token = _login(test_client, email, password)
         wh_id = self._create_wh(test_client, token, cid, "WH-UPPER")
 

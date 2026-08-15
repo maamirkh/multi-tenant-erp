@@ -46,13 +46,36 @@ def _url(company_id: uuid.UUID, path: str) -> str:
     return f"/api/v1/companies/{company_id}/inventory{path}"
 
 
-def _setup_data(db: Session) -> tuple[str, str, uuid.UUID, str, str]:
-    """Create user, product with barcode, and return login creds + identifiers."""
+def _create_company(client: TestClient, token: str) -> uuid.UUID:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Perf Test Co {suffix}",
+            "email": f"contact-{suffix}@perf-test.example.com",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return uuid.UUID(resp.json()["data"]["id"])
+
+
+def _setup_data(
+    client: TestClient, db: Session
+) -> tuple[str, str, uuid.UUID, str, str]:
+    """Create user + real company, product with barcode, and return login
+    creds + identifiers. The company is created via the API (not a fake
+    uuid4()) so the caller is an active member — company-scoped routes
+    enforce membership."""
     email = f"perf-lookup-{uuid.uuid4().hex[:8]}@test.com"
     password = "TestPass123!"
     create_test_user(db, email=email, password=password)
 
-    company_id = uuid.uuid4()
+    token = _login(client, email, password)
+    company_id = _create_company(client, token)
 
     uom = UOM(
         id=uuid.uuid4(),
@@ -133,7 +156,9 @@ class TestLookupPerformance:
         self, test_client: TestClient, db_session: Session
     ) -> None:
         """Barcode lookup p95 must be < 100ms on in-memory SQLite."""
-        email, password, company_id, barcode_value, _ = _setup_data(db_session)
+        email, password, company_id, barcode_value, _ = _setup_data(
+            test_client, db_session
+        )
         token = _login(test_client, email, password)
         headers = {"Authorization": f"Bearer {token}"}
 
@@ -167,7 +192,9 @@ class TestLookupPerformance:
         self, test_client: TestClient, db_session: Session
     ) -> None:
         """SKU lookup p95 must be < 100ms on in-memory SQLite."""
-        email, password, company_id, _, product_code = _setup_data(db_session)
+        email, password, company_id, _, product_code = _setup_data(
+            test_client, db_session
+        )
         token = _login(test_client, email, password)
         headers = {"Authorization": f"Bearer {token}"}
 
@@ -192,7 +219,7 @@ class TestLookupPerformance:
         self, test_client: TestClient, db_session: Session
     ) -> None:
         """Label data endpoint p95 must be < 100ms on in-memory SQLite."""
-        email, password, company_id, _, _ = _setup_data(db_session)
+        email, password, company_id, _, _ = _setup_data(test_client, db_session)
 
         # Re-fetch product id from the barcode to get the product UUID
         from sqlalchemy import select

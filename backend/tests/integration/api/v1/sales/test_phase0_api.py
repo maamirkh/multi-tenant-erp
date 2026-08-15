@@ -45,6 +45,23 @@ def _url(company_id: str, path: str) -> str:
     return f"/api/v1/companies/{company_id}/sales{path}"
 
 
+def _create_company(client: TestClient, token: str) -> str:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Sales Test Co {suffix}",
+            "email": f"contact-{suffix}@sales-test.example.com",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -58,7 +75,7 @@ class TestSalesHealthEndpoint:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         response = test_client.get(_url(company_id, "/health"), headers=_auth(token))
         assert response.status_code == 200
@@ -74,7 +91,7 @@ class TestCustomerCategoryAPI:
     def test_list_empty(self, test_client: TestClient, db_session: Session) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         response = test_client.get(
             _url(company_id, "/customer-categories"), headers=_auth(token)
@@ -87,7 +104,7 @@ class TestCustomerCategoryAPI:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         response = test_client.post(
             _url(company_id, "/customer-categories"),
@@ -105,7 +122,7 @@ class TestCustomerCategoryAPI:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         test_client.post(
             _url(company_id, "/customer-categories"),
@@ -124,7 +141,7 @@ class TestCustomerCategoryAPI:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         create_resp = test_client.post(
             _url(company_id, "/customer-categories"),
@@ -148,7 +165,7 @@ class TestCustomerGroupAPI:
     def test_create_group(self, test_client: TestClient, db_session: Session) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         response = test_client.post(
             _url(company_id, "/customer-groups"),
@@ -167,7 +184,7 @@ class TestPaymentTermAPI:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         response = test_client.post(
             _url(company_id, "/payment-terms"),
@@ -188,7 +205,7 @@ class TestReasonCodeAPI:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         response = test_client.post(
             _url(company_id, "/reason-codes"),
@@ -207,7 +224,7 @@ class TestFeatureFlagsAPI:
     def test_list_flags(self, test_client: TestClient, db_session: Session) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         response = test_client.get(
             _url(company_id, "/feature-flags"), headers=_auth(token)
@@ -227,7 +244,7 @@ class TestConfigurationAPI:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         response = test_client.get(
             _url(company_id, "/configuration"), headers=_auth(token)

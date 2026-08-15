@@ -345,6 +345,11 @@ class GRService:
             self._create_line(gr, line_data, company_id, user_id)
 
         self.db.flush()
+        # Missing-commit defect fixed during Epic 1-8 live verification
+        # (2026-08-14) — see backend/modules/inventory/services/
+        # warehouse_service.py::create_warehouse's comment for the full
+        # root-cause explanation.
+        self.db.commit()
         return self._build_gr_read(gr)
 
     def _create_line(
@@ -516,6 +521,13 @@ class GRService:
                 logger.exception("PPV alert check failed for GR %s (non-fatal)", gr_id)
 
         self.db.flush()
+        # Missing-commit defect fixed during Epic 1-8 live verification
+        # (2026-08-14) — see create_gr() above. This atomic multi-step
+        # operation (GR status + stock movements + PO line quantities +
+        # cost entries) was entirely uncommitted despite its own docstring
+        # describing it as "all-or-nothing in one DB transaction" — the
+        # transaction was real, it just never reached COMMIT.
+        self.db.commit()
         return self._build_gr_read(gr)
 
     def _apply_stock_and_po_lines(

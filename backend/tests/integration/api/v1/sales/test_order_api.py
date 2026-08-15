@@ -62,6 +62,23 @@ def _inbox_url(company_id: str, approver_id: str) -> str:
     return f"/api/v1/companies/{company_id}/sales/approvals/pending?approver_id={approver_id}"
 
 
+def _create_company(client: TestClient, token: str) -> str:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Sales Test Co {suffix}",
+            "email": f"contact-{suffix}@sales-test.example.com",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
 def _create_order(
     client: TestClient,
     company_id: str,
@@ -94,7 +111,7 @@ class TestSalesOrderCRUD:
     def test_create_order(self, test_client: TestClient, db_session: Session) -> None:
         user, password = create_test_user(db_session, email="so_create@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         resp = test_client.post(
             _url(company_id),
@@ -120,7 +137,7 @@ class TestSalesOrderCRUD:
     ) -> None:
         user, password = create_test_user(db_session, email="so_line@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         resp = test_client.post(
             _url(company_id),
@@ -148,7 +165,7 @@ class TestSalesOrderCRUD:
     def test_list_orders(self, test_client: TestClient, db_session: Session) -> None:
         user, password = create_test_user(db_session, email="so_list@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         _create_order(test_client, company_id, token)
         _create_order(test_client, company_id, token)
@@ -163,7 +180,7 @@ class TestSalesOrderCRUD:
     ) -> None:
         user, password = create_test_user(db_session, email="so_sfilt@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         _create_order(test_client, company_id, token)
 
@@ -177,7 +194,7 @@ class TestSalesOrderCRUD:
     ) -> None:
         user, password = create_test_user(db_session, email="so_detail@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         created = _create_order(test_client, company_id, token)
         order_id = created["id"]
@@ -193,7 +210,7 @@ class TestSalesOrderCRUD:
     ) -> None:
         user, password = create_test_user(db_session, email="so_404@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         resp = test_client.get(_url(company_id, f"/{uuid4()}"), headers=_auth(token))
         assert resp.status_code == 404, resp.text
@@ -203,7 +220,7 @@ class TestSalesOrderCRUD:
     ) -> None:
         user, password = create_test_user(db_session, email="so_update@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         created = _create_order(test_client, company_id, token)
         order_id = created["id"]
@@ -238,7 +255,7 @@ class TestSalesOrderLifecycle:
 
         user, password = create_test_user(db_session, email="so_submit@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
         rep_id = str(uuid4())
         company_uuid = UUID(company_id)
 
@@ -280,7 +297,7 @@ class TestSalesOrderLifecycle:
     ) -> None:
         user, password = create_test_user(db_session, email="so_submit2@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
         rep_id = str(uuid4())
 
         created = _create_order(test_client, company_id, token, sales_rep_id=rep_id)
@@ -306,7 +323,7 @@ class TestSalesOrderLifecycle:
     ) -> None:
         user, password = create_test_user(db_session, email="so_cancel@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
         rep_id = str(uuid4())
 
         created = _create_order(test_client, company_id, token, sales_rep_id=rep_id)
@@ -329,7 +346,7 @@ class TestSalesOrderLifecycle:
     ) -> None:
         user, password = create_test_user(db_session, email="so_cancel2@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
         rep_id = str(uuid4())
 
         created = _create_order(test_client, company_id, token, sales_rep_id=rep_id)
@@ -350,7 +367,7 @@ class TestSalesOrderLifecycle:
 
         user, password = create_test_user(db_session, email="so_cancel3@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
         rep_id = str(uuid4())
 
         created = _create_order(test_client, company_id, token, sales_rep_id=rep_id)
@@ -386,7 +403,7 @@ class TestOrderLineManagement:
     ) -> None:
         user, password = create_test_user(db_session, email="so_addline@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         created = _create_order(test_client, company_id, token)
         order_id = created["id"]
@@ -411,7 +428,7 @@ class TestOrderLineManagement:
     ) -> None:
         user, password = create_test_user(db_session, email="so_linetotal@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         created = _create_order(test_client, company_id, token)
         order_id = created["id"]
@@ -438,7 +455,7 @@ class TestOrderLineManagement:
     ) -> None:
         user, password = create_test_user(db_session, email="so_delline@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         created = _create_order(test_client, company_id, token)
         order_id = created["id"]
@@ -477,7 +494,7 @@ class TestApprovalMatrix:
             db_session, email="so_matrix_list@example.com"
         )
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         resp = test_client.get(_approvals_url(company_id), headers=_auth(token))
         assert resp.status_code == 200, resp.text
@@ -491,7 +508,7 @@ class TestApprovalMatrix:
             db_session, email="so_matrix_create@example.com"
         )
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         resp = test_client.post(
             _approvals_url(company_id),
@@ -521,7 +538,7 @@ class TestApprovalInbox:
     ) -> None:
         user, password = create_test_user(db_session, email="so_inbox@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
         approver_id = str(uuid4())
 
         resp = test_client.get(
@@ -543,8 +560,11 @@ class TestTenantIsolation:
     ) -> None:
         user, password = create_test_user(db_session, email="so_tenant@example.com")
         token = _login(test_client, user.email, password)
-        company_a = str(uuid4())
-        company_b = str(uuid4())
+        # Same user owns (and is thus an active member of) two distinct
+        # companies — required now that company-scoped routes enforce
+        # membership (see api/v1/router.py's get_current_company_member gate).
+        company_a = _create_company(test_client, token)
+        company_b = _create_company(test_client, token)
 
         created = _create_order(test_client, company_a, token)
         order_id = created["id"]
@@ -557,8 +577,11 @@ class TestTenantIsolation:
     ) -> None:
         user, password = create_test_user(db_session, email="so_tenant2@example.com")
         token = _login(test_client, user.email, password)
-        company_a = str(uuid4())
-        company_b = str(uuid4())
+        # Same user owns (and is thus an active member of) two distinct
+        # companies — required now that company-scoped routes enforce
+        # membership (see api/v1/router.py's get_current_company_member gate).
+        company_a = _create_company(test_client, token)
+        company_b = _create_company(test_client, token)
 
         _create_order(test_client, company_a, token)
 

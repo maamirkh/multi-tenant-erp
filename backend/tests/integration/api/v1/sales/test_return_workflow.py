@@ -59,6 +59,23 @@ def _sales_url(company_id: str, path: str) -> str:
     return f"/api/v1/companies/{company_id}/sales{path}"
 
 
+def _create_company(client: TestClient, token: str) -> str:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Sales Test Co {suffix}",
+            "email": f"contact-{suffix}@sales-test.example.com",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
 def _create_return(
     client: TestClient,
     company_id: str,
@@ -105,7 +122,7 @@ class TestReturnApprovalWorkflow:
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
         customer_id = str(uuid4())
 
         # Step 1: Create return (DRAFT)
@@ -156,7 +173,7 @@ class TestReturnApprovalWorkflow:
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         ret = _create_return(
             test_client, company_id, token, resolution_type="REPLACEMENT"
@@ -171,7 +188,7 @@ class TestReturnApprovalWorkflow:
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         ret = _create_return(
             test_client, company_id, token, resolution_type="REFUND_READINESS"
@@ -190,7 +207,7 @@ class TestReturnRejectionWorkflow:
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         # Create and submit
         ret = _create_return(test_client, company_id, token)
@@ -236,7 +253,7 @@ class TestReturnCancellation:
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         ret = _create_return(test_client, company_id, token)
         return_id = ret["id"]
@@ -256,7 +273,7 @@ class TestReturnCancellation:
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         ret = _create_return(test_client, company_id, token)
         return_id = ret["id"]
@@ -290,7 +307,7 @@ class TestReturnListAndFilter:
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         resp = test_client.get(
             _sales_url(company_id, "/returns"),
@@ -308,7 +325,7 @@ class TestReturnListAndFilter:
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         # Create two returns in DRAFT
         _create_return(test_client, company_id, token)
@@ -334,8 +351,8 @@ class TestReturnListAndFilter:
         create_test_user(db_session, email_b)
         token_a = _login(test_client, email_a)
         token_b = _login(test_client, email_b)
-        company_a = str(uuid4())
-        company_b = str(uuid4())
+        company_a = _create_company(test_client, token_a)
+        company_b = _create_company(test_client, token_b)
 
         # Create a return in Company A
         _create_return(test_client, company_a, token_a)
@@ -364,8 +381,8 @@ class TestReturnTenantIsolation:
         create_test_user(db_session, email_b)
         token_a = _login(test_client, email_a)
         token_b = _login(test_client, email_b)
-        company_a = str(uuid4())
-        company_b = str(uuid4())
+        company_a = _create_company(test_client, token_a)
+        company_b = _create_company(test_client, token_b)
 
         ret = _create_return(test_client, company_a, token_a)
         return_id = ret["id"]

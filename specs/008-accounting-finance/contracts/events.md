@@ -49,6 +49,22 @@ Raised every time a journal entry is finalized and reflected in the GL.
 
 **Consumers**: Reporting (Epic 11), Audit
 
+**Phase 17 (T303) ML-readiness verification** — checked against the actual
+implemented shape (`JournalPostedEvent`, `modules/accounting/events/gl_events.py`,
+which mirrors the documented payload above except field names differ
+slightly: `posting_source` not `source`, `total_debit_base`/`total_credit_base`
+not `total_debit_base_currency`) plus the base `AccountingDomainEvent`
+envelope (`occurred_at`, `actor_id`, `company_id`, `event_id`, `correlation_id`):
+
+| Required ML field | Status |
+|---|---|
+| `amount` | Present as `total_debit_base`/`total_credit_base` (equal, by double-entry construction) |
+| `account_type` | **Gap** — structural, not just missing: a journal entry can span multiple accounts/lines of different types, so "account_type" is a per-line attribute, not a single entry-level field. Not addable without changing the event to a per-line shape (out of this phase's scope). The Phase 17 GL event stream endpoint (`GET /accounting/events/stream`) exposes entry-level data only, same limitation. |
+| `time_of_day` | Present, derivable from `occurred_at`/`posted_at` (full ISO-8601 timestamp) — no separate field needed |
+| `user_id` | Present as base envelope's `actor_id` |
+| `posting_source` | Present |
+| `reference` | **Gap** — `JournalEntry.reference` exists on the model/GL report row but is NOT included in this event's payload. Added to the Phase 17 GL event stream endpoint's read-model row (`GLEventStreamRow.reference`) as a workaround; the fire-and-forget event itself is unchanged (adding a field is additive/non-breaking per this file's own versioning policy below, but doing so is left to whichever phase next touches `PostingEngine`'s publish call, not bundled into this read-only Phase 17 work). |
+
 ---
 
 ### `accounting.journal.reversed`
@@ -322,6 +338,26 @@ Raised when a period-end currency revaluation is executed.
   "journal_entry_id": "<uuid>"
 }
 ```
+
+---
+
+### `accounting.anomaly.detected`
+
+Raised once per journal entry flagged via `POST /accounting/ai/anomaly-report`
+(Phase 17 AI readiness stub, T307). Gated by the `accounting.ai.enabled`
+feature flag at the endpoint level (the event itself is unconditional once
+the endpoint has been called).
+
+**Payload**:
+```json
+{
+  "journal_entry_id": "<uuid>",
+  "anomaly_flag_id": "<uuid>",
+  "reason": "Unusual posting time and amount vs account history"
+}
+```
+
+**Consumers**: none yet — reserved for a future anomaly-review UI/notification consumer.
 
 ---
 

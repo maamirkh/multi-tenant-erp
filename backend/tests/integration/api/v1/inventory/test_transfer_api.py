@@ -59,11 +59,29 @@ def _url(company_id: uuid.UUID, path: str) -> str:
     return f"/api/v1/companies/{company_id}/inventory{path}"
 
 
-def _setup(db: Session) -> tuple[str, str, uuid.UUID]:
+def _create_company(client: TestClient, token: str) -> uuid.UUID:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Inventory Test Co {suffix}",
+            "email": f"contact-{suffix}@inventory-test.example.com",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return uuid.UUID(resp.json()["data"]["id"])
+
+
+def _setup(db: Session, client: TestClient) -> tuple[str, str, uuid.UUID]:
     email = f"tr-{uuid.uuid4().hex[:8]}@test.com"
     password = "TestPass123!"
     create_test_user(db, email=email, password=password)
-    company_id = uuid.uuid4()
+    token = _login(client, email, password)
+    company_id = _create_company(client, token)
     return email, password, company_id
 
 
@@ -164,7 +182,7 @@ class TestCreateTransferEndpoint:
     def test_create_returns_201_draft(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         src = _make_warehouse(db_session, cid)
         dst = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
@@ -189,7 +207,7 @@ class TestCreateTransferEndpoint:
     def test_same_warehouse_returns_400(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
 
@@ -207,7 +225,7 @@ class TestCreateTransferEndpoint:
     def test_unknown_warehouse_returns_404(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
 
         resp = test_client.post(
@@ -229,7 +247,7 @@ class TestCreateTransferEndpoint:
 
 class TestListAndDetailTransfer:
     def test_list_returns_transfers(self, test_client: TestClient, db_session: Session):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         src = _make_warehouse(db_session, cid)
         dst = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
@@ -250,7 +268,7 @@ class TestListAndDetailTransfer:
     def test_get_by_id_returns_detail(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         src = _make_warehouse(db_session, cid)
         dst = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
@@ -272,7 +290,7 @@ class TestListAndDetailTransfer:
     def test_get_not_found_returns_404(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
         resp = test_client.get(
             _url(cid, f"/stock-transfers/{uuid.uuid4()}"), headers=_auth(tok)
@@ -289,7 +307,7 @@ class TestTransferWorkflowEndpoints:
     def test_dispatch_reduces_source_stock(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         src = _make_warehouse(db_session, cid)
         dst = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
@@ -318,7 +336,7 @@ class TestTransferWorkflowEndpoints:
     def test_receive_increases_dest_stock(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         src = _make_warehouse(db_session, cid)
         dst = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
@@ -349,7 +367,7 @@ class TestTransferWorkflowEndpoints:
     def test_cancel_draft_returns_cancelled(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         src = _make_warehouse(db_session, cid)
         dst = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
@@ -378,7 +396,7 @@ class TestTransferWorkflowEndpoints:
     def test_cancel_in_transit_restores_stock(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         src = _make_warehouse(db_session, cid)
         dst = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
@@ -410,7 +428,7 @@ class TestTransferWorkflowEndpoints:
     def test_dispatch_wrong_status_returns_409(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         src = _make_warehouse(db_session, cid)
         dst = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
@@ -439,8 +457,8 @@ class TestTransferWorkflowEndpoints:
     def test_tenant_isolation_cannot_see_other_company_transfer(
         self, test_client: TestClient, db_session: Session
     ):
-        email1, pwd1, cid1 = _setup(db_session)
-        email2, pwd2, cid2 = _setup(db_session)
+        email1, pwd1, cid1 = _setup(db_session, test_client)
+        email2, pwd2, cid2 = _setup(db_session, test_client)
         src = _make_warehouse(db_session, cid1)
         dst = _make_warehouse(db_session, cid1)
         tok1 = _login(test_client, email1, pwd1)
@@ -473,7 +491,7 @@ class TestTransferWorkflowEndpoints:
 
 class TestReservationEndpoints:
     def test_reserve_returns_200(self, test_client: TestClient, db_session: Session):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
         pid = uuid.uuid4()
@@ -495,7 +513,7 @@ class TestReservationEndpoints:
         assert float(data["available_quantity"]) == pytest.approx(70.0)
 
     def test_release_returns_200(self, test_client: TestClient, db_session: Session):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
         pid = uuid.uuid4()
@@ -520,7 +538,7 @@ class TestReservationEndpoints:
     def test_reserve_insufficient_stock_returns_409(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
         pid = uuid.uuid4()

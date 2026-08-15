@@ -51,6 +51,23 @@ def _url(company_id: str, path: str = "") -> str:
     return f"/api/v1/companies/{company_id}/sales/quotations{path}"
 
 
+def _create_company(client: TestClient, token: str) -> str:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Sales Test Co {suffix}",
+            "email": f"contact-{suffix}@sales-test.example.com",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
 def _create_quotation(
     client: TestClient,
     company_id: str,
@@ -87,7 +104,7 @@ class TestQuotationCRUD:
     ) -> None:
         user, password = create_test_user(db_session, email="quot_create@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         resp = test_client.post(
             _url(company_id),
@@ -113,7 +130,7 @@ class TestQuotationCRUD:
     ) -> None:
         user, password = create_test_user(db_session, email="quot_invalid@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         resp = test_client.post(
             _url(company_id),
@@ -133,7 +150,7 @@ class TestQuotationCRUD:
     ) -> None:
         user, password = create_test_user(db_session, email="quot_list@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         _create_quotation(test_client, company_id, token)
         _create_quotation(test_client, company_id, token)
@@ -150,7 +167,7 @@ class TestQuotationCRUD:
             db_session, email="quot_statusfilt@example.com"
         )
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         _create_quotation(test_client, company_id, token)
 
@@ -162,7 +179,7 @@ class TestQuotationCRUD:
     def test_get_quotation(self, test_client: TestClient, db_session: Session) -> None:
         user, password = create_test_user(db_session, email="quot_get@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         created = _create_quotation(test_client, company_id, token)
         q_id = created["id"]
@@ -178,7 +195,7 @@ class TestQuotationCRUD:
     ) -> None:
         user, password = create_test_user(db_session, email="quot_notfound@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         resp = test_client.get(_url(company_id, f"/{uuid4()}"), headers=_auth(token))
         assert resp.status_code == 404, resp.text
@@ -190,7 +207,7 @@ class TestQuotationStateMachine:
     def test_send_quotation(self, test_client: TestClient, db_session: Session) -> None:
         user, password = create_test_user(db_session, email="quot_send@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         q = _create_quotation(test_client, company_id, token)
         resp = test_client.post(
@@ -206,7 +223,7 @@ class TestQuotationStateMachine:
     ) -> None:
         user, password = create_test_user(db_session, email="quot_accept@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         q = _create_quotation(test_client, company_id, token)
         q_id = q["id"]
@@ -227,7 +244,7 @@ class TestQuotationStateMachine:
     ) -> None:
         user, password = create_test_user(db_session, email="quot_reject@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         q = _create_quotation(test_client, company_id, token)
         q_id = q["id"]
@@ -248,7 +265,7 @@ class TestQuotationStateMachine:
     ) -> None:
         user, password = create_test_user(db_session, email="quot_cancel@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         q = _create_quotation(test_client, company_id, token)
         resp = test_client.post(
@@ -264,7 +281,7 @@ class TestQuotationStateMachine:
     ) -> None:
         user, password = create_test_user(db_session, email="quot_expire@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         q = _create_quotation(test_client, company_id, token)
         q_id = q["id"]
@@ -283,7 +300,7 @@ class TestQuotationStateMachine:
     ) -> None:
         user, password = create_test_user(db_session, email="quot_convert@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         q = _create_quotation(test_client, company_id, token)
         q_id = q["id"]
@@ -307,7 +324,7 @@ class TestQuotationStateMachine:
     ) -> None:
         user, password = create_test_user(db_session, email="quot_badtrans@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         q = _create_quotation(test_client, company_id, token)
         # Try to accept a DRAFT quotation directly (skipping send)
@@ -323,7 +340,7 @@ class TestQuotationStateMachine:
     ) -> None:
         user, password = create_test_user(db_session, email="quot_nocancel@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         q = _create_quotation(test_client, company_id, token)
         q_id = q["id"]
@@ -355,7 +372,7 @@ class TestQuotationRevisions:
             db_session, email="quot_rev_create@example.com"
         )
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         q = _create_quotation(test_client, company_id, token)
         resp = test_client.get(
@@ -371,7 +388,7 @@ class TestQuotationRevisions:
     ) -> None:
         user, password = create_test_user(db_session, email="quot_rev_send@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         q = _create_quotation(test_client, company_id, token)
         q_id = q["id"]
@@ -391,7 +408,7 @@ class TestQuotationRevisions:
     ) -> None:
         user, password = create_test_user(db_session, email="quot_rev_snap@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         q = _create_quotation(test_client, company_id, token)
         resp = test_client.get(
@@ -411,7 +428,7 @@ class TestQuotationLines:
     ) -> None:
         user, password = create_test_user(db_session, email="quot_addline@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         q = _create_quotation(test_client, company_id, token)
         resp = test_client.post(
@@ -435,7 +452,7 @@ class TestQuotationLines:
     ) -> None:
         user, password = create_test_user(db_session, email="quot_linedisc@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         q = _create_quotation(test_client, company_id, token)
         resp = test_client.post(
@@ -457,7 +474,7 @@ class TestQuotationLines:
     ) -> None:
         user, password = create_test_user(db_session, email="quot_delline@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         q = _create_quotation(test_client, company_id, token)
         q_id = q["id"]
@@ -480,7 +497,7 @@ class TestQuotationLines:
     ) -> None:
         user, password = create_test_user(db_session, email="quot_sentline@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         q = _create_quotation(test_client, company_id, token)
         q_id = q["id"]
@@ -504,8 +521,11 @@ class TestQuotationTenantIsolation:
     ) -> None:
         user, password = create_test_user(db_session, email="quot_tenant_a@example.com")
         token = _login(test_client, user.email, password)
-        company_a = str(uuid4())
-        company_b = str(uuid4())
+        # Same user owns (and is thus an active member of) two distinct
+        # companies — required now that company-scoped routes enforce
+        # membership (see api/v1/router.py's get_current_company_member gate).
+        company_a = _create_company(test_client, token)
+        company_b = _create_company(test_client, token)
 
         # Create quotation in company B using same user (different company URL)
         q_b = _create_quotation(test_client, company_b, token)
@@ -521,8 +541,11 @@ class TestQuotationTenantIsolation:
             db_session, email="quot_tenant_list@example.com"
         )
         token = _login(test_client, user.email, password)
-        company_a = str(uuid4())
-        company_b = str(uuid4())
+        # Same user owns (and is thus an active member of) two distinct
+        # companies — required now that company-scoped routes enforce
+        # membership (see api/v1/router.py's get_current_company_member gate).
+        company_a = _create_company(test_client, token)
+        company_b = _create_company(test_client, token)
 
         _create_quotation(test_client, company_a, token)
         _create_quotation(test_client, company_b, token)

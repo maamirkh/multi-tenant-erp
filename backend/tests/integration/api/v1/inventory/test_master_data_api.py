@@ -36,6 +36,23 @@ def _company_url(company_id: str, path: str) -> str:
     return f"/api/v1/companies/{company_id}/inventory{path}"
 
 
+def _create_company(client: TestClient, token: str) -> str:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Inventory Master Data Test Co {suffix}",
+            "email": f"contact-{suffix}@inv-master-test.example.com",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
 # =============================================================================
 # Unauthenticated access
 # =============================================================================
@@ -84,7 +101,7 @@ class TestCategoryCRUD:
             db_session, email="inv_cat_create@example.com"
         )
         token = _login(test_client, user.email, password)
-        company_id = str(uuid.uuid4())
+        company_id = str(_create_company(test_client, token))
         resp = test_client.post(
             _company_url(company_id, "/categories"),
             json={"code": "ELEC", "name": "Electronics", "sort_order": 1},
@@ -101,7 +118,7 @@ class TestCategoryCRUD:
     ) -> None:
         user, password = create_test_user(db_session, email="inv_cat_dup@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid.uuid4())
+        company_id = str(_create_company(test_client, token))
         payload = {"code": "DUPCAT", "name": "Dup", "sort_order": 0}
         test_client.post(
             _company_url(company_id, "/categories"), json=payload, headers=_auth(token)
@@ -116,7 +133,7 @@ class TestCategoryCRUD:
     ) -> None:
         user, password = create_test_user(db_session, email="inv_cat_list@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid.uuid4())
+        company_id = str(_create_company(test_client, token))
         # create one
         test_client.post(
             _company_url(company_id, "/categories"),
@@ -137,7 +154,9 @@ class TestCategoryCRUD:
         user, password = create_test_user(db_session, email="inv_cat_404@example.com")
         token = _login(test_client, user.email, password)
         resp = test_client.get(
-            _company_url(str(uuid.uuid4()), f"/categories/{uuid.uuid4()}"),
+            _company_url(
+                str(_create_company(test_client, token)), f"/categories/{uuid.uuid4()}"
+            ),
             headers=_auth(token),
         )
         assert resp.status_code == 404
@@ -147,7 +166,7 @@ class TestCategoryCRUD:
     ) -> None:
         user, password = create_test_user(db_session, email="inv_cat_guard@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid.uuid4())
+        company_id = str(_create_company(test_client, token))
         # Create parent
         resp = test_client.post(
             _company_url(company_id, "/categories"),
@@ -178,7 +197,7 @@ class TestCategoryCRUD:
     ) -> None:
         user, password = create_test_user(db_session, email="inv_cat_del@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid.uuid4())
+        company_id = str(_create_company(test_client, token))
         resp = test_client.post(
             _company_url(company_id, "/categories"),
             json={"code": "TODEL", "name": "To Delete", "sort_order": 0},
@@ -205,7 +224,7 @@ class TestBrandCRUD:
             db_session, email="inv_brand_create@example.com"
         )
         token = _login(test_client, user.email, password)
-        company_id = str(uuid.uuid4())
+        company_id = str(_create_company(test_client, token))
         resp = test_client.post(
             _company_url(company_id, "/brands"),
             json={"code": "SONY", "name": "Sony"},
@@ -221,7 +240,7 @@ class TestBrandCRUD:
     ) -> None:
         user, password = create_test_user(db_session, email="inv_brand_dup@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid.uuid4())
+        company_id = str(_create_company(test_client, token))
         payload = {"code": "DUP", "name": "Dup Brand"}
         test_client.post(
             _company_url(company_id, "/brands"), json=payload, headers=_auth(token)
@@ -238,7 +257,7 @@ class TestBrandCRUD:
             db_session, email="inv_brand_list@example.com"
         )
         token = _login(test_client, user.email, password)
-        company_id = str(uuid.uuid4())
+        company_id = str(_create_company(test_client, token))
         resp = test_client.get(
             _company_url(company_id, "/brands"), headers=_auth(token)
         )
@@ -251,7 +270,7 @@ class TestBrandCRUD:
             db_session, email="inv_brand_deact@example.com"
         )
         token = _login(test_client, user.email, password)
-        company_id = str(uuid.uuid4())
+        company_id = str(_create_company(test_client, token))
         resp = test_client.post(
             _company_url(company_id, "/brands"),
             json={"code": "DEACT", "name": "Deact Brand"},
@@ -279,7 +298,7 @@ class TestUOMCRUD:
             db_session, email="inv_uom_create@example.com"
         )
         token = _login(test_client, user.email, password)
-        company_id = str(uuid.uuid4())
+        company_id = str(_create_company(test_client, token))
         resp = test_client.post(
             _company_url(company_id, "/uom"),
             json={
@@ -302,7 +321,7 @@ class TestUOMCRUD:
             db_session, email="inv_uom_invalid@example.com"
         )
         token = _login(test_client, user.email, password)
-        company_id = str(uuid.uuid4())
+        company_id = str(_create_company(test_client, token))
         resp = test_client.post(
             _company_url(company_id, "/uom"),
             json={"code": "X", "name": "X", "uom_type": "BADTYPE"},
@@ -316,7 +335,8 @@ class TestUOMCRUD:
         user, password = create_test_user(db_session, email="inv_uom_list@example.com")
         token = _login(test_client, user.email, password)
         resp = test_client.get(
-            _company_url(str(uuid.uuid4()), "/uom"), headers=_auth(token)
+            _company_url(str(_create_company(test_client, token)), "/uom"),
+            headers=_auth(token),
         )
         assert resp.status_code == 200
 
@@ -334,7 +354,7 @@ class TestTagCRUD:
             db_session, email="inv_tag_create@example.com"
         )
         token = _login(test_client, user.email, password)
-        company_id = str(uuid.uuid4())
+        company_id = str(_create_company(test_client, token))
         resp = test_client.post(
             _company_url(company_id, "/tags"),
             json={"name": "Sale", "color": "#FF5733"},
@@ -353,7 +373,7 @@ class TestTagCRUD:
         )
         token = _login(test_client, user.email, password)
         resp = test_client.post(
-            _company_url(str(uuid.uuid4()), "/tags"),
+            _company_url(str(_create_company(test_client, token)), "/tags"),
             json={"name": "Bad", "color": "notacolor"},
             headers=_auth(token),
         )
@@ -364,7 +384,7 @@ class TestTagCRUD:
     ) -> None:
         user, password = create_test_user(db_session, email="inv_tag_dup@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid.uuid4())
+        company_id = str(_create_company(test_client, token))
         test_client.post(
             _company_url(company_id, "/tags"),
             json={"name": "Promo"},
@@ -389,7 +409,7 @@ class TestReasonCodeCRUD:
     ) -> None:
         user, password = create_test_user(db_session, email="inv_rc_create@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid.uuid4())
+        company_id = str(_create_company(test_client, token))
         resp = test_client.post(
             _company_url(company_id, "/reason-codes"),
             json={"code": "DMG01", "label": "Physical Damage", "applies_to": "DAMAGE"},
@@ -408,7 +428,7 @@ class TestReasonCodeCRUD:
         )
         token = _login(test_client, user.email, password)
         resp = test_client.post(
-            _company_url(str(uuid.uuid4()), "/reason-codes"),
+            _company_url(str(_create_company(test_client, token)), "/reason-codes"),
             json={"code": "X", "label": "X", "applies_to": "INVALID"},
             headers=_auth(token),
         )
@@ -419,7 +439,7 @@ class TestReasonCodeCRUD:
     ) -> None:
         user, password = create_test_user(db_session, email="inv_rc_deact@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid.uuid4())
+        company_id = str(_create_company(test_client, token))
         resp = test_client.post(
             _company_url(company_id, "/reason-codes"),
             json={"code": "ADJ01", "label": "Manual Adj", "applies_to": "ADJUSTMENT"},
@@ -445,7 +465,7 @@ class TestCustomFieldCRUD:
     ) -> None:
         user, password = create_test_user(db_session, email="inv_cf_create@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid.uuid4())
+        company_id = str(_create_company(test_client, token))
         resp = test_client.post(
             _company_url(company_id, "/custom-fields"),
             json={
@@ -465,7 +485,7 @@ class TestCustomFieldCRUD:
     ) -> None:
         user, password = create_test_user(db_session, email="inv_cf_dup@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid.uuid4())
+        company_id = str(_create_company(test_client, token))
         payload = {
             "entity_type": "PRODUCT",
             "field_key": "my_field",
@@ -489,7 +509,7 @@ class TestCustomFieldCRUD:
     ) -> None:
         user, password = create_test_user(db_session, email="inv_cf_list@example.com")
         token = _login(test_client, user.email, password)
-        company_id = str(uuid.uuid4())
+        company_id = str(_create_company(test_client, token))
         resp = test_client.get(
             _company_url(company_id, "/custom-fields?entity_type=PRODUCT"),
             headers=_auth(token),

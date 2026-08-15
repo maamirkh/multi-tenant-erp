@@ -62,6 +62,23 @@ def _p95(latencies: list[float]) -> float:
     return s[idx]
 
 
+def _create_company(client: TestClient, token: str) -> str:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Perf Test Co {suffix}",
+            "email": f"contact-{suffix}@perf-test.example.com",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
 def _create_customer(
     client: TestClient,
     token: str,
@@ -114,7 +131,7 @@ def perf_auth(test_client: TestClient, db_session: Session):
     email = f"perf-sales-{uuid.uuid4().hex[:8]}@example.com"
     create_test_user(db_session, email, password=_TEST_PASSWORD)
     token = _login(test_client, email)
-    cid = str(uuid.uuid4())
+    cid = _create_company(test_client, token)
     return test_client, token, cid
 
 

@@ -57,12 +57,29 @@ def _sales_url(company_id: str, path: str) -> str:
     return f"/api/v1/companies/{company_id}/sales{path}"
 
 
+def _create_company(client: TestClient, token: str) -> str:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Audit Trail Test Co {suffix}",
+            "email": f"contact-{suffix}@sales-audit-test.example.com",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
 @pytest.fixture()
 def audit_ctx(test_client: TestClient, db_session: Session):
     email = _unique_email()
     create_test_user(db_session, email, password=_TEST_PASSWORD)
     token = _login(test_client, email)
-    cid = str(uuid4())
+    cid = _create_company(test_client, token)
 
     # Create real customer for credit check
     cust_resp = test_client.post(

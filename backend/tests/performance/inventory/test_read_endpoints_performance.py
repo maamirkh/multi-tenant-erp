@@ -47,6 +47,23 @@ def _login(client: TestClient, email: str, password: str) -> str:
     return resp.json()["data"]["access_token"]
 
 
+def _create_company(client: TestClient, token: str) -> uuid.UUID:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Perf Test Co {suffix}",
+            "email": f"contact-{suffix}@perf-test.example.com",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return uuid.UUID(resp.json()["data"]["id"])
+
+
 def _p95(latencies: list[float]) -> float:
     sorted_lat = sorted(latencies)
     idx = max(int(len(sorted_lat) * 0.95) - 1, 0)
@@ -214,11 +231,10 @@ class TestReadEndpointsPerformance:
         password = "TestPass123!"
         create_test_user(db_session, email=email, password=password)
 
-        company_id = uuid.uuid4()
-        ids = _seed_all(db_session, company_id)
-
         token = _login(test_client, email, password)
         headers = {"Authorization": f"Bearer {token}"}
+        company_id = _create_company(test_client, token)
+        ids = _seed_all(db_session, company_id)
 
         endpoints = [
             ("/products", "Product list"),
@@ -267,11 +283,10 @@ class TestReadEndpointsPerformance:
         password = "TestPass123!"
         create_test_user(db_session, email=email, password=password)
 
-        company_id = uuid.uuid4()
-        _seed_all(db_session, company_id)
-
         token = _login(test_client, email, password)
         headers = {"Authorization": f"Bearer {token}"}
+        company_id = _create_company(test_client, token)
+        _seed_all(db_session, company_id)
 
         report_endpoints = [
             ("/reports/inventory-summary", "Inventory Summary"),

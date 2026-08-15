@@ -45,6 +45,23 @@ def _url(company_id: str, path: str) -> str:
     return f"/api/v1/companies/{company_id}/purchase{path}"
 
 
+def _create_company(client: TestClient, token: str) -> str:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Purchase Test Co {suffix}",
+            "email": f"contact-{suffix}@purchase-test.example.com",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
 # ---------------------------------------------------------------------------
 # Unauthenticated access (401 enforcement)
 # ---------------------------------------------------------------------------
@@ -91,7 +108,7 @@ class TestHealthEndpoint:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_health_ok@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         resp = test_client.get(_url(cid, "/health"), headers=_auth(token))
         assert resp.status_code == 200
@@ -104,7 +121,7 @@ class TestHealthEndpoint:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_health_cid@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         resp = test_client.get(_url(cid, "/health"), headers=_auth(token))
         assert resp.status_code == 200
@@ -122,7 +139,7 @@ class TestFeatureFlags:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_ff_list@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         resp = test_client.get(_url(cid, "/feature-flags"), headers=_auth(token))
         assert resp.status_code == 200
@@ -136,7 +153,7 @@ class TestFeatureFlags:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_ff_get@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         resp = test_client.get(_url(cid, "/feature-flags"), headers=_auth(token))
         assert resp.status_code == 200
@@ -149,7 +166,7 @@ class TestFeatureFlags:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_ff_404@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         resp = test_client.put(
             _url(cid, "/feature-flags/purchase.nonexistent_flag"),
@@ -161,7 +178,7 @@ class TestFeatureFlags:
     def test_enable_flag(self, test_client: TestClient, db_session: Session) -> None:
         user, pw = create_test_user(db_session, email="purch_ff_enable@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         resp = test_client.put(
             _url(cid, "/feature-flags/purchase.direct_po_allowed"),
@@ -174,7 +191,7 @@ class TestFeatureFlags:
     def test_disable_flag(self, test_client: TestClient, db_session: Session) -> None:
         user, pw = create_test_user(db_session, email="purch_ff_disable@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         # First enable then disable
         test_client.put(
@@ -202,7 +219,7 @@ class TestSupplierCategoryCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_cat_c@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         resp = test_client.post(
             _url(cid, "/settings/categories"),
@@ -220,7 +237,7 @@ class TestSupplierCategoryCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_cat_dup@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         payload = {"code": "DUPE", "name": "First"}
         test_client.post(
@@ -240,7 +257,7 @@ class TestSupplierCategoryCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_cat_list@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         test_client.post(
             _url(cid, "/settings/categories"),
@@ -263,7 +280,7 @@ class TestSupplierCategoryCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_cat_get@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         create_resp = test_client.post(
             _url(cid, "/settings/categories"),
@@ -283,7 +300,7 @@ class TestSupplierCategoryCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_cat_404@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         resp = test_client.get(
             _url(cid, f"/settings/categories/{uuid.uuid4()}"),
@@ -296,7 +313,7 @@ class TestSupplierCategoryCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_cat_upd@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         create_resp = test_client.post(
             _url(cid, "/settings/categories"),
@@ -318,7 +335,7 @@ class TestSupplierCategoryCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_cat_del@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         create_resp = test_client.post(
             _url(cid, "/settings/categories"),
@@ -343,8 +360,8 @@ class TestSupplierCategoryCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_cat_iso@example.com")
         token = _login(test_client, user.email, pw)
-        company_a = str(uuid.uuid4())
-        company_b = str(uuid.uuid4())
+        company_a = _create_company(test_client, token)
+        company_b = _create_company(test_client, token)
 
         test_client.post(
             _url(company_a, "/settings/categories"),
@@ -372,7 +389,7 @@ class TestPaymentTermsCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_pt_create@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         resp = test_client.post(
             _url(cid, "/settings/payment-terms"),
@@ -390,7 +407,7 @@ class TestPaymentTermsCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_pt_list@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         test_client.post(
             _url(cid, "/settings/payment-terms"),
@@ -409,7 +426,7 @@ class TestPaymentTermsCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_pt_dup@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         payload = {"code": "DUP30", "name": "Dup 30", "net_days": 30}
         test_client.post(
@@ -425,8 +442,8 @@ class TestPaymentTermsCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_pt_iso@example.com")
         token = _login(test_client, user.email, pw)
-        company_a = str(uuid.uuid4())
-        company_b = str(uuid.uuid4())
+        company_a = _create_company(test_client, token)
+        company_b = _create_company(test_client, token)
 
         test_client.post(
             _url(company_a, "/settings/payment-terms"),
@@ -453,7 +470,7 @@ class TestPurchaseReasonCodeCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_rc_create@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         resp = test_client.post(
             _url(cid, "/settings/reason-codes"),
@@ -470,7 +487,7 @@ class TestPurchaseReasonCodeCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_rc_inv@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         resp = test_client.post(
             _url(cid, "/settings/reason-codes"),
@@ -484,7 +501,7 @@ class TestPurchaseReasonCodeCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_rc_list@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         test_client.post(
             _url(cid, "/settings/reason-codes"),
@@ -503,7 +520,7 @@ class TestPurchaseReasonCodeCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_rc_del@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         create_resp = test_client.post(
             _url(cid, "/settings/reason-codes"),
@@ -529,7 +546,7 @@ class TestPurchasePolicy:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_pol_get@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         resp = test_client.get(_url(cid, "/settings/policy"), headers=_auth(token))
         assert resp.status_code == 200
@@ -540,7 +557,7 @@ class TestPurchasePolicy:
     def test_update_policy(self, test_client: TestClient, db_session: Session) -> None:
         user, pw = create_test_user(db_session, email="purch_pol_upd@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         resp = test_client.put(
             _url(cid, "/settings/policy"),
@@ -557,7 +574,7 @@ class TestPurchasePolicy:
     ) -> None:
         user, pw = create_test_user(db_session, email="purch_pol_inv@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         resp = test_client.put(
             _url(cid, "/settings/policy"),
@@ -572,7 +589,7 @@ class TestPurchasePolicy:
         """Multiple GETs return the same policy, not duplicates."""
         user, pw = create_test_user(db_session, email="purch_pol_sing@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         resp1 = test_client.get(_url(cid, "/settings/policy"), headers=_auth(token))
         resp2 = test_client.get(_url(cid, "/settings/policy"), headers=_auth(token))

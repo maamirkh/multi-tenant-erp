@@ -21,6 +21,19 @@ _MINIMAL_SETTINGS_KWARGS = {
     "DATABASE_URL": "sqlite:///:memory:",
     "SECRET_KEY": "test-secret-key-minimum-32-chars-ok",
     "JWT_SECRET_KEY": "test-jwt-secret-key-min-32-chars-ok!",
+    # Test-only Argon2 performance settings — NOT a security relaxation.
+    # These are the cheapest values the shared Settings model already
+    # permits (ARGON2_MEMORY_COST's field constraint is ge=19456, the
+    # OWASP minimum itself — see core/config/settings.py); production
+    # defaults (time_cost=3, memory_cost=65536, parallelism=4) are
+    # untouched. This function is called at 500+ sites across the test
+    # suite, each paying a real hash cost, so this materially speeds up
+    # the suite without touching production security posture. See
+    # tests/conftest.py's `_TEST_ARGON2_KWARGS` for the mirrored rationale
+    # applied to the API TestClient fixture.
+    "ARGON2_TIME_COST": 1,
+    "ARGON2_MEMORY_COST": 19456,
+    "ARGON2_PARALLELISM": 1,
 }
 
 

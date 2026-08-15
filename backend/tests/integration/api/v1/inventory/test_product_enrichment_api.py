@@ -40,11 +40,29 @@ def _url(company_id: str | uuid.UUID, path: str) -> str:
     return f"/api/v1/companies/{company_id}/inventory{path}"
 
 
-def _setup(db: Session) -> tuple[str, str, uuid.UUID]:
+def _create_company(client: TestClient, token: str) -> uuid.UUID:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Inventory Test Co {suffix}",
+            "email": f"contact-{suffix}@inventory-test.example.com",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return uuid.UUID(resp.json()["data"]["id"])
+
+
+def _setup(db: Session, client: TestClient) -> tuple[str, str, uuid.UUID]:
     email = f"user-{uuid.uuid4().hex[:8]}@test.com"
     password = "TestPass123!"
     create_test_user(db, email=email, password=password)
-    company_id = uuid.uuid4()
+    token = _login(client, email, password)
+    company_id = _create_company(client, token)
     return email, password, company_id
 
 
@@ -135,7 +153,7 @@ class TestProductTagsApi:
     def test_assign_and_list_tags(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         uom = _make_uom(db_session, company_id)
         product = _make_product(db_session, company_id, uom)
         tag = _make_tag(db_session, company_id)
@@ -166,7 +184,7 @@ class TestProductTagsApi:
     def test_assign_tag_idempotent(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         uom = _make_uom(db_session, company_id)
         product = _make_product(db_session, company_id, uom)
         tag = _make_tag(db_session, company_id)
@@ -192,7 +210,7 @@ class TestProductTagsApi:
         assert len(resp.json()["data"]) == 1  # still just one
 
     def test_remove_tag(self, test_client: TestClient, db_session: Session) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         uom = _make_uom(db_session, company_id)
         product = _make_product(db_session, company_id, uom)
         tag = _make_tag(db_session, company_id)
@@ -221,7 +239,7 @@ class TestProductTagsApi:
     def test_assign_nonexistent_tag_returns_404(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         uom = _make_uom(db_session, company_id)
         product = _make_product(db_session, company_id, uom)
         db_session.commit()
@@ -244,7 +262,7 @@ class TestCustomFieldValuesApi:
     def test_set_and_list_custom_field(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         uom = _make_uom(db_session, company_id)
         product = _make_product(db_session, company_id, uom)
         db_session.commit()
@@ -272,7 +290,7 @@ class TestCustomFieldValuesApi:
     def test_upsert_updates_value(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         uom = _make_uom(db_session, company_id)
         product = _make_product(db_session, company_id, uom)
         db_session.commit()
@@ -301,7 +319,7 @@ class TestCustomFieldValuesApi:
     def test_delete_custom_field(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         uom = _make_uom(db_session, company_id)
         product = _make_product(db_session, company_id, uom)
         db_session.commit()
@@ -335,7 +353,7 @@ class TestInternalNotesApi:
     def test_add_and_list_notes(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         uom = _make_uom(db_session, company_id)
         product = _make_product(db_session, company_id, uom)
         db_session.commit()
@@ -361,7 +379,7 @@ class TestInternalNotesApi:
     def test_multiple_notes_all_returned(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         uom = _make_uom(db_session, company_id)
         product = _make_product(db_session, company_id, uom)
         db_session.commit()
@@ -389,7 +407,7 @@ class TestInternalNotesApi:
     def test_empty_note_text_rejected(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         uom = _make_uom(db_session, company_id)
         product = _make_product(db_session, company_id, uom)
         db_session.commit()
@@ -410,7 +428,7 @@ class TestInternalNotesApi:
 
 class TestProductImagesApi:
     def test_upload_image(self, test_client: TestClient, db_session: Session) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         uom = _make_uom(db_session, company_id)
         product = _make_product(db_session, company_id, uom)
         db_session.commit()
@@ -431,7 +449,7 @@ class TestProductImagesApi:
         assert str(product.id) in data["product_id"]
 
     def test_list_images(self, test_client: TestClient, db_session: Session) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         uom = _make_uom(db_session, company_id)
         product = _make_product(db_session, company_id, uom)
         db_session.commit()
@@ -454,7 +472,7 @@ class TestProductImagesApi:
         assert len(resp.json()["data"]) == 2
 
     def test_delete_image(self, test_client: TestClient, db_session: Session) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         uom = _make_uom(db_session, company_id)
         product = _make_product(db_session, company_id, uom)
         db_session.commit()
@@ -503,7 +521,7 @@ class TestBulkImportExportApi:
     def test_import_valid_csv(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         uom = _make_uom(db_session, company_id)
         db_session.commit()
 
@@ -534,7 +552,7 @@ class TestBulkImportExportApi:
     def test_import_job_pollable(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         uom = _make_uom(db_session, company_id)
         db_session.commit()
 
@@ -560,7 +578,7 @@ class TestBulkImportExportApi:
     def test_import_nonexistent_job_returns_404(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         db_session.commit()
 
         token = _login(test_client, email, password)
@@ -573,7 +591,7 @@ class TestBulkImportExportApi:
     def test_export_returns_csv(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         uom = _make_uom(db_session, company_id)
         product = _make_product(db_session, company_id, uom, "EXPORT-001")
         db_session.commit()
@@ -590,7 +608,7 @@ class TestBulkImportExportApi:
     def test_import_missing_columns_creates_failed_job(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         db_session.commit()
 
         token = _login(test_client, email, password)

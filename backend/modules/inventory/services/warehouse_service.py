@@ -130,6 +130,16 @@ class WarehouseService:
         )
         self._db.add(wh)
         self._db.flush()
+        # Defect found during Epic 1-8 consolidated live verification (2026-08-14):
+        # this method never committed — flush() alone makes the row visible
+        # within the current session/transaction (enough to build a 201
+        # response) but core.database.session.get_db() has no commit-on-
+        # success step, so the row was silently rolled back when the request's
+        # session closed. Invisible to the SQLite test suite because
+        # TestClient's get_db override shares the SAME session as the test's
+        # own assertions. Scoped fix — see live-verification report for the
+        # full (much wider) scope found in Inventory/Purchase/Sales services.
+        self._db.commit()
         get_event_bus().publish(
             WarehouseCreated(
                 aggregate_id=wh.id,
@@ -192,6 +202,9 @@ class WarehouseService:
             wh.notes = notes
 
         self._db.flush()
+        # Missing-commit defect fixed during pre-Epic-9 hardening audit
+        # (2026-08-14) — see create_warehouse's comment above.
+        self._db.commit()
         get_event_bus().publish(
             WarehouseUpdated(
                 aggregate_id=wh.id,
@@ -230,6 +243,7 @@ class WarehouseService:
 
         wh.status = target_status
         self._db.flush()
+        self._db.commit()
 
         _EVENT_CLS = {
             "INACTIVE": WarehouseDeactivated,
@@ -300,6 +314,7 @@ class WarehouseService:
         )
         self._db.add(loc)
         self._db.flush()
+        self._db.commit()
         return loc
 
     def list_locations(
@@ -353,4 +368,5 @@ class WarehouseService:
             loc.is_active = is_active
 
         self._db.flush()
+        self._db.commit()
         return loc

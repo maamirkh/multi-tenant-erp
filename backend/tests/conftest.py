@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 # Register all ORM models with Base.metadata so that create_all() can resolve
 # cross-table foreign keys (e.g. companies.owner_id → users.id).
 import core.events.outbox  # noqa: E402, F401
+import modules.accounting.models  # noqa: E402, F401
 import modules.auth.models  # noqa: E402, F401
 import modules.companies.models  # noqa: E402, F401
 import modules.inventory.models  # noqa: E402, F401
@@ -105,6 +106,35 @@ def _add_sqlite_functions(dbapi_connection: object, _connection_record: object) 
 # ---------------------------------------------------------------------------
 _TEST_DATABASE_URL = "sqlite:///:memory:"
 
+# ---------------------------------------------------------------------------
+# Test-only Argon2 parameters — TEST PERFORMANCE, not a security setting.
+#
+# Production Argon2 defaults (core/config/settings.py: ARGON2_TIME_COST=3,
+# ARGON2_MEMORY_COST=65536, ARGON2_PARALLELISM=4) are OWASP-strength and
+# deliberately expensive (~110ms hash / ~135ms verify measured on this
+# environment). Every fixture that builds a `Settings()` for the test
+# database/API (this file, tests/fixtures/auth_fixtures.py) previously
+# inherited those PRODUCTION defaults, since `Settings` has no test-mode
+# switch — so every one of the ~700+ create_test_user()/login() call sites
+# across the suite paid the full production cost.
+#
+# These values are the CHEAPEST ones the shared `Settings` Pydantic model
+# already permits — ARGON2_MEMORY_COST's field constraint is `ge=19456`
+# ("OWASP minimum: 19456", see settings.py), so 19456 is not a relaxation
+# of that floor, just the existing floor itself. No field constraint in
+# settings.py is changed by this dict; it only supplies cheaper *values*
+# through the same public constructor. Production defaults, the OWASP-
+# minimum validation itself, and password verification logic
+# (PasswordService) are all untouched — see tests/security/test_argon2_params.py,
+# which deliberately does NOT use these overrides so it keeps validating
+# the real production defaults.
+# ---------------------------------------------------------------------------
+_TEST_ARGON2_KWARGS: dict[str, int] = {
+    "ARGON2_TIME_COST": 1,
+    "ARGON2_MEMORY_COST": 19456,
+    "ARGON2_PARALLELISM": 1,
+}
+
 
 @pytest.fixture
 def test_settings() -> Settings:
@@ -122,6 +152,7 @@ def test_settings() -> Settings:
         DEBUG=False,
         LOG_LEVEL="WARNING",
         API_VERSION="1.0.0",
+        **_TEST_ARGON2_KWARGS,
     )
 
 
@@ -195,6 +226,7 @@ def test_client(db_session: Session) -> Generator[TestClient, None, None]:
             DEBUG=True,
             # Use max expiry to survive WSL2 clock drift in CI/local environments.
             JWT_ACCESS_TOKEN_EXPIRE_MINUTES=1440,
+            **_TEST_ARGON2_KWARGS,
         )
     )
     app.dependency_overrides[get_db] = override_get_db

@@ -48,6 +48,23 @@ def _base(company_id: str) -> str:
     return f"/api/v1/companies/{company_id}/sales"
 
 
+def _create_company(client: TestClient, token: str):
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Sales Test Co {suffix}",
+            "email": f"contact-{suffix}@sales-test.example.com",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
 # ---------------------------------------------------------------------------
 # KPI dashboard
 # ---------------------------------------------------------------------------
@@ -57,10 +74,10 @@ class TestKPIDashboardAPI:
     def test_kpi_dashboard_200(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email=email)
         token = _login(test_client, email)
+        company_id = _create_company(test_client, token)
 
         resp = test_client.get(
             f"{_base(str(company_id))}/kpis",
@@ -79,10 +96,10 @@ class TestKPIDashboardAPI:
     def test_kpi_dashboard_with_period(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email=email)
         token = _login(test_client, email)
+        company_id = _create_company(test_client, token)
 
         resp = test_client.get(
             f"{_base(str(company_id))}/kpis?date_from=2026-08-01&date_to=2026-08-31",
@@ -114,10 +131,10 @@ class TestSalesReportAPI:
     def test_report_200_for_known_type(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email=email)
         token = _login(test_client, email)
+        company_id = _create_company(test_client, token)
 
         resp = test_client.get(
             f"{_base(str(company_id))}/reports/sales_summary",
@@ -137,10 +154,10 @@ class TestSalesReportAPI:
     def test_all_sample_report_types_return_200(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email=email)
         token = _login(test_client, email)
+        company_id = _create_company(test_client, token)
 
         for rtype in SAMPLE_REPORT_TYPES:
             resp = test_client.get(
@@ -152,10 +169,10 @@ class TestSalesReportAPI:
     def test_report_with_date_filters(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email=email)
         token = _login(test_client, email)
+        company_id = _create_company(test_client, token)
 
         resp = test_client.get(
             f"{_base(str(company_id))}/reports/sales_summary"
@@ -169,10 +186,10 @@ class TestSalesReportAPI:
     def test_report_pagination_params(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email=email)
         token = _login(test_client, email)
+        company_id = _create_company(test_client, token)
 
         resp = test_client.get(
             f"{_base(str(company_id))}/reports/sales_summary?limit=5&offset=0",
@@ -183,10 +200,10 @@ class TestSalesReportAPI:
     def test_report_422_invalid_report_type(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email=email)
         token = _login(test_client, email)
+        company_id = _create_company(test_client, token)
 
         resp = test_client.get(
             f"{_base(str(company_id))}/reports/nonexistent_report",
@@ -197,15 +214,17 @@ class TestSalesReportAPI:
     def test_report_tenant_isolation(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_a = uuid4()
-        company_b = uuid4()
-
         email_a = _unique_email()
         email_b = _unique_email()
         create_test_user(db_session, email=email_a)
         create_test_user(db_session, email=email_b)
         token_a = _login(test_client, email_a)
         token_b = _login(test_client, email_b)
+        # Two distinct real companies, each owned by a different user —
+        # required now that company-scoped routes enforce membership (see
+        # api/v1/router.py's get_current_company_member gate).
+        company_a = _create_company(test_client, token_a)
+        company_b = _create_company(test_client, token_b)
 
         # A's report should not be accessible via B's company_id scope
         resp_a = test_client.get(
@@ -230,10 +249,10 @@ class TestSalesReportAPI:
 
 class TestReportExportAPI:
     def test_csv_export_200(self, test_client: TestClient, db_session: Session) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email=email)
         token = _login(test_client, email)
+        company_id = _create_company(test_client, token)
 
         resp = test_client.get(
             f"{_base(str(company_id))}/reports/sales_summary/export?fmt=csv",

@@ -59,6 +59,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Run database migrations before accepting traffic.
         run_migrations()
 
+        # Accounting period-lock cache: subscribes to accounting.period.locked/
+        # unlocked/closed so PeriodLockCache stays in sync for the PostingEngine
+        # (Phase 4) to consult without a DB round-trip on every posting attempt.
+        from modules.accounting.handlers.period_lock_handler import (
+            register_period_lock_handlers,
+        )
+
+        register_period_lock_handlers()
+
+        # Accounting integration event handlers: subscribes the 2 live
+        # handlers (Sales invoice issued/credit-note issued) to Sales's own
+        # event bus so real Sales transactions post to the GL automatically.
+        from modules.accounting.handlers.integration_handlers import (
+            register_integration_handlers,
+        )
+
+        register_integration_handlers()
+
+        # Accounting background scheduler (recurring journals, AR/AP overdue
+        # checks). Skipped in the test environment to avoid background
+        # threads racing against the per-test rolled-back session (plan.md
+        # Phase 1 Risks: "APScheduler conflicts with test isolation").
+        if settings.ENVIRONMENT != "testing":
+            from modules.accounting.services.scheduler import start_scheduler
+
+            start_scheduler()
+
         logger.info(
             "Application started",
             extra={
@@ -71,6 +98,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         yield
 
         # Shutdown
+        if settings.ENVIRONMENT != "testing":
+            from modules.accounting.services.scheduler import shutdown_scheduler
+
+            shutdown_scheduler()
+
         logger.info(
             "Application shutting down",
             extra={

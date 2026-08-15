@@ -53,6 +53,23 @@ def _url(company_id: str, path: str) -> str:
     return f"/api/v1/companies/{company_id}/sales{path}"
 
 
+def _create_company(client: TestClient, token: str) -> str:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Sales Test Co {suffix}",
+            "email": f"contact-{suffix}@sales-test.example.com",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
 def _create_price_list(
     client: TestClient,
     company_id: str,
@@ -87,7 +104,7 @@ class TestPriceListCRUD:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         resp = test_client.post(
             _url(company_id, "/price-lists"),
@@ -110,7 +127,7 @@ class TestPriceListCRUD:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         _create_price_list(test_client, company_id, token, name="Duplicate")
 
@@ -130,7 +147,7 @@ class TestPriceListCRUD:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         _create_price_list(test_client, company_id, token, name="List A")
         _create_price_list(test_client, company_id, token, name="List B")
@@ -147,7 +164,7 @@ class TestPriceListCRUD:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         created = _create_price_list(test_client, company_id, token, name="Get Me")
 
@@ -162,7 +179,7 @@ class TestPriceListCRUD:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         resp = test_client.get(
             _url(company_id, f"/price-lists/{uuid4()}"), headers=_auth(token)
@@ -174,7 +191,7 @@ class TestPriceListCRUD:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         created = _create_price_list(test_client, company_id, token, name="Original")
 
@@ -191,7 +208,7 @@ class TestPriceListCRUD:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         created = _create_price_list(test_client, company_id, token, name="To Delete")
 
@@ -225,7 +242,7 @@ class TestPriceEntryEndpoints:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         pl = _create_price_list(test_client, company_id, token, name="Entry Test")
         product_id = str(uuid4())
@@ -250,7 +267,7 @@ class TestPriceEntryEndpoints:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         pl = _create_price_list(
             test_client, company_id, token, name="Update Entry Test"
@@ -281,7 +298,7 @@ class TestPriceEntryEndpoints:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         pl = _create_price_list(
             test_client, company_id, token, name="Delete Entry Test"
@@ -317,7 +334,7 @@ class TestCustomerSpecificPriceEndpoints:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
         customer_id = str(uuid4())
         product_id = str(uuid4())
 
@@ -342,7 +359,7 @@ class TestCustomerSpecificPriceEndpoints:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
         customer_id = str(uuid4())
 
         test_client.post(
@@ -367,7 +384,7 @@ class TestCustomerSpecificPriceEndpoints:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         create_resp = test_client.post(
             _url(company_id, "/customer-prices"),
@@ -399,7 +416,7 @@ class TestDiscountRuleEndpoints:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         resp = test_client.post(
             _url(company_id, "/discount-rules"),
@@ -425,7 +442,7 @@ class TestDiscountRuleEndpoints:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         test_client.post(
             _url(company_id, "/discount-rules"),
@@ -448,7 +465,7 @@ class TestDiscountRuleEndpoints:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         create_resp = test_client.post(
             _url(company_id, "/discount-rules"),
@@ -475,7 +492,7 @@ class TestDiscountRuleEndpoints:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         create_resp = test_client.post(
             _url(company_id, "/discount-rules"),
@@ -507,7 +524,7 @@ class TestPricingResolveEndpoint:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         resp = test_client.post(
             _url(company_id, "/pricing/resolve"),
@@ -527,7 +544,7 @@ class TestPricingResolveEndpoint:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         resp = test_client.post(
             _url(company_id, "/pricing/resolve"),
@@ -550,7 +567,7 @@ class TestPricingResolveEndpoint:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
         product_id = str(uuid4())
 
         # Create a default price list
@@ -593,7 +610,7 @@ class TestMarginCheckEndpoint:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         resp = test_client.post(
             _url(company_id, "/pricing/check-margin"),
@@ -615,7 +632,7 @@ class TestMarginCheckEndpoint:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         resp = test_client.post(
             _url(company_id, "/pricing/check-margin"),
@@ -637,7 +654,7 @@ class TestMarginCheckEndpoint:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         resp = test_client.post(
             _url(company_id, "/pricing/check-margin"),
@@ -658,7 +675,7 @@ class TestMarginCheckEndpoint:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         resp = test_client.post(
             _url(company_id, "/pricing/check-margin"),
