@@ -3,7 +3,7 @@
 **Feature Branch**: `009a-platform-admin`
 **Epic Sequence**: Inserted after completed **Epic 8 — Accounting & Finance**, alongside **Epic 9 — CRM** (in progress, not yet completed — see [§8 Assumptions](#8-assumptions)), and before **Epic 10 — Installments**. No existing Epic is renumbered.
 **Created**: 2026-08-18
-**Status**: Draft
+**Status**: Complete — all Open Questions resolved 2026-08-19, ready for `/sp.plan`
 **Input**: User description — "Epic 9A — Platform Administration / Super Admin: create the complete Specification for the DevSphere ERP SaaS Platform Administration / SaaS Control Plane capability."
 
 ---
@@ -38,7 +38,7 @@
 26. [Integration Boundaries](#26-integration-boundaries)
 27. [Out of Scope](#27-out-of-scope)
 28. [Risks](#28-risks)
-29. [Open Questions / Clarifications](#29-open-questions--clarifications)
+29. [Open Questions / Clarifications (Resolved 2026-08-19)](#29-open-questions--clarifications)
 30. [Constitution Compliance / Traceability](#30-constitution-compliance--traceability)
 
 ---
@@ -180,8 +180,9 @@ See [§27](#27-out-of-scope) for the complete, itemized list.
 
 - **A1 — Epic 9 (CRM) is not actually complete.** The instruction that Epic 9A is "inserted after completed Epic 9" reflects the intended epic *sequence*, not literal completion status: repository inspection confirms Epic 9 (CRM) is mid-development on a separate branch (uncommitted work), not merged or closed. Epic 9A has no functional dependency on CRM and does not need Epic 9 to be complete to proceed; the sequence numbering (9 → 9A → 10) is preserved regardless.
 - **A2 — "Deactivated" maps to the existing `inactive` status, and remains Owner-controlled.** The existing `CompanyStatus` enum already models 5 states (`pending_setup`, `active`, `inactive`, `suspended`, `deleted`) with documented transition ownership: `active↔inactive` and `active/inactive→deleted` are Owner-only; `active/inactive↔suspended` are documented SuperAdmin-only. Epic 9A reuses this exactly — Platform Admin's tenant-lifecycle write authority is scoped to **Suspend** and **Reactivate (lift suspension)** only. Platform Admin does not gain new authority over `inactive` (owner deactivation) or `deleted` (owner soft-delete); it retains read/inspect visibility into those states. This is the "reasonable default" that avoids contradicting the already-implemented and documented model.
-- **A3 — Trial tenants are not assumed.** No trial concept exists in the codebase today, and the calling prompt says to model it "if trials are supported by the final specification." This is treated as a genuine product decision, not a default — see [OQ-1](#29-open-questions--clarifications).
+- **A3 — Trial tenants are confirmed future-ready only; not implemented in this Epic.** No trial concept exists in the codebase today. Per resolved [OQ-1](#29-open-questions--clarifications) (decided 2026-08-19), Epic 9A does not implement a trial subscription state now — only `active` and `ended` are mandatory-now subscription states ([§23.2](#232-subscription-lifecycle-new--minimal-model)). The Plan/Subscription data model MUST remain extensible enough to add `trial` later without a breaking redesign (FR-9A-130).
 - **A4 — Platform Admin identity is a new, first-class concept**, not a repurposing of the existing (effectively dead) `super_admin` JWT-role-string check. The existing check is treated as legacy scaffolding to be superseded, not extended, because it is provably unreachable in production (`CurrentUser.roles` is always `[]`).
+- **A8 — The very first Platform Owner account is bootstrapped out-of-band, never through the normal account-creation API.** Per resolved [OQ-5](#29-open-questions--clarifications), every in-app path to create a Platform Administrator account requires an already-authenticated Platform Admin holding `platform.admins.manage` (BR-9A-012) — a self-referential bootstrap problem for the very first account. Epic 9A resolves this by requiring a one-time, out-of-band seed/migration mechanism (outside the normal API) to provision the first Platform Owner. See [FR-9A-036](#124-platform-administrator-accounts) and [BR-9A-031](#13-business-rules).
 - **A5 — Money/pricing metadata for plans is descriptive only in this Epic.** Since billing/payment processing is explicitly out of scope, any price fields on a Plan are informational metadata for future billing integration, not a chargeable contract.
 - **A6 — Existing per-module feature-flag tables (`inventory_feature_flags`, `sales_feature_flags`, `purchase_feature_flags`, `accounting_feature_flags`) remain the tenant-toggle layer** referenced throughout this spec as "Tenant Feature Toggle" (Constitution §11); Epic 9A does not replace them, it adds the Plan Entitlement layer above them and defines the interaction rules between the two (see [§17](#17-entitlement--quota-requirements)).
 - **A7 — "Module" and "feature" are treated as distinct granularities**: a *module* (e.g., CRM, Installments) is either entitled to a tenant or not (Plan Entitlement); a *feature* (e.g., `inventory.product_variants`) is a finer-grained tenant-toggle within an entitled module.
@@ -274,7 +275,7 @@ See [§27](#27-out-of-scope) for the complete, itemized list.
 
 **Actor**: Platform Admin with `platform.plans.manage`.
 **Trigger**: Actor creates, updates, publishes, or retires a Plan.
-**Main Flow**: Actor defines plan name, description, commercial availability, enabled modules, user/branch/transaction/storage/API limits, AI allowance readiness, and (if trials are approved per [OQ-1](#29-open-questions--clarifications)) trial configuration → system validates → plan is saved in Draft or Published state → audit record written.
+**Main Flow**: Actor defines plan name, description, commercial availability, enabled modules, user/branch/transaction/storage/API limits, and AI allowance readiness → system validates → plan is saved in Draft or Published state → audit record written. (Trial configuration is explicitly excluded from this Epic per resolved [OQ-1](#29-open-questions--clarifications) — future-ready only.)
 **Alternative/Error Flows**: Attempt to retire a plan still assigned to active tenants → allowed, but existing assignments are unaffected until an explicit subscription change is made for each tenant (retirement blocks *new* assignments only — see [BR-9A-018](#13-business-rules)).
 **Authorization**: `platform.plans.manage` for writes; `platform.plans.read` for read-only visibility (e.g., for a Billing/Subscription Admin who did not receive `.manage`).
 **Audit**: Full audit record for create/update/publish/retire.
@@ -435,6 +436,7 @@ Requirements are grouped by domain. Each is unambiguous, testable, and implement
 - **FR-9A-033**: The system MUST record last-login and session-activity visibility for each Platform Administrator account, where the underlying session infrastructure supports it.
 - **FR-9A-034**: Every create/deactivate/role-change on a Platform Administrator account MUST produce a full audit record.
 - **FR-9A-035**: A Platform Administrator account MUST NOT be derivable from, or implicitly created by, a tenant `CompanyMember` record.
+- **FR-9A-036**: The very first Platform Administrator (Platform Owner) account MUST be provisioned via a one-time, out-of-band seed/migration mechanism outside the normal `platform.admins.manage`-gated account-creation API (resolved [OQ-5](#29-open-questions--clarifications)) — because every in-app creation path requires an already-authenticated Platform Admin, which the very first account cannot satisfy. This bootstrap mechanism is a one-time operational action, not a repeatable admin-creation path, and MUST be traceable at the infrastructure level (e.g., migration history) even though it necessarily precedes the platform audit trail's own existence.
 
 ### 12.5 Platform RBAC
 
@@ -497,7 +499,7 @@ See [§21](#21-operational-monitoring-requirements).
 
 ### 12.18 Commercialization Readiness
 
-- **FR-9A-130**: Plan and subscription data structures MUST accommodate future paid billing cycles, trials (if approved, see [OQ-1](#29-open-questions--clarifications)), and enterprise/custom plans without a breaking redesign.
+- **FR-9A-130**: Plan and subscription data structures MUST accommodate future paid billing cycles, a future trial subscription state (resolved [OQ-1](#29-open-questions--clarifications): future-ready only, not implemented in this Epic), and enterprise/custom plans without a breaking redesign.
 - **FR-9A-131**: The system MUST NOT implement actual payment processing, invoicing, or usage-based billing calculation in this Epic.
 
 ---
@@ -526,7 +528,7 @@ See [§21](#21-operational-monitoring-requirements).
 | BR-9A-018 | Retiring a Plan blocks only *new* subscription assignments to that plan; tenants already subscribed keep their current entitlements until an explicit subscription change is made for them individually. |
 | BR-9A-019 | Cross-tenant support access is never silent; it always requires explicit permission, explicit tenant selection, a mandatory reason, and is time-bounded. |
 | BR-9A-020 | Every action performed during an active cross-tenant support-access session is logged with full context, in addition to the session's own start/end audit record. |
-| BR-9A-021 | Cross-tenant support access in this Epic is inspection-only; it does not grant the ability to create, update, or delete tenant business records (see [§18.4](#184-in-scope-vs-future-ready)). |
+| BR-9A-021 | Cross-tenant support access in this Epic is inspection-only and limited to tenant configuration, entitlements, and user data; it does not grant the ability to create, update, or delete tenant business records, and — per resolved [OQ-2](#29-open-questions--clarifications) — does not grant read access to tenant business records (invoices, journal entries, sales orders, etc.) either (see [§18.4](#184-in-scope-vs-future-ready)). |
 | BR-9A-022 | Platform audit records use the same who/what/when/before/after/context schema already defined by Constitution §35; no parallel or divergent audit schema is introduced. |
 | BR-9A-023 | Platform audit records are append-only; no update or delete path exists for them. |
 | BR-9A-024 | If the audit write for a privileged platform action fails, the action itself MUST NOT be considered successfully committed — audit failure blocks the mutation (fail-closed), consistent with Constitution §35's non-negotiable audit requirement for critical operations. |
@@ -536,6 +538,7 @@ See [§21](#21-operational-monitoring-requirements).
 | BR-9A-028 | Platform-wide configuration MUST NEVER silently override tenant-specific business configuration; any override capability MUST be explicit, scoped, and justified. |
 | BR-9A-029 | Bulk lifecycle or entitlement actions MUST produce one audit record per affected tenant, never a single blended record covering multiple tenants. |
 | BR-9A-030 | A quota's enforcement style (hard limit, soft/warning limit, or informational-only) MUST be explicitly declared per quota category — no quota category defaults silently to hard enforcement without that being a deliberate configuration choice. |
+| BR-9A-031 | The first Platform Owner account MUST be created via a one-time, out-of-band seed/migration mechanism, never via the normal in-app account-creation API — because every in-app creation path requires an already-authenticated Platform Admin (self-referential bootstrap problem), resolved per [OQ-5](#29-open-questions--clarifications). |
 
 ---
 
@@ -562,7 +565,7 @@ Epic 9A reuses the existing `CompanyStatus` enum exactly as implemented (`backen
 
 - Suspension MUST block all tenant-scoped API access for every user of that tenant, immediately (already enforced today via `CompanySuspendedError` at the read boundary — Epic 9A supplies the missing write path).
 - Suspension MUST NOT delete, archive, or modify any tenant business data.
-- Suspension MUST NOT log out already-established sessions retroactively by itself unless combined with the session-revocation capability described in [§19.4](#194-session-and-access-revocation); at minimum, the *next* request from any tenant session MUST be blocked.
+- Suspension is NOT required to actively force-terminate already-established tenant sessions (resolved [OQ-3](#29-open-questions--clarifications), decided 2026-08-19) — blocking the *next* request from any tenant session, via the existing `CompanySuspendedError` pathway, satisfies this requirement. Active session force-termination at the moment of suspension remains a documented possible future security-posture enhancement (see [§19.4](#194-session-and-access-revocation) for the distinct, already-required case of *account deactivation*, which MUST invalidate active sessions immediately), not an in-scope requirement of this Epic.
 - Reactivation MUST restore full access without requiring any tenant data migration or re-onboarding.
 
 ### 14.4 Platform Administrator Accounts
@@ -570,6 +573,7 @@ Epic 9A reuses the existing `CompanyStatus` enum exactly as implemented (`backen
 - A Platform Administrator account is a first-class identity, structurally independent of `CompanyMember`.
 - Fields required at the business level: identity (name/email), active/inactive status, assigned Platform Role(s), creation metadata, last-login visibility (where session infrastructure supports it), and revocation metadata.
 - Deactivating the account immediately invalidates its active platform sessions (see [BR-9A-011](#13-business-rules)).
+- The very first Platform Owner account is provisioned out-of-band via a one-time seed/migration mechanism (resolved [OQ-5](#29-open-questions--clarifications)) — the only Platform Administrator account creation path that does not go through the normal `platform.admins.manage`-gated API, existing solely to break the bootstrap circularity (every in-app creation path requires an already-authenticated Platform Admin). See [FR-9A-036](#124-platform-administrator-accounts), [BR-9A-031](#13-business-rules).
 
 ---
 
@@ -705,13 +709,14 @@ Normal Platform Admin screens (dashboard, tenant list/detail, plans, subscriptio
 ### 18.3 What Support Access Grants (This Epic)
 
 - Read/inspect access to the target tenant's configuration, entitlements, users, and lifecycle/audit history already visible via the Tenant Detail view — i.e., nothing beyond what a Platform Admin can already see about a tenant in aggregate, but now including the specific tenant's own configuration values rather than just aggregates.
+- Per resolved [OQ-2](#29-open-questions--clarifications), support access explicitly does NOT extend to the target tenant's business records (invoices, journal entries, sales orders, inventory movements, etc.), read or write — a support session broadens *what tenant-specific data* a Platform Admin can see, not *what category* of data (business records remain permanently outside Platform Admin visibility, in or out of a support session).
 
 ### 18.4 In-Scope vs. Future-Ready
 
 | Capability | Status |
 |---|---|
 | Time-bounded, audited, reason-required inspection access to tenant configuration/entitlements | **In scope now** |
-| Read access to a tenant's own business records (invoices, journal entries, etc.) during a support session | **Explicit clarification needed** — see [OQ-2](#29-open-questions--clarifications); NOT assumed in-scope by default given BR-9A-021's inspection-only default |
+| Read access to a tenant's own business records (invoices, journal entries, etc.) during a support session | **Resolved [OQ-2](#29-open-questions--clarifications): out of scope.** Support access remains strictly limited to configuration, entitlements, and user inspection per BR-9A-021. If a genuine need for read-only business-record access during support sessions is confirmed later, it requires its own explicit specification update — never an implicit extension of this Epic. |
 | Full user impersonation ("login as user") | **Explicitly out of scope** (never silent, never unrestricted; if ever pursued, requires its own controlled, audited specification) |
 | Write access to tenant business records during support access | **Out of scope** for this Epic |
 
@@ -803,7 +808,7 @@ Built on existing infrastructure only — no new observability platform is intro
 | 16 | Subscription dates invalid (e.g., end date before effective date) | Rejected at validation time before the subscription record is created/changed. |
 | 17 | Plan change partially fails (e.g., entitlement update succeeds, audit write fails) | Entire operation MUST be transactional; a partial failure MUST leave the tenant's subscription/entitlements in their pre-change state, not a half-applied state (BR-9A-024 extended to subscription changes). |
 | 18 | Audit write failure during a privileged operation | The privileged operation itself fails (fail-closed, BR-9A-024) — this is a deliberate, stricter-than-default choice for platform-level actions. |
-| 19 | Tenant is suspended while its users have active sessions | Suspension blocks the *next* request from any of those sessions at minimum (§14.3); whether existing sessions are actively force-terminated at the moment of suspension vs. blocked on next use is marked as an explicit clarification — see [OQ-3](#29-open-questions--clarifications). |
+| 19 | Tenant is suspended while its users have active sessions | Suspension blocks the *next* request from any of those sessions, via the existing `CompanySuspendedError` pathway (§14.3). Per resolved [OQ-3](#29-open-questions--clarifications), active force-termination of already-open sessions at the moment of suspension is NOT required by this Epic — blocking on next request is sufficient. |
 | 20 | AI credits adjusted concurrently (future) | Same concurrency-safety expectation as edge case #14 — exactly one adjustment applies per logical request; the model MUST NOT be implemented in a way that allows a lost-update race, once AI credits exist. |
 | 21 | Platform dependency/health source unavailable | Health view shows that specific check as `unavailable`/`degraded` with the check name, never a blanket "unknown" that hides which dependency failed (FR-9A-243). |
 | 22 | *(Discovered during research, not in the original list)* A Platform Admin account is created but never assigned a role | Account exists but is effectively non-functional (holds zero permissions) — this is a valid, intentional intermediate state (e.g., during onboarding), not an error; FR-9A-143 governs the reverse case (last role removed). |
@@ -847,7 +852,7 @@ active ──(Platform Admin: change plan)──▶ active (new plan, same state
 active ──(Platform Admin: cancel/end-of-service)──▶ ended
 ```
 
-Whether an intermediate `trial` state and a `past_due`/`grace_period` state (relevant once real billing exists) are required now is an open product decision — see [OQ-1](#29-open-questions--clarifications). Until resolved, only `active` and `ended` are treated as mandatory-now states; `trial` and any billing-driven state are foundation/future-ready only.
+An intermediate `trial` state and a `past_due`/`grace_period` state (relevant once real billing exists) are confirmed future-ready only, not required now (resolved [OQ-1](#29-open-questions--clarifications), decided 2026-08-19). Only `active` and `ended` are mandatory-now states; the data model MUST NOT preclude adding `trial` or a billing-driven state later without a breaking redesign.
 
 | Transition | Actor/Permission | Reason Required | Audit Required | Resulting Access |
 |---|---|---|---|---|
@@ -864,7 +869,7 @@ Whether an intermediate `trial` state and a `past_due`/`grace_period` state (rel
 - All state-changing platform operations require CSRF protection, consistent with Constitution §19.
 
 ### Performance
-- Dashboard aggregate queries and tenant list/search MUST remain responsive at a scale proportionate to the platform's current tenant count; specific latency targets are not established in this Epic and are marked in [OQ-4](#29-open-questions--clarifications) rather than fabricated.
+- Dashboard aggregate queries and tenant list/search MUST remain responsive at a scale proportionate to the platform's current tenant count. Per resolved [OQ-4](#29-open-questions--clarifications) (decided 2026-08-19), this Epic deliberately does NOT commit to specific numeric latency/throughput targets — no existing project benchmark was found, and fabricating a number would misrepresent an unvalidated target as a requirement. Numeric SLOs MAY be established later via a dedicated ADR once real usage data exists, without requiring a revision to this Epic's functional scope.
 
 ### Scalability
 - The tenant list, audit view, and plan/subscription administration MUST support pagination from the outset (no "load all tenants" pattern), so behavior remains correct as tenant count grows, without committing to a specific numeric scale target here.
@@ -950,11 +955,18 @@ Whether an intermediate `trial` state and a `past_due`/`grace_period` state (rel
 
 ## 29. Open Questions / Clarifications
 
-- **OQ-1 — Are trial tenants/trial subscriptions a required capability now, or future-ready only?** No trial concept exists in the codebase today. The calling prompt conditions trial requirements on "if trials are supported by the final specification," making this a genuine product decision, not a default. **Recommendation if forced to default**: treat trials as future-ready only (not implemented now), consistent with minimizing scope per Constitution §2 (Simplicity) and §5.40 (Do Not Over-Engineer) guidance in the calling prompt.
-- **OQ-2 — During an active cross-tenant support-access session, may a Platform Admin view (read-only) the target tenant's own business records (e.g., a specific invoice a customer is complaining about), or is support access strictly limited to configuration/entitlement/user inspection?** BR-9A-021 defaults to inspection-only in the narrow sense (configuration/entitlements/users), but the calling prompt's framing of "support access" suggests real support scenarios may require seeing an actual business record. This materially changes the sensitivity and scope of the support-access feature and needs explicit product-owner confirmation.
-- **OQ-3 — When a tenant is suspended, must already-established tenant-user sessions be actively force-terminated at the moment of suspension, or is "blocked on next request" sufficient?** The existing `CompanySuspendedError` pathway already blocks the next request; whether Epic 9A must add active session termination is a security-posture decision affecting NFR scope ([§24](#24-non-functional-requirements)).
-- **OQ-4 — Are there specific performance/scale targets (tenant count, concurrent Platform Admin users, dashboard load time) that Platform Administration must meet?** No existing project standard was found for this; fabricating a number would violate the calling prompt's explicit instruction to mark unestablished measurable targets as clarifications rather than invent them.
+All five clarifications originally raised during specification were resolved with the product owner on **2026-08-19**. Each entry below preserves the original question and reasoning for traceability, followed by the resolved decision. No open questions remain; this Epic is ready for `/sp.plan`.
+
+- **OQ-1 — Are trial tenants/trial subscriptions a required capability now, or future-ready only?** No trial concept exists in the codebase today. The calling prompt conditioned trial requirements on "if trials are supported by the final specification," making this a genuine product decision, not a default.
+  **Resolved: Future-ready only.** Epic 9A does NOT implement a trial subscription state now. Only `active` and `ended` are mandatory-now subscription states ([§23.2](#232-subscription-lifecycle-new--minimal-model)); the Plan/Subscription data model MUST remain extensible enough to add `trial` later without a breaking redesign (FR-9A-130, Assumption A3). This matches the specification's own recommended default and Constitution §2 (Simplicity) / Do-Not-Over-Engineer guidance.
+- **OQ-2 — During an active cross-tenant support-access session, may a Platform Admin view (read-only) the target tenant's own business records (e.g., a specific invoice a customer is complaining about), or is support access strictly limited to configuration/entitlement/user inspection?** BR-9A-021 defaulted to inspection-only in the narrow sense (configuration/entitlements/users), but real support scenarios could plausibly require seeing an actual business record.
+  **Resolved: Strictly inspection-only — no business-record access, read or write, ever, in or out of a support session.** BR-9A-021 and §18.3/§18.4 are updated accordingly. If a genuine future need for read-only business-record access during support sessions is confirmed, it requires its own explicit specification update, not an implicit extension of this Epic.
+- **OQ-3 — When a tenant is suspended, must already-established tenant-user sessions be actively force-terminated at the moment of suspension, or is "blocked on next request" sufficient?** The existing `CompanySuspendedError` pathway already blocks the next request; whether Epic 9A must add active session termination was a security-posture decision affecting NFR scope.
+  **Resolved: "Blocked on next request" is sufficient.** No new active session-termination mechanism is required for suspension in this Epic ([§14.3](#143-effect-of-suspension-on-access-and-data), Edge Case #19). This reuses existing behavior and keeps scope minimal; active force-termination on suspension remains a possible future security-posture enhancement, not a requirement.
+- **OQ-4 — Are there specific performance/scale targets (tenant count, concurrent Platform Admin users, dashboard load time) that Platform Administration must meet?** No existing project standard was found for this.
+  **Resolved: No specific numeric targets in this Epic.** Non-functional requirements stay qualitative ("responsive," "paginated from the outset," per [§24](#24-non-functional-requirements)). Fabricating a number would misrepresent an unvalidated target as a requirement; numeric SLOs MAY be established later via a dedicated ADR once real usage data exists.
 - **OQ-5 — Should Platform Admin account creation itself require an existing Platform Owner to approve it (bootstrap problem), or is the very first Platform Owner account provisioned out-of-band (e.g., a seed/migration script)?** This affects Epic 9A's own "Definition of Done" — there must be some non-circular way to create the first Platform Admin.
+  **Resolved: Out-of-band seed/migration script.** The very first Platform Owner account is provisioned by a one-time seed/migration mechanism outside the normal `platform.admins.manage`-gated API (FR-9A-036, BR-9A-031, Assumption A8, [§14.4](#144-platform-administrator-accounts)). This is a standard, auditable bootstrap pattern that cleanly breaks the circularity.
 
 ---
 
@@ -975,4 +987,4 @@ Whether an intermediate `trial` state and a `past_due`/`grace_period` state (rel
 | §49 Event-Driven Communication | Suspend/reactivate reuse the already-defined (currently unused) `CompanySuspendedEvent`/`CompanySuspensionLiftedEvent` domain events rather than inventing a parallel notification path ([§9.1](#91-existing-dependencies-reused-not-redefined)). |
 | §50 Platform Administration & SaaS Control Plane Principles | This Epic is the direct specification-level realization of §50 in its entirety — distinct actor, central control plane, platform RBAC, audited cross-tenant pathways, tenant lifecycle governance, and AI/billing readiness, all without introducing unnecessary infrastructure complexity. |
 
-**Self-Review Confirmation** (per calling prompt §41): This specification does not renumber any existing Epic; does not modify `constitution.md`; does not design database tables, API routes, or UI components (implementation is deferred to Plan); does not invent business rules where genuine product ambiguity exists (see [§29](#29-open-questions--clarifications)); and every requirement is traceable to either an existing, researched codebase fact or an explicit new-capability decision documented in [§9.2](#92-new-requirements-introduced-by-epic-9a).
+**Self-Review Confirmation** (per calling prompt §41): This specification does not renumber any existing Epic; does not modify `constitution.md`; does not design database tables, API routes, or UI components (implementation is deferred to Plan); did not invent business rules where genuine product ambiguity existed — instead surfaced five Open Questions and resolved all of them with the product owner on 2026-08-19 (see [§29](#29-open-questions--clarifications)); and every requirement is traceable to either an existing, researched codebase fact or an explicit new-capability decision documented in [§9.2](#92-new-requirements-introduced-by-epic-9a). No open questions remain; this specification is ready for `/sp.plan`.
