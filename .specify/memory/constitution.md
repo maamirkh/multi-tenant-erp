@@ -1,6 +1,20 @@
 <!--
   SYNC IMPACT REPORT
   ==================
+  Version change: 1.2.0 → 1.2.1 (PATCH — clarification, no new rule)
+
+  Clarified (v1.2.1):
+  - §50 intro paragraph: made explicit that Platform Administration's control-plane
+    authority spans three distinct domains — (1) tenant companies (lifecycle,
+    entitlements, plans, quotas), (2) users (Platform Administrator accounts,
+    plus aggregate/oversight-only visibility into tenant user populations), and
+    (3) the whole application (platform-wide configuration, operational health,
+    security/audit oversight). No new rule introduced — this wording makes explicit
+    a scope that was already implied by the existing bullet list (tenant lifecycle,
+    RBAC, cross-tenant audit, AI/billing readiness) but not stated as a single
+    unambiguous scope statement up front.
+
+  ---- Previously added in v1.2.0 ----
   Version change: 1.1.0 → 1.2.0 (MINOR — 1 new section added)
 
   Added sections (v1.2.0):
@@ -1444,14 +1458,14 @@ AuditModule subscribes → Audit Log Written
 
 ## 50. Platform Administration & SaaS Control Plane Principles
 
-**Platform Administration is the central SaaS control plane — a distinct actor from Company/Tenant Administration, never the same role, never granted implicitly.**
+**Platform Administration is the central SaaS control plane for the entire application — it governs tenant companies, platform-level users, and the platform itself, as a distinct actor from Company/Tenant Administration, never the same role, never granted implicitly.**
 
-A Company/Tenant Admin's authority is scoped entirely within their own company, per §9 Multi-Tenant Principles. Platform/Super Admin operates above the tenant boundary as the operator of the SaaS platform itself. The two MUST NEVER be conflated in the role/permission model, the session/token model, or the UI.
+A Company/Tenant Admin's authority is scoped entirely within their own company, per §9 Multi-Tenant Principles. Platform/Super Admin operates above every tenant boundary as the operator of the SaaS platform itself — with authority over three distinct domains: (1) **tenant companies** — their lifecycle, entitlements, plans, and quotas; (2) **users** — both the platform's own Platform Administrator accounts (§50, independent of any tenant) and, in aggregate/oversight form only, the tenant user population across all companies; and (3) **the whole application** — platform-wide configuration, operational health, security/audit oversight, and SaaS commercialization readiness that sits above any single tenant. The two admin types (Platform vs. Company/Tenant) MUST NEVER be conflated in the role/permission model, the session/token model, or the UI.
 
 **Rules**:
 
 - Platform/Super Admin MUST be modeled as a distinct actor from Company/Tenant Admin at every layer — role definitions, sessions, and API surfaces MUST NOT overload tenant-scoped constructs to also carry platform-level authority.
-- Platform Administration MUST act as the single, central control plane for the SaaS platform — governing capabilities that necessarily span, or sit above, individual tenants.
+- Platform Administration MUST act as the single, central control plane for the SaaS platform — governing capabilities that necessarily span, or sit above, individual tenants, users, and the application as a whole.
 - Platform Admin MAY govern **tenant lifecycle**: activation, suspension, deactivation, and reactivation of companies.
 - Platform Admin governs the SaaS plan, feature entitlement, quota, and usage-limit model already required by §37 SaaS Readiness, and the per-tenant feature toggle state already defined by §11 Feature Toggles — this section establishes *who* administers that model; it does not redefine the model itself.
 - **Platform-level RBAC and least-privilege authorization are mandatory**, consistent with §19 Security Principles' Principle of Least Privilege, and MUST be modeled separately from tenant-level RBAC (§16 Authentication & Authorization) — a platform-level permission MUST NEVER be reachable through a tenant-scoped session or token.
@@ -1466,7 +1480,7 @@ A Company/Tenant Admin's authority is scoped entirely within their own company, 
 
 ---
 
-**Version**: 1.2.0 | **Ratified**: 2026-07-10 | **Last Amended**: 2026-08-18
+**Version**: 1.2.1 | **Ratified**: 2026-07-10 | **Last Amended**: 2026-08-19
 
 ---
 

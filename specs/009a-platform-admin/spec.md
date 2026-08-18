@@ -52,7 +52,7 @@
 | Epic Type | SaaS Control Plane (cross-cutting platform capability, not a tenant-facing business module) |
 | Inserted Between | Epic 8 (Accounting & Finance, complete) and Epic 10 (Installments, not started) |
 | Concurrent Epic | Epic 9 (CRM) — in progress on a separate branch; Epic 9A does not depend on Epic 9 and does not block it |
-| Constitution Version | v1.2.0 |
+| Constitution Version | v1.2.1 |
 | Primary Constitution Anchor | §50 Platform Administration & SaaS Control Plane Principles |
 | Owning Layer | New platform-level module(s) within the existing Modular Monolith (§5) — not a separate system, not a microservice |
 
