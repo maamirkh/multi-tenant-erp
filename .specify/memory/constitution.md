@@ -1,6 +1,33 @@
 <!--
   SYNC IMPACT REPORT
   ==================
+  Version change: 1.1.0 → 1.2.0 (MINOR — 1 new section added)
+
+  Added sections (v1.2.0):
+  - §50: Platform Administration & SaaS Control Plane Principles
+    (establishes Platform/Super Admin as a distinct actor from Company/Tenant Admin,
+    the central SaaS control plane for tenant lifecycle governance, platform-level
+    RBAC, audited cross-tenant access pathways, and administration of the SaaS plan/
+    entitlement/quota model already required by §37; also establishes architectural
+    readiness for future platform-level AI usage/credit and cost/billing controls.
+    Deliberately references, rather than duplicates, §9 Multi-Tenant Principles,
+    §11 Feature Toggles, §16 Authentication & Authorization, §19 Security Principles,
+    §35 Audit Trail, and §37 SaaS Readiness.)
+
+  Modified principles: None. No existing section renamed, renumbered, or semantically
+  changed.
+
+  Templates requiring updates:
+  - .specify/templates/plan-template.md ✅ (Constitution Check gate is generic/dynamic —
+    "[Gates determined based on constitution file]" — no static edit required)
+  - .specify/templates/spec-template.md ✅ (no constitution section references present)
+  - .specify/templates/tasks-template.md ✅ (no constitution section references present)
+
+  Deferred items: None. Platform Administration implementation details (data model,
+  API endpoints, UI, specific SaaS plan schemas) are intentionally deferred to a future
+  Specification/Plan/Tasks cycle — this amendment is principle-level only.
+
+  ---- Previously added in v1.1.0 ----
   Version change: 1.0.0 → 1.1.0 (MINOR — 4 new sections added; §17, §38 augmented)
 
   Added sections (v1.1.0):
@@ -132,6 +159,7 @@
 47. [Plugin Architecture Principles](#47-plugin-architecture-principles)
 48. [Shared Kernel Principles](#48-shared-kernel-principles)
 49. [Event-Driven Communication Principles](#49-event-driven-communication-principles)
+50. [Platform Administration & SaaS Control Plane Principles](#50-platform-administration--saas-control-plane-principles)
 
 ---
 
@@ -1414,7 +1442,31 @@ AuditModule subscribes → Audit Log Written
 
 ---
 
-**Version**: 1.1.0 | **Ratified**: 2026-07-10 | **Last Amended**: 2026-07-10
+## 50. Platform Administration & SaaS Control Plane Principles
+
+**Platform Administration is the central SaaS control plane — a distinct actor from Company/Tenant Administration, never the same role, never granted implicitly.**
+
+A Company/Tenant Admin's authority is scoped entirely within their own company, per §9 Multi-Tenant Principles. Platform/Super Admin operates above the tenant boundary as the operator of the SaaS platform itself. The two MUST NEVER be conflated in the role/permission model, the session/token model, or the UI.
+
+**Rules**:
+
+- Platform/Super Admin MUST be modeled as a distinct actor from Company/Tenant Admin at every layer — role definitions, sessions, and API surfaces MUST NOT overload tenant-scoped constructs to also carry platform-level authority.
+- Platform Administration MUST act as the single, central control plane for the SaaS platform — governing capabilities that necessarily span, or sit above, individual tenants.
+- Platform Admin MAY govern **tenant lifecycle**: activation, suspension, deactivation, and reactivation of companies.
+- Platform Admin governs the SaaS plan, feature entitlement, quota, and usage-limit model already required by §37 SaaS Readiness, and the per-tenant feature toggle state already defined by §11 Feature Toggles — this section establishes *who* administers that model; it does not redefine the model itself.
+- **Platform-level RBAC and least-privilege authorization are mandatory**, consistent with §19 Security Principles' Principle of Least Privilege, and MUST be modeled separately from tenant-level RBAC (§16 Authentication & Authorization) — a platform-level permission MUST NEVER be reachable through a tenant-scoped session or token.
+- **Cross-tenant administrative access MUST use explicit, privileged pathways** — never the regular tenant-scoped request path — reinforcing §9's existing requirement that admin access to tenant data "uses separate, audited pathways."
+- Every cross-tenant administrative action MUST be fully audited using the audit log schema already defined in §35 Audit Trail (who/what/when/before/after/context) — no separate, parallel audit mechanism is introduced.
+- Normal Company/Tenant users MUST remain strictly tenant-isolated at all times — Platform Administration capabilities MUST NEVER be exposed to, or reachable by, a regular tenant-scoped user or session.
+- The architecture MUST remain ready to support future platform-level AI usage/credit tracking, AI cost/billing controls, and operational monitoring — without requiring a major redesign when those capabilities are implemented, matching the same forward-readiness discipline already applied by §36 Internationalization Readiness and §37 SaaS Readiness.
+- Platform-level capabilities MUST remain modular and MUST be implemented consistently with the existing Modular Monolith architecture (§5) — as platform-level module(s) within the same architecture, not a separate system.
+- Introducing unnecessary microservices, or premature infrastructure complexity, to support platform administration is **prohibited** — the same architectural discipline in §5 applies without exception.
+
+> Implementation details — the platform-admin data model, specific API endpoints, UI design, and SaaS plan schemas — are intentionally out of scope for this Constitution and belong in a future Specification, Plan, and Tasks cycle.
+
+---
+
+**Version**: 1.2.0 | **Ratified**: 2026-07-10 | **Last Amended**: 2026-08-18
 
 ---
 
