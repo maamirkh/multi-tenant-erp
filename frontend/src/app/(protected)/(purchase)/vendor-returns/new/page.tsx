@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface ReturnLineInput {
   gr_line_id: string;
@@ -10,9 +13,11 @@ interface ReturnLineInput {
 }
 
 export default function NewVendorReturnPage() {
-  const params = useParams();
   const router = useRouter();
-  const companyId = params?.companyId as string;
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
 
   const [grId, setGrId] = useState("");
   const [notes, setNotes] = useState("");
@@ -51,11 +56,13 @@ export default function NewVendorReturnPage() {
 
     try {
       const res = await fetch(
-        `/api/v1/companies/${companyId}/purchase/vendor-returns`,
+        `${API_BASE}/api/v1/companies/${companyId}/purchase/vendor-returns`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getAccessToken()}`,
+          },
           body: JSON.stringify(payload),
         }
       );

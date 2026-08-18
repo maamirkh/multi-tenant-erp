@@ -7,6 +7,8 @@
  * Spec ref: specs/007-sales-management/spec.md §23 Functional Requirements
  */
 
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // ---------------------------------------------------------------------------
@@ -117,7 +119,13 @@ export interface StandardResponse<T> {
 
 function authHeaders(token?: string): HeadersInit {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  // Callers historically passed a token retrieved from
+  // localStorage.getItem("access_token"), a key that is never populated
+  // (the real access token is kept in-memory only — see
+  // lib/auth/tokenStorage.ts). Fall back to the real token whenever the
+  // caller didn't supply a genuinely valid one.
+  const effectiveToken = token || getAccessToken();
+  if (effectiveToken) headers["Authorization"] = `Bearer ${effectiveToken}`;
   return headers;
 }
 
@@ -2255,9 +2263,11 @@ export async function exportSalesReport(
   const url = `${salesBase(companyId)}/reports/${reportType}/export${query}`;
 
   const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const effectiveToken = token || getAccessToken();
+  if (effectiveToken) headers["Authorization"] = `Bearer ${effectiveToken}`;
 
-  const resp = await fetch(`${API_BASE}${url}`, { headers });
+  // salesBase() already includes API_BASE — url is already absolute.
+  const resp = await fetch(url, { headers });
   if (!resp.ok) throw new Error(`Export failed: ${resp.statusText}`);
   return resp.blob();
 }

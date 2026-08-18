@@ -2,6 +2,9 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface GoodsReceiptListItem {
   id: string;
@@ -26,11 +29,12 @@ export default function GoodsReceiptsPage() {
   useEffect(() => {
     async function fetchReceipts() {
       try {
-        const companyId = localStorage.getItem("company_id") ?? "";
+        const companyId = localStorage.getItem("erp_active_company_id") ?? "";
         const params = new URLSearchParams();
         if (statusFilter) params.set("status", statusFilter);
         const res = await fetch(
-          `/api/v1/companies/${companyId}/purchase/goods-receipts?${params}`
+          `${API_BASE}/api/v1/companies/${companyId}/purchase/goods-receipts?${params}`,
+          { headers: { Authorization: `Bearer ${getAccessToken()}` } }
         );
         if (!res.ok) throw new Error("Failed to fetch goods receipts");
         const json = await res.json();

@@ -6,7 +6,9 @@
  */
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface KPIData {
   kpi_01_purchase_cycle_time_days: number | null;
@@ -95,8 +97,10 @@ const KPI_META = [
 ];
 
 export default function KPIDashboardPage() {
-  const params = useParams<{ companyId: string }>();
-  const companyId = params?.companyId ?? "";
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
 
   const [kpis, setKpis] = useState<KPIData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -113,8 +117,8 @@ export default function KPIDashboardPage() {
       if (dateTo) params.set("date_to", dateTo);
       const qs = params.toString() ? `?${params.toString()}` : "";
       const res = await fetch(
-        `/api/v1/companies/${companyId}/purchase/reports/kpis${qs}`,
-        { credentials: "include" }
+        `${API_BASE}/api/v1/companies/${companyId}/purchase/reports/kpis${qs}`,
+        { headers: { Authorization: `Bearer ${getAccessToken()}` } }
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = await res.json();

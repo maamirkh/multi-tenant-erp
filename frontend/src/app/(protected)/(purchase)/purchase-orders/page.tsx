@@ -2,6 +2,9 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface PurchaseOrder {
   id: string;
@@ -31,11 +34,12 @@ export default function PurchaseOrdersPage() {
   useEffect(() => {
     async function fetchOrders() {
       try {
-        const companyId = localStorage.getItem("company_id") ?? "";
+        const companyId = localStorage.getItem("erp_active_company_id") ?? "";
         const params = new URLSearchParams();
         if (statusFilter) params.set("status", statusFilter);
         const res = await fetch(
-          `/api/v1/companies/${companyId}/purchase/purchase-orders?${params}`
+          `${API_BASE}/api/v1/companies/${companyId}/purchase/purchase-orders?${params}`,
+          { headers: { Authorization: `Bearer ${getAccessToken()}` } }
         );
         if (!res.ok) throw new Error("Failed to fetch purchase orders");
         const json = await res.json();

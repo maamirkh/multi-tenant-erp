@@ -15,18 +15,17 @@ import {
   SalesConfigurationRead,
 } from "@/lib/api/sales";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 /**
  * Sales Settings page.
  * Manages Customer Groups, Payment Terms, Reason Codes, and Sales Configuration.
  *
  * Spec ref: specs/007-sales-management/spec.md §14, §30
  */
-export default function SalesSettingsPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function SalesSettingsPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [activeTab, setActiveTab] = useState<"groups" | "terms" | "reasons" | "config">("groups");
   const [groups, setGroups] = useState<CustomerGroupRead[]>([]);
   const [paymentTerms, setPaymentTerms] = useState<SalesPaymentTermRead[]>([]);

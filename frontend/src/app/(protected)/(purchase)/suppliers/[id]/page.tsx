@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import {
   getSupplier,
   createSupplier,
@@ -22,10 +23,6 @@ import {
 } from "@/lib/api/purchase";
 import SupplierFinancialPanel from "@/components/purchase/SupplierFinancialPanel";
 
-interface PageProps {
-  params: { company_id: string; id: string };
-}
-
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: "bg-gray-100 text-gray-700",
   ACTIVE: "bg-green-100 text-green-800",
@@ -40,8 +37,12 @@ type TabKey = "core" | "contacts" | "addresses" | "financial" | "documents";
  * Supplier create/edit/detail page with contacts and addresses tabs.
  * Task: T045
  */
-export default function SupplierDetailPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function SupplierDetailPage() {
+  const params = useParams<{ id: string }>();
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const supplierId = params?.id;
   const isNew = supplierId === "new";
 

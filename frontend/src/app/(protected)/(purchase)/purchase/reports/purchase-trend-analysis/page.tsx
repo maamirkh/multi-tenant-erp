@@ -5,7 +5,9 @@
  */
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface TrendRow {
   period: string;
@@ -15,8 +17,10 @@ interface TrendRow {
 }
 
 export default function PurchaseTrendPage() {
-  const params = useParams<{ companyId: string }>();
-  const companyId = params?.companyId ?? "";
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
 
   const [rows, setRows] = useState<TrendRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,7 +36,7 @@ export default function PurchaseTrendPage() {
       const p = new URLSearchParams({ granularity });
       if (dateFrom) p.set("date_from", dateFrom);
       if (dateTo) p.set("date_to", dateTo);
-      const res = await fetch(`/api/v1/companies/${companyId}/purchase/reports/purchase-trend-analysis?${p.toString()}`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/v1/companies/${companyId}/purchase/reports/purchase-trend-analysis?${p.toString()}`, { headers: { Authorization: `Bearer ${getAccessToken()}` } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = await res.json();
       setRows(body.data);

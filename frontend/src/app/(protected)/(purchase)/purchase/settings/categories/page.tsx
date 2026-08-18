@@ -9,18 +9,17 @@ import {
   updateSupplierCategory,
 } from "@/lib/api/purchase";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 /**
  * Supplier Category management page.
  * Lists all supplier categories and provides create/edit/delete actions.
  *
  * Spec ref: specs/006-purchase-management/spec.md §14 Supplier Master
  */
-export default function SupplierCategoriesPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function SupplierCategoriesPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [categories, setCategories] = useState<SupplierCategoryRead[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

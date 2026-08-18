@@ -5,7 +5,9 @@
  */
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface CommitmentRow {
   po_line_id: string;
@@ -23,8 +25,10 @@ interface CommitmentRow {
 }
 
 export default function OpenCommitmentsPage() {
-  const params = useParams<{ companyId: string }>();
-  const companyId = params?.companyId ?? "";
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
 
   const [rows, setRows] = useState<CommitmentRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,7 +39,7 @@ export default function OpenCommitmentsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/v1/companies/${companyId}/purchase/reports/open-purchase-commitments`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/v1/companies/${companyId}/purchase/reports/open-purchase-commitments`, { headers: { Authorization: `Bearer ${getAccessToken()}` } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = await res.json();
       setRows(body.data);

@@ -5,7 +5,9 @@
  */
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface SupplierPerfRow {
   supplier_id: string;
@@ -29,8 +31,10 @@ function RatingBar({ value }: { value: number }) {
 }
 
 export default function SupplierPerformancePage() {
-  const params = useParams<{ companyId: string }>();
-  const companyId = params?.companyId ?? "";
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
 
   const [rows, setRows] = useState<SupplierPerfRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,7 +50,7 @@ export default function SupplierPerformancePage() {
       if (dateFrom) p.set("date_from", dateFrom);
       if (dateTo) p.set("date_to", dateTo);
       const qs = p.toString() ? `?${p.toString()}` : "";
-      const res = await fetch(`/api/v1/companies/${companyId}/purchase/reports/supplier-performance${qs}`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/v1/companies/${companyId}/purchase/reports/supplier-performance${qs}`, { headers: { Authorization: `Bearer ${getAccessToken()}` } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = await res.json();
       setRows(body.data);

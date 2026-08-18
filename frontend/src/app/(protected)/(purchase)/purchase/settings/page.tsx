@@ -13,18 +13,17 @@ import {
   updatePurchasePolicy,
 } from "@/lib/api/purchase";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 /**
  * Purchase Settings page.
  * Manages Payment Terms, Reason Codes, and Purchase Policy.
  *
  * Spec ref: specs/006-purchase-management/spec.md §14, §29
  */
-export default function PurchaseSettingsPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function PurchaseSettingsPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [activeTab, setActiveTab] = useState<"terms" | "reasons" | "policy">("terms");
   const [paymentTerms, setPaymentTerms] = useState<PaymentTermsRead[]>([]);
   const [reasonCodes, setReasonCodes] = useState<PurchaseReasonCodeRead[]>([]);

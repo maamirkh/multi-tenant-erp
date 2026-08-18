@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: "bg-gray-100 text-gray-700",
@@ -25,8 +27,10 @@ interface VendorReturn {
 }
 
 export default function VendorReturnsPage() {
-  const params = useParams();
-  const companyId = params?.companyId as string;
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [returns, setReturns] = useState<VendorReturn[]>([]);
   const [statusFilter, setStatusFilter] = useState("");
   const [loading, setLoading] = useState(true);
@@ -38,8 +42,8 @@ export default function VendorReturnsPage() {
       try {
         const qs = statusFilter ? `?status=${statusFilter}` : "";
         const res = await fetch(
-          `/api/v1/companies/${companyId}/purchase/vendor-returns${qs}`,
-          { credentials: "include" }
+          `${API_BASE}/api/v1/companies/${companyId}/purchase/vendor-returns${qs}`,
+          { headers: { Authorization: `Bearer ${getAccessToken()}` } }
         );
         if (!res.ok) throw new Error(await res.text());
         const json = await res.json();

@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface POLineInput {
   product_description: string;
@@ -43,7 +46,7 @@ export default function NewPurchaseOrderPage() {
     setError(null);
     setSubmitting(true);
     try {
-      const companyId = localStorage.getItem("company_id") ?? "";
+      const companyId = localStorage.getItem("erp_active_company_id") ?? "";
       const payload = {
         supplier_id: supplierId || null,
         expected_delivery_date: expectedDate || null,
@@ -56,10 +59,13 @@ export default function NewPurchaseOrderPage() {
         })),
       };
       const res = await fetch(
-        `/api/v1/companies/${companyId}/purchase/purchase-orders`,
+        `${API_BASE}/api/v1/companies/${companyId}/purchase/purchase-orders`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getAccessToken()}`,
+          },
           body: JSON.stringify(payload),
         }
       );

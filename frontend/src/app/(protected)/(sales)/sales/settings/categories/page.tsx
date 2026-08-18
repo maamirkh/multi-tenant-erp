@@ -7,18 +7,17 @@ import {
   CustomerCategoryRead,
 } from "@/lib/api/sales";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 /**
  * Customer Category management page.
  * Lists all customer categories and provides create functionality.
  *
  * Spec ref: specs/007-sales-management/spec.md §14.2
  */
-export default function CustomerCategoriesPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function CustomerCategoriesPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [categories, setCategories] = useState<CustomerCategoryRead[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
