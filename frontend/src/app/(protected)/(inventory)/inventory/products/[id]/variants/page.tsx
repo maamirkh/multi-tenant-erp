@@ -48,8 +48,11 @@ function VariantRow({ variant }: { variant: ProductVariantResponse }) {
 }
 
 export default function VariantsPage() {
-  const params = useParams<{ companyId: string; id: string }>();
-  const companyId = params?.companyId ?? '';
+  const params = useParams<{ id: string }>();
+  const companyId =
+    typeof window !== 'undefined'
+      ? localStorage.getItem('erp_active_company_id') ?? ''
+      : '';
   const productId = params?.id ?? '';
 
   const [product, setProduct] = useState<ProductResponse | null>(null);
@@ -77,13 +80,13 @@ export default function VariantsPage() {
     <div className="space-y-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-1 text-sm text-muted-foreground">
-        <Link href={`/companies/${companyId}/inventory/products`} className="hover:text-foreground">
+        <Link href={`/inventory/products`} className="hover:text-foreground">
           Products
         </Link>
         <span>/</span>
         {product ? (
           <Link
-            href={`/companies/${companyId}/inventory/products/${productId}`}
+            href={`/inventory/products/${productId}`}
             className="hover:text-foreground"
           >
             {product.name}

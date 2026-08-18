@@ -8,10 +8,6 @@ import {
   reconcileSupplierStatement,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 const MATCH_STATUS_STYLES: Record<string, string> = {
   MATCHED: "bg-green-100 text-green-800",
   UNMATCHED_GL: "bg-orange-100 text-orange-800",
@@ -241,8 +237,11 @@ function ReconciliationWorkspace({ companyId }: { companyId: string }) {
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T172
  */
-export default function ReconcileStatementPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function ReconcileStatementPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   return (
     <Suspense fallback={<div className="py-8 text-center text-gray-500">Loading...</div>}>
       <ReconciliationWorkspace companyId={companyId} />

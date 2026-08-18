@@ -13,10 +13,6 @@ import {
   replenishPettyCash,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 const emptyVoucherForm = {
   voucher_date: new Date().toISOString().slice(0, 10),
   amount: "",
@@ -43,8 +39,11 @@ const emptyReconcileForm = {
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T201
  */
-export default function PettyCashPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function PettyCashPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [accounts, setAccounts] = useState<CashAccountResponse[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [vouchers, setVouchers] = useState<PettyCashVoucherResponse[]>([]);

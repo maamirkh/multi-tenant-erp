@@ -3,18 +3,17 @@
 import { useState } from "react";
 import { CashFlowReport, getCashFlowReport } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 /**
  * Cash Flow Statement (indirect method): net income + working-capital
  * adjustments reconciled against the actual GL cash/bank balance change.
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T265
  */
-export default function CashFlowPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function CashFlowPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
 
   const [periodFrom, setPeriodFrom] = useState(
     new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10)

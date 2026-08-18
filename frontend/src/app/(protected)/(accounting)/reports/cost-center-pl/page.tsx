@@ -8,17 +8,16 @@ import {
   getCostCenters,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 /**
  * Cost Center P&L Report: revenue and expenses by cost center.
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T243
  */
-export default function CostCenterPLReportPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function CostCenterPLReportPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [costCenters, setCostCenters] = useState<CostCenterResponse[]>([]);
   const [selectedCostCenterId, setSelectedCostCenterId] = useState("");
   const [periodStart, setPeriodStart] = useState(

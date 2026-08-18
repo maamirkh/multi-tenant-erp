@@ -6,7 +6,9 @@
  */
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type SuggestionStatus = "PENDING" | "ACKNOWLEDGED" | "CONVERTED";
 
@@ -27,8 +29,10 @@ const STATUS_BADGE: Record<SuggestionStatus, string> = {
 };
 
 export default function SuggestionsPage() {
-  const params = useParams<{ company_id: string }>();
-  const companyId = params?.company_id;
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
 
   const [suggestions, setSuggestions] = useState<ReorderSuggestion[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("");
@@ -41,8 +45,8 @@ export default function SuggestionsPage() {
     setLoading(true);
     const qp = new URLSearchParams({ limit: "100" });
     if (statusFilter) qp.set("suggestion_status", statusFilter);
-    fetch(`/api/v1/companies/${companyId}/inventory/suggestions?${qp}`, {
-      credentials: "include",
+    fetch(`${API_BASE}/api/v1/companies/${companyId}/inventory/suggestions?${qp}`, {
+      headers: { Authorization: `Bearer ${getAccessToken()}` },
     })
       .then((r) => r.json())
       .then((body) => {
@@ -65,11 +69,13 @@ export default function SuggestionsPage() {
     setAcknowledging(id);
     try {
       await fetch(
-        `/api/v1/companies/${companyId}/inventory/suggestions/${id}/acknowledge`,
+        `${API_BASE}/api/v1/companies/${companyId}/inventory/suggestions/${id}/acknowledge`,
         {
           method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getAccessToken()}`,
+          },
           body: JSON.stringify({ notes: null }),
         }
       );

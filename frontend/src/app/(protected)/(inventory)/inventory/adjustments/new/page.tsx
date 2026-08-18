@@ -6,11 +6,16 @@
  */
 
 import { useState } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export default function NewAdjustmentPage() {
-  const params = useParams<{ company_id: string }>();
-  const companyId = params?.company_id;
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const router = useRouter();
 
   const [productId, setProductId] = useState("");
@@ -31,11 +36,13 @@ export default function NewAdjustmentPage() {
 
     try {
       const resp = await fetch(
-        `/api/v1/companies/${companyId}/inventory/adjustments`,
+        `${API_BASE}/api/v1/companies/${companyId}/inventory/adjustments`,
         {
           method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getAccessToken()}`,
+          },
           body: JSON.stringify({
             product_id: productId,
             warehouse_id: warehouseId,

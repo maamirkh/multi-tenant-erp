@@ -4,18 +4,17 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { PaymentResponse, getUnallocatedPayments } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 /**
  * Unallocated Payments report: list of payments not yet fully allocated,
  * with a link through to the customer/supplier allocation screen.
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T219
  */
-export default function UnallocatedPaymentsPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function UnallocatedPaymentsPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [payments, setPayments] = useState<PaymentResponse[]>([]);
   const [partyType, setPartyType] = useState<string>("");
   const [loading, setLoading] = useState(false);

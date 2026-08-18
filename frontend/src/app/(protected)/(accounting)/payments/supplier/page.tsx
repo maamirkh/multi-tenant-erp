@@ -12,10 +12,6 @@ import {
   getWHTCertificate,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 const emptyForm = {
   supplier_id: "",
   payment_method: "BANK_TRANSFER",
@@ -41,8 +37,11 @@ const emptyAllocationForm = {
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T218
  */
-export default function SupplierPaymentPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function SupplierPaymentPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [searchSupplierId, setSearchSupplierId] = useState("");
   const [payments, setPayments] = useState<PaymentResponse[]>([]);
   const [form, setForm] = useState(emptyForm);

@@ -7,10 +7,6 @@ import {
   getExchangeRates,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 /**
  * Exchange Rate Management page.
  * Lists company exchange rates and allows recording a new rate per
@@ -18,8 +14,11 @@ interface PageProps {
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T042
  */
-export default function ExchangeRatesPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function ExchangeRatesPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [rates, setRates] = useState<ExchangeRateRead[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

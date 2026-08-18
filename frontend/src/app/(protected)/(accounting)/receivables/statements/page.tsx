@@ -4,10 +4,6 @@ import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { CustomerStatementResponse, getCustomerStatement } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 function StatementForm({ companyId }: { companyId: string }) {
   const searchParams = useSearchParams();
   const [customerId, setCustomerId] = useState(searchParams.get("customer_id") ?? "");
@@ -161,8 +157,11 @@ function StatementForm({ companyId }: { companyId: string }) {
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T149
  */
-export default function CustomerStatementPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function CustomerStatementPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   return (
     <Suspense fallback={<div className="py-8 text-center text-gray-500">Loading...</div>}>
       <StatementForm companyId={companyId} />

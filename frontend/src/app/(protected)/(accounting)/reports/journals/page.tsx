@@ -11,17 +11,16 @@ import {
   getJournalReport,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 /**
  * Journal Report: every POSTED journal entry for a fiscal period.
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T267
  */
-export default function JournalReportPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function JournalReportPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
 
   const [fiscalYears, setFiscalYears] = useState<FiscalYearResponse[]>([]);
   const [selectedYearId, setSelectedYearId] = useState("");

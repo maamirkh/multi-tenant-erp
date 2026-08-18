@@ -14,10 +14,6 @@ import {
   getProjects,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 const emptyDeptForm = { dept_code: "", dept_name: "" };
 const emptyCenterForm = { center_code: "", center_name: "", department_id: "" };
 const emptyProjectForm = {
@@ -33,8 +29,11 @@ const emptyProjectForm = {
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T242
  */
-export default function CostCentersPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function CostCentersPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [departments, setDepartments] = useState<DepartmentResponse[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenterResponse[]>([]);
   const [projects, setProjects] = useState<ProjectResponse[]>([]);

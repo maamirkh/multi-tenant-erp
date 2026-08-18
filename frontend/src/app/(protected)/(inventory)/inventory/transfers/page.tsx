@@ -7,7 +7,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type TransferStatus = "DRAFT" | "IN_TRANSIT" | "COMPLETED" | "CANCELLED";
 
@@ -30,8 +32,10 @@ const STATUS_BADGE: Record<TransferStatus, string> = {
 };
 
 export default function TransfersPage() {
-  const params = useParams<{ company_id: string }>();
-  const companyId = params?.company_id;
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
 
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("");
@@ -42,8 +46,8 @@ export default function TransfersPage() {
     if (!companyId) return;
     setLoading(true);
     const qs = statusFilter ? `?status_filter=${statusFilter}` : "";
-    fetch(`/api/v1/companies/${companyId}/inventory/stock-transfers${qs}`, {
-      credentials: "include",
+    fetch(`${API_BASE}/api/v1/companies/${companyId}/inventory/stock-transfers${qs}`, {
+      headers: { Authorization: `Bearer ${getAccessToken()}` },
     })
       .then((r) => r.json())
       .then((body) => {

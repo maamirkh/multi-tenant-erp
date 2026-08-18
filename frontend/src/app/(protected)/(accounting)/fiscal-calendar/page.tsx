@@ -9,10 +9,6 @@ import {
   getFiscalYears,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 const EMPTY_FORM: FiscalYearCreateRequest = {
   fiscal_year_name: "",
   start_date: "",
@@ -32,8 +28,11 @@ const STATUS_BADGE: Record<string, string> = {
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T080
  */
-export default function FiscalCalendarPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function FiscalCalendarPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [years, setYears] = useState<FiscalYearResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

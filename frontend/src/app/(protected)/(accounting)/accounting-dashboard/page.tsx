@@ -8,10 +8,6 @@ import {
   getDashboardKPIs,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 const REFRESH_INTERVAL_MS = 60_000;
 
 type KPIFormat = "currency" | "percent" | "ratio" | "days";
@@ -92,8 +88,11 @@ const PERIOD_STATUS_STYLES: Record<string, string> = {
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T290
  */
-export default function FinancialDashboardPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function FinancialDashboardPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
 
   const [data, setData] = useState<FinancialKPIResponse | null>(null);
   const [loading, setLoading] = useState(false);

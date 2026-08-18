@@ -4,10 +4,6 @@ import { useState } from "react";
 import ExportButton from "@/components/accounting/ExportButton";
 import { BalanceSheetReport, BalanceSheetSection, getBalanceSheetReport } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 function SectionTable({
   section,
   comparative,
@@ -61,8 +57,11 @@ function SectionTable({
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T262
  */
-export default function BalanceSheetPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function BalanceSheetPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
 
   const [asOfDate, setAsOfDate] = useState(new Date().toISOString().slice(0, 10));
   const [comparativeDate, setComparativeDate] = useState("");

@@ -11,10 +11,6 @@ import {
   getAccounts,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 interface DraftLine {
   account_id: string;
   debit_amount: string;
@@ -43,8 +39,11 @@ const EMPTY_LINE: DraftLine = {
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T127
  */
-export default function NewRecurringTemplatePage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function NewRecurringTemplatePage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const router = useRouter();
 
   const [accounts, setAccounts] = useState<AccountResponse[]>([]);

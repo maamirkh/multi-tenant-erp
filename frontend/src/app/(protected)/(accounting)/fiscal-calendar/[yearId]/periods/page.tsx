@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import {
   FiscalPeriodResponse,
   FiscalYearResponse,
@@ -11,10 +12,6 @@ import {
   unlockFiscalPeriod,
 } from "@/lib/api/accounting";
 import YearEndCloseWizard from "@/components/accounting/YearEndCloseWizard";
-
-interface PageProps {
-  params: { company_id: string; yearId: string };
-}
 
 const STATUS_BADGE: Record<string, string> = {
   OPEN: "bg-green-100 text-green-800",
@@ -28,8 +25,12 @@ const STATUS_BADGE: Record<string, string> = {
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T081
  */
-export default function FiscalPeriodsPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function FiscalPeriodsPage() {
+  const params = useParams<{ yearId: string }>();
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const yearId = params?.yearId ?? "";
 
   const [year, setYear] = useState<FiscalYearResponse | null>(null);

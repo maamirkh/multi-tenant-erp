@@ -7,6 +7,9 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type AdjustmentStatus = "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "REJECTED";
 
@@ -49,8 +52,11 @@ function Field({ label, value }: { label: string; value?: string | null }) {
 }
 
 export default function AdjustmentDetailPage() {
-  const params = useParams<{ company_id: string; id: string }>();
-  const companyId = params?.company_id;
+  const params = useParams<{ id: string }>();
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const adjId = params?.id;
   const router = useRouter();
 
@@ -63,8 +69,8 @@ export default function AdjustmentDetailPage() {
   const fetchAdj = () => {
     if (!companyId || !adjId) return;
     setLoading(true);
-    fetch(`/api/v1/companies/${companyId}/inventory/adjustments/${adjId}`, {
-      credentials: "include",
+    fetch(`${API_BASE}/api/v1/companies/${companyId}/inventory/adjustments/${adjId}`, {
+      headers: { Authorization: `Bearer ${getAccessToken()}` },
     })
       .then((r) => r.json())
       .then((body) => {
@@ -90,11 +96,13 @@ export default function AdjustmentDetailPage() {
     setError(null);
     try {
       const resp = await fetch(
-        `/api/v1/companies/${companyId}/inventory/adjustments/${adjId}/${action}`,
+        `${API_BASE}/api/v1/companies/${companyId}/inventory/adjustments/${adjId}/${action}`,
         {
           method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getAccessToken()}`,
+          },
           body: JSON.stringify(body),
         }
       );

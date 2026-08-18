@@ -2,14 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import {
   CustomerLedgerResponse,
   getCustomerLedger,
 } from "@/lib/api/accounting";
-
-interface PageProps {
-  params: { company_id: string; customerId: string };
-}
 
 const CREDIT_STATUS_STYLES: Record<string, string> = {
   GOOD: "bg-green-100 text-green-800",
@@ -23,8 +20,12 @@ const CREDIT_STATUS_STYLES: Record<string, string> = {
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T147
  */
-export default function CustomerLedgerPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function CustomerLedgerPage() {
+  const params = useParams<{ customerId: string }>();
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const customerId = params?.customerId ?? "";
   const [ledger, setLedger] = useState<CustomerLedgerResponse | null>(null);
   const [loading, setLoading] = useState(false);

@@ -11,18 +11,17 @@ import {
   runCurrencyRevaluation,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 /**
  * Currency Revaluation: select a fiscal period and revaluation date, preview
  * the unrealized gain/loss report, then confirm to post it to the GL.
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T252
  */
-export default function CurrencyRevaluationPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function CurrencyRevaluationPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
 
   const [fiscalYears, setFiscalYears] = useState<FiscalYearResponse[]>([]);
   const [selectedYearId, setSelectedYearId] = useState("");

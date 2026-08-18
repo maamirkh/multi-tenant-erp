@@ -3,10 +3,6 @@
 import { useEffect, useState } from "react";
 import { ChequeResponse, getCheques, updateChequeStatus } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 const STATUS_STYLES: Record<string, string> = {
   ISSUED: "bg-blue-100 text-blue-800",
   PRESENTED: "bg-yellow-100 text-yellow-800",
@@ -28,8 +24,11 @@ const NEXT_STATUS: Record<string, string[]> = {
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T189
  */
-export default function ChequeRegisterPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function ChequeRegisterPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [cheques, setCheques] = useState<ChequeResponse[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [loading, setLoading] = useState(false);

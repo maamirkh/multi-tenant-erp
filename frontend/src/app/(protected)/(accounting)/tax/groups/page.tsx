@@ -13,10 +13,6 @@ import {
   getTaxGroups,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 const emptyForm = {
   group_code: "",
   group_name: "",
@@ -28,8 +24,11 @@ const emptyForm = {
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T240
  */
-export default function TaxGroupsPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function TaxGroupsPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [groups, setGroups] = useState<TaxGroupResponse[]>([]);
   const [taxCodes, setTaxCodes] = useState<TaxCodeResponse[]>([]);
   const [loading, setLoading] = useState(false);
