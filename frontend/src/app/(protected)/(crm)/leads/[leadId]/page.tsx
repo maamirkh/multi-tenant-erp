@@ -162,7 +162,7 @@ export default function LeadDetailPage() {
         <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-md text-sm text-green-800">
           Lead converted.{" "}
           <Link
-            href={`../customers/${conversionResult.customer_id}`}
+            href={`../crm-customers/${conversionResult.customer_id}`}
             className="underline font-medium"
           >
             View Customer

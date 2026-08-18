@@ -212,7 +212,7 @@ export default function OpportunityDetailPage() {
         <div>
           <span className="text-gray-500">Customer</span>
           <div className="text-gray-900">
-            <Link href={`../customers/${opportunity.customer_id}`} className="text-indigo-600 hover:underline">
+            <Link href={`../crm-customers/${opportunity.customer_id}`} className="text-indigo-600 hover:underline">
               View Customer 360
             </Link>
           </div>
