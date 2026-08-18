@@ -21,6 +21,7 @@ Feature routers included:
     /api/v1/companies/{company_id}/purchase/*    — Purchase module endpoints (Epic 006)
     /api/v1/companies/{company_id}/sales/*       — Sales module endpoints (Epic 007)
     /api/v1/companies/{company_id}/accounting/*  — Accounting module endpoints (Epic 008)
+    /api/v1/companies/{company_id}/crm/*         — CRM module endpoints (Epic 009)
 """
 
 import logging
@@ -39,6 +40,8 @@ from core.utils.datetime import utcnow
 from modules.accounting.router import router as accounting_router
 from modules.auth.router import router as auth_router
 from modules.companies.router import router as companies_router
+from modules.crm.dependencies import require_crm_enabled
+from modules.crm.router import router as crm_router
 from modules.inventory.router import router as inventory_router
 from modules.purchase.router import router as purchase_router
 from modules.sales.router import router as sales_router
@@ -104,6 +107,11 @@ router.include_router(
     accounting_router,
     prefix="/companies/{company_id}/accounting",
     dependencies=[Depends(get_current_company_member)],
+)
+router.include_router(
+    crm_router,
+    prefix="/companies/{company_id}/crm",
+    dependencies=[Depends(get_current_company_member), Depends(require_crm_enabled)],
 )
 
 

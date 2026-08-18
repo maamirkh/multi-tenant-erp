@@ -329,6 +329,126 @@ INITIAL_PERMISSIONS: Final[tuple[PermissionDefinition, ...]] = (
         "read",
         "View the full financial audit trail",
     ),
+    # CRM module (Epic 9, Phase 8 — spec.md §31.1 Permission Matrix)
+    PermissionDefinition("crm.leads.view", "View Leads", "crm", "read", "View leads"),
+    PermissionDefinition(
+        "crm.leads.create", "Create Leads", "crm", "create", "Create leads"
+    ),
+    PermissionDefinition(
+        "crm.leads.update",
+        "Update Leads",
+        "crm",
+        "update",
+        "Update leads, including qualify/disqualify",
+    ),
+    PermissionDefinition(
+        "crm.leads.delete", "Delete Leads", "crm", "delete", "Soft-delete leads"
+    ),
+    PermissionDefinition(
+        "crm.leads.assign",
+        "Assign Leads",
+        "crm",
+        "manage",
+        "Reassign lead ownership",
+    ),
+    PermissionDefinition(
+        "crm.leads.convert",
+        "Convert Leads",
+        "crm",
+        "update",
+        "Convert a qualified lead",
+    ),
+    PermissionDefinition(
+        "crm.opportunities.view",
+        "View Opportunities",
+        "crm",
+        "read",
+        "View opportunities",
+    ),
+    PermissionDefinition(
+        "crm.opportunities.create",
+        "Create Opportunities",
+        "crm",
+        "create",
+        "Create opportunities",
+    ),
+    PermissionDefinition(
+        "crm.opportunities.update",
+        "Update Opportunities",
+        "crm",
+        "update",
+        "Update opportunities, including stage changes",
+    ),
+    PermissionDefinition(
+        "crm.opportunities.delete",
+        "Delete Opportunities",
+        "crm",
+        "delete",
+        "Soft-delete opportunities",
+    ),
+    PermissionDefinition(
+        "crm.opportunities.assign",
+        "Assign Opportunities",
+        "crm",
+        "manage",
+        "Reassign opportunity ownership",
+    ),
+    PermissionDefinition(
+        "crm.opportunities.close",
+        "Close Opportunities",
+        "crm",
+        "manage",
+        "Mark an opportunity WON or LOST",
+    ),
+    PermissionDefinition(
+        "crm.activities.view",
+        "View Activities",
+        "crm",
+        "read",
+        "View activities",
+    ),
+    PermissionDefinition(
+        "crm.activities.create",
+        "Create Activities",
+        "crm",
+        "create",
+        "Create activities",
+    ),
+    PermissionDefinition(
+        "crm.activities.update",
+        "Update Activities",
+        "crm",
+        "update",
+        "Update/complete activities",
+    ),
+    PermissionDefinition(
+        "crm.activities.delete",
+        "Delete Activities",
+        "crm",
+        "delete",
+        "Soft-delete activities",
+    ),
+    PermissionDefinition(
+        "crm.pipeline.view",
+        "View Pipelines",
+        "crm",
+        "read",
+        "View pipelines/stages",
+    ),
+    PermissionDefinition(
+        "crm.pipeline.manage",
+        "Manage Pipelines",
+        "crm",
+        "manage",
+        "Create/update/deactivate pipelines and stages",
+    ),
+    PermissionDefinition(
+        "crm.reports.view",
+        "View CRM Reports",
+        "crm",
+        "read",
+        "View CRM reports/KPIs/dashboard",
+    ),
 )
 
 PERMISSION_BY_CODE: Final[dict[str, PermissionDefinition]] = {
@@ -446,6 +566,122 @@ _ACCOUNTING_VIEWER: Final[frozenset[str]] = frozenset(
     }
 )
 
+# CRM (Epic 9) role mapping — spec.md §31.2's own Role Access Matrix, whose
+# columns are the actual SYSTEM_ROLES slugs directly (no persona-mapping
+# step is needed here, unlike Accounting's spec-role -> system-role
+# translation above, since CRM's spec was authored directly against
+# owner/admin/manager/accountant/salesperson/cashier/store-keeper/viewer).
+# cashier and store-keeper are N across every one of the 19 permissions —
+# both are intentionally left with zero CRM grants (no new frozenset, no
+# union added to either role's entry below).
+_CRM_OWNER: Final[frozenset[str]] = frozenset(
+    {
+        "crm.leads.view",
+        "crm.leads.create",
+        "crm.leads.update",
+        "crm.leads.delete",
+        "crm.leads.assign",
+        "crm.leads.convert",
+        "crm.opportunities.view",
+        "crm.opportunities.create",
+        "crm.opportunities.update",
+        "crm.opportunities.delete",
+        "crm.opportunities.assign",
+        "crm.opportunities.close",
+        "crm.activities.view",
+        "crm.activities.create",
+        "crm.activities.update",
+        "crm.activities.delete",
+        "crm.pipeline.view",
+        "crm.pipeline.manage",
+        "crm.reports.view",
+    }
+)
+# Admin's CRM grants are identical to Owner's per spec.md §31.2's matrix
+# (both columns are Y for all 19 rows) — kept as its own named constant,
+# not a reused reference, so a future divergence between the two roles'
+# CRM grants requires touching only one frozenset, matching the existing
+# per-role-constant convention used throughout this file.
+_CRM_ADMIN: Final[frozenset[str]] = frozenset(
+    {
+        "crm.leads.view",
+        "crm.leads.create",
+        "crm.leads.update",
+        "crm.leads.delete",
+        "crm.leads.assign",
+        "crm.leads.convert",
+        "crm.opportunities.view",
+        "crm.opportunities.create",
+        "crm.opportunities.update",
+        "crm.opportunities.delete",
+        "crm.opportunities.assign",
+        "crm.opportunities.close",
+        "crm.activities.view",
+        "crm.activities.create",
+        "crm.activities.update",
+        "crm.activities.delete",
+        "crm.pipeline.view",
+        "crm.pipeline.manage",
+        "crm.reports.view",
+    }
+)
+_CRM_MANAGER: Final[frozenset[str]] = frozenset(
+    {
+        "crm.leads.view",
+        "crm.leads.create",
+        "crm.leads.update",
+        "crm.leads.delete",
+        "crm.leads.assign",
+        "crm.leads.convert",
+        "crm.opportunities.view",
+        "crm.opportunities.create",
+        "crm.opportunities.update",
+        "crm.opportunities.delete",
+        "crm.opportunities.assign",
+        "crm.opportunities.close",
+        "crm.activities.view",
+        "crm.activities.create",
+        "crm.activities.update",
+        "crm.activities.delete",
+        "crm.pipeline.view",
+        # crm.pipeline.manage: N for Manager (Owner/Admin-only, spec.md §33)
+        "crm.reports.view",
+    }
+)
+_CRM_ACCOUNTANT: Final[frozenset[str]] = frozenset(
+    {
+        "crm.leads.view",
+        "crm.opportunities.view",
+        "crm.activities.view",
+        "crm.pipeline.view",
+        "crm.reports.view",
+    }
+)
+_CRM_SALESPERSON: Final[frozenset[str]] = frozenset(
+    {
+        "crm.leads.view",
+        "crm.leads.create",
+        "crm.leads.update",
+        "crm.leads.convert",
+        "crm.opportunities.view",
+        "crm.opportunities.create",
+        "crm.opportunities.update",
+        "crm.activities.view",
+        "crm.activities.create",
+        "crm.activities.update",
+        "crm.pipeline.view",
+    }
+)
+_CRM_VIEWER: Final[frozenset[str]] = frozenset(
+    {
+        "crm.leads.view",
+        "crm.opportunities.view",
+        "crm.activities.view",
+        "crm.pipeline.view",
+        "crm.reports.view",
+    }
+)
+
 # Maps role slug → frozenset of permission codes granted by default
 DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
     "owner": frozenset(
@@ -466,6 +702,7 @@ DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
             "profile.update",
         }
         | _ACCOUNTING_CFO
+        | _CRM_OWNER
     ),
     "admin": frozenset(
         {
@@ -484,6 +721,7 @@ DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
             "profile.update",
         }
         | _ACCOUNTING_SYSTEM_ADMIN
+        | _CRM_ADMIN
     ),
     "manager": frozenset(
         {
@@ -494,6 +732,7 @@ DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
             "profile.update",
         }
         | _ACCOUNTING_CONTROLLER
+        | _CRM_MANAGER
     ),
     "accountant": frozenset(
         {
@@ -504,6 +743,7 @@ DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
             "profile.update",
         }
         | _ACCOUNTING_ACCOUNTANT
+        | _CRM_ACCOUNTANT
     ),
     "salesperson": frozenset(
         {
@@ -514,6 +754,7 @@ DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
             "profile.update",
         }
         | _ACCOUNTING_AR_CLERK
+        | _CRM_SALESPERSON
     ),
     "cashier": frozenset(
         {
@@ -543,6 +784,7 @@ DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
             "profile.update",
         }
         | _ACCOUNTING_VIEWER
+        | _CRM_VIEWER
     ),
 }
 

@@ -77,6 +77,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         register_integration_handlers()
 
+        # CRM integration event handlers: subscribes CRM's 2 handlers
+        # (quotation accepted / order credit hold) to Sales's own event
+        # bus so CRM's Customer 360 timeline stays current automatically
+        # (spec.md §21.2, plan.md §19.4) — no state mutation on any CRM
+        # aggregate, only a visibility Activity/note.
+        from modules.crm.handlers.integration_handlers import (
+            register_crm_integration_handlers,
+        )
+
+        register_crm_integration_handlers()
+
         # Accounting background scheduler (recurring journals, AR/AP overdue
         # checks). Skipped in the test environment to avoid background
         # threads racing against the per-test rolled-back session (plan.md
