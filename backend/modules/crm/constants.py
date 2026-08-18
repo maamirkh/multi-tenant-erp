@@ -79,3 +79,37 @@ ACTIVITY_PRIORITIES: Final[frozenset[str]] = frozenset({"LOW", "MEDIUM", "HIGH"}
 #: simpler ``is_enabled(company_id)`` (no ``flag_key`` argument) rather than
 #: mirroring the multi-flag registry pattern used elsewhere.
 CRM_ENABLED_FLAG_KEY: Final[str] = "feature.crm.enabled"
+
+# ---------------------------------------------------------------------------
+# Permission codes
+# ---------------------------------------------------------------------------
+
+#: All 19 crm.* permission codes registered in
+#: modules.users_roles.constants.INITIAL_PERMISSIONS (spec.md §31.1). Kept
+#: as a plain literal set here rather than importing INITIAL_PERMISSIONS
+#: and filtering it at import time, to avoid a CRM -> users_roles.constants
+#: module-level dependency for a value that only changes when this list of
+#: permission codes itself changes.
+ALL_CRM_PERMISSION_CODES: Final[frozenset[str]] = frozenset(
+    {
+        "crm.leads.view",
+        "crm.leads.create",
+        "crm.leads.update",
+        "crm.leads.delete",
+        "crm.leads.assign",
+        "crm.leads.convert",
+        "crm.opportunities.view",
+        "crm.opportunities.create",
+        "crm.opportunities.update",
+        "crm.opportunities.delete",
+        "crm.opportunities.assign",
+        "crm.opportunities.close",
+        "crm.pipeline.view",
+        "crm.pipeline.manage",
+        "crm.activities.view",
+        "crm.activities.create",
+        "crm.activities.update",
+        "crm.activities.delete",
+        "crm.reports.view",
+    }
+)

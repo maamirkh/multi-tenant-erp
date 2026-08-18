@@ -17,9 +17,12 @@ import {
 } from "@/lib/api/crm";
 import { classifyCrmError, getCompanyId, type CrmErrorState } from "@/components/crm/apiErrors";
 import CrmStateBanner from "@/components/crm/CrmStateBanner";
+import { useCrmPermissions, useHasCrmPermission } from "@/hooks/crm/useCrmPermissions";
 
 export default function CrmSettingsPage() {
   const companyId = getCompanyId();
+  const permissionsState = useCrmPermissions();
+  const canManagePipeline = useHasCrmPermission(permissionsState, "crm.pipeline.manage");
   const [errorState, setErrorState] = useState<CrmErrorState | null>(null);
 
   // Lead Sources
@@ -172,15 +175,18 @@ export default function CrmSettingsPage() {
                 <span className="font-mono text-gray-500 mr-2">{s.code}</span>
                 {s.name}
               </span>
-              <button
-                onClick={() => toggleSourceActive(s)}
-                className={`text-xs ${s.is_active ? "text-gray-500" : "text-green-600"} hover:underline`}
-              >
-                {s.is_active ? "Deactivate" : "Activate"}
-              </button>
+              {canManagePipeline && (
+                <button
+                  onClick={() => toggleSourceActive(s)}
+                  className={`text-xs ${s.is_active ? "text-gray-500" : "text-green-600"} hover:underline`}
+                >
+                  {s.is_active ? "Deactivate" : "Activate"}
+                </button>
+              )}
             </li>
           ))}
         </ul>
+        {canManagePipeline && (
         <form onSubmit={handleCreateSource} className="flex gap-2">
           <input
             placeholder="Code"
@@ -201,6 +207,7 @@ export default function CrmSettingsPage() {
             Add
           </button>
         </form>
+        )}
       </section>
 
       <section className="mb-8">
@@ -219,7 +226,7 @@ export default function CrmSettingsPage() {
               <span>
                 {p.name} {p.is_default && <span className="text-xs text-indigo-600 ml-1">(default)</span>}
               </span>
-              {!p.is_default && (
+              {canManagePipeline && !p.is_default && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -233,6 +240,7 @@ export default function CrmSettingsPage() {
             </li>
           ))}
         </ul>
+        {canManagePipeline && (
         <form onSubmit={handleCreatePipeline} className="flex gap-2">
           <input
             placeholder="New pipeline name"
@@ -247,6 +255,7 @@ export default function CrmSettingsPage() {
             Add
           </button>
         </form>
+        )}
       </section>
 
       {selectedPipelineId && (
@@ -265,15 +274,18 @@ export default function CrmSettingsPage() {
                   {s.is_won_stage && <span className="text-xs text-green-600 ml-1">won</span>}
                   {s.is_lost_stage && <span className="text-xs text-red-600 ml-1">lost</span>}
                 </span>
-                <button
-                  onClick={() => toggleStageActive(s)}
-                  className={`text-xs ${s.is_active ? "text-gray-500" : "text-green-600"} hover:underline`}
-                >
-                  {s.is_active ? "Deactivate" : "Activate"}
-                </button>
+                {canManagePipeline && (
+                  <button
+                    onClick={() => toggleStageActive(s)}
+                    className={`text-xs ${s.is_active ? "text-gray-500" : "text-green-600"} hover:underline`}
+                  >
+                    {s.is_active ? "Deactivate" : "Activate"}
+                  </button>
+                )}
               </li>
             ))}
           </ul>
+          {canManagePipeline && (
           <form onSubmit={handleCreateStage} className="flex gap-2">
             <input
               placeholder="Name"
@@ -302,6 +314,7 @@ export default function CrmSettingsPage() {
               Add
             </button>
           </form>
+          )}
         </section>
       )}
     </div>

@@ -17,6 +17,7 @@ import { classifyCrmError, getCompanyId, type CrmErrorState } from "@/components
 import CrmStateBanner from "@/components/crm/CrmStateBanner";
 import StatusBadge from "@/components/crm/StatusBadge";
 import LinkedActivities from "@/components/crm/LinkedActivities";
+import { useCrmPermissions, useHasCrmPermission } from "@/hooks/crm/useCrmPermissions";
 
 const LEAD_VALID_TRANSITIONS: Record<string, string[]> = {
   NEW: ["CONTACTED", "LOST"],
@@ -36,6 +37,10 @@ export default function LeadDetailPage() {
   const params = useParams<{ leadId: string }>();
   const leadId = params.leadId;
   const companyId = getCompanyId();
+  const permissionsState = useCrmPermissions();
+  const canUpdateLead = useHasCrmPermission(permissionsState, "crm.leads.update");
+  const canConvertLead = useHasCrmPermission(permissionsState, "crm.leads.convert");
+  const canAssignLead = useHasCrmPermission(permissionsState, "crm.leads.assign");
 
   const [lead, setLead] = useState<LeadRead | null>(null);
   const [members, setMembers] = useState<MemberListItem[]>([]);
@@ -222,11 +227,11 @@ export default function LeadDetailPage() {
         )}
       </div>
 
-      {validNext.length > 0 && (
+      {validNext.length > 0 && (canUpdateLead || canConvertLead) && (
         <div className="border-t border-gray-200 pt-4 mb-4">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Actions</h2>
           <div className="flex flex-wrap gap-2">
-            {validNext.includes("CONTACTED") && (
+            {canUpdateLead && validNext.includes("CONTACTED") && (
               <button
                 disabled={actionBusy}
                 onClick={() => transitionStatus("CONTACTED")}
@@ -235,7 +240,7 @@ export default function LeadDetailPage() {
                 Mark Contacted
               </button>
             )}
-            {validNext.includes("QUALIFIED") && (
+            {canUpdateLead && validNext.includes("QUALIFIED") && (
               <button
                 disabled={actionBusy}
                 onClick={() => setShowQualifyForm((v) => !v)}
@@ -244,7 +249,7 @@ export default function LeadDetailPage() {
                 Qualify
               </button>
             )}
-            {validNext.includes("UNQUALIFIED") && (
+            {canUpdateLead && validNext.includes("UNQUALIFIED") && (
               <button
                 disabled={actionBusy}
                 onClick={() => setShowDisqualifyForm((v) => !v)}
@@ -253,7 +258,7 @@ export default function LeadDetailPage() {
                 Disqualify
               </button>
             )}
-            {validNext.includes("LOST") && (
+            {canUpdateLead && validNext.includes("LOST") && (
               <button
                 disabled={actionBusy}
                 onClick={() => transitionStatus("LOST")}
@@ -262,7 +267,7 @@ export default function LeadDetailPage() {
                 Mark Lost
               </button>
             )}
-            {validNext.includes("NEW") && (
+            {canUpdateLead && validNext.includes("NEW") && (
               <button
                 disabled={actionBusy}
                 onClick={() => transitionStatus("NEW")}
@@ -271,7 +276,7 @@ export default function LeadDetailPage() {
                 Reopen
               </button>
             )}
-            {validNext.includes("CONVERTED") && (
+            {canConvertLead && validNext.includes("CONVERTED") && (
               <button
                 disabled={actionBusy}
                 onClick={handleConvert}
@@ -321,7 +326,7 @@ export default function LeadDetailPage() {
         </div>
       )}
 
-      {!["CONVERTED", "LOST"].includes(lead.status) && (
+      {canAssignLead && !["CONVERTED", "LOST"].includes(lead.status) && (
         <div className="border-t border-gray-200 pt-4">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Reassign Owner</h2>
           <div className="flex gap-2">

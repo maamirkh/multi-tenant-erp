@@ -6,6 +6,7 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import { classifyCrmError, type CrmErrorState } from "@/components/crm/apiErrors";
 import CrmStateBanner from "@/components/crm/CrmStateBanner";
 import StatusBadge from "@/components/crm/StatusBadge";
+import { useCrmPermissions, useHasCrmPermission } from "@/hooks/crm/useCrmPermissions";
 
 interface LinkedActivitiesProps {
   companyId: string;
@@ -21,6 +22,9 @@ interface LinkedActivitiesProps {
  */
 export default function LinkedActivities({ companyId, relation, entityId }: LinkedActivitiesProps) {
   const { user } = useAuthContext();
+  const permissionsState = useCrmPermissions();
+  const canCreateActivity = useHasCrmPermission(permissionsState, "crm.activities.create");
+  const canUpdateActivity = useHasCrmPermission(permissionsState, "crm.activities.update");
   const [activities, setActivities] = useState<ActivityRead[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorState, setErrorState] = useState<CrmErrorState | null>(null);
@@ -99,12 +103,14 @@ export default function LinkedActivities({ companyId, relation, entityId }: Link
     <div className="border-t border-gray-200 pt-4">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-gray-700">Activities</h2>
-        <button
-          onClick={() => setShowForm((v) => !v)}
-          className="text-xs text-indigo-600 hover:underline"
-        >
-          {showForm ? "Cancel" : "+ Log Activity"}
-        </button>
+        {canCreateActivity && (
+          <button
+            onClick={() => setShowForm((v) => !v)}
+            className="text-xs text-indigo-600 hover:underline"
+          >
+            {showForm ? "Cancel" : "+ Log Activity"}
+          </button>
+        )}
       </div>
 
       {errorState && <CrmStateBanner state={errorState} />}
@@ -165,7 +171,7 @@ export default function LinkedActivities({ companyId, relation, entityId }: Link
               </div>
               <div className="flex items-center gap-2">
                 <StatusBadge status={a.status} />
-                {a.status === "PLANNED" && (
+                {canUpdateActivity && a.status === "PLANNED" && (
                   <button
                     disabled={busyId === a.id}
                     onClick={() => handleComplete(a.id)}

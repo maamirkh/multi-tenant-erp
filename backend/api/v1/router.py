@@ -41,6 +41,7 @@ from modules.accounting.router import router as accounting_router
 from modules.auth.router import router as auth_router
 from modules.companies.router import router as companies_router
 from modules.crm.dependencies import require_crm_enabled
+from modules.crm.router import admin_router as crm_admin_router
 from modules.crm.router import router as crm_router
 from modules.inventory.router import router as inventory_router
 from modules.purchase.router import router as purchase_router
@@ -112,6 +113,14 @@ router.include_router(
     crm_router,
     prefix="/companies/{company_id}/crm",
     dependencies=[Depends(get_current_company_member), Depends(require_crm_enabled)],
+)
+# CRM module administration (status/enable/disable) is mounted separately,
+# without require_crm_enabled: a company must be able to enable CRM through
+# an endpoint reachable while it's still disabled.
+router.include_router(
+    crm_admin_router,
+    prefix="/companies/{company_id}/crm",
+    dependencies=[Depends(get_current_company_member)],
 )
 
 

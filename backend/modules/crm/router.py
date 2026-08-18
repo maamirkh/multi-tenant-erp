@@ -76,8 +76,12 @@ from core.logging.setup import REQUEST_ID_CONTEXT
 from core.schemas.pagination import PaginatedData, PaginatedResponse
 from core.schemas.response import ResponseMeta, StandardResponse
 from core.utils.datetime import utcnow
+from modules.companies.dependencies import require_admin_or_above
+from modules.companies.models.company import Company
+from modules.crm.constants import ALL_CRM_PERMISSION_CODES
 from modules.crm.dependencies import (
     get_activity_service,
+    get_crm_feature_flag_service,
     get_crm_reporting_service,
     get_customer_360_service,
     get_lead_conversion_service,
@@ -88,6 +92,7 @@ from modules.crm.dependencies import (
 )
 from modules.crm.exceptions import CrmPermissionDeniedError
 from modules.crm.schemas.activity import ActivityCreate, ActivityRead, ActivityUpdate
+from modules.crm.schemas.base import CrmMyPermissions, CrmStatusRead
 from modules.crm.schemas.customer_360 import (
     Customer360,
     CustomerSummary,
@@ -128,6 +133,7 @@ from modules.crm.schemas.reports import (
 )
 from modules.crm.services.activity_service import ActivityService
 from modules.crm.services.customer_360_service import Customer360Service
+from modules.crm.services.feature_flag_service import CrmFeatureFlagService
 from modules.crm.services.lead_conversion_service import LeadConversionService
 from modules.crm.services.lead_service import LeadService
 from modules.crm.services.lead_source_service import LeadSourceService
@@ -135,12 +141,61 @@ from modules.crm.services.opportunity_service import OpportunityService
 from modules.crm.services.permission_check import user_has_crm_permission
 from modules.crm.services.pipeline_service import PipelineService
 from modules.crm.services.reporting_service import CrmReportingService
+from modules.users_roles.repositories.company_member_repository import (
+    CompanyMemberRepository,
+)
+from modules.users_roles.repositories.role_permission_repository import (
+    RolePermissionRepository,
+)
 
 router = APIRouter(tags=["crm"])
 
 
 def _meta() -> ResponseMeta:
     return ResponseMeta(request_id=REQUEST_ID_CONTEXT.get("-"), timestamp=utcnow())
+
+
+# ---------------------------------------------------------------------------
+# Current user's CRM permissions — lets the frontend hide (not just
+# disable) actions the user can't perform, rather than showing every
+# action to everyone and only revealing a 403 after the fact.
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/my-permissions",
+    response_model=StandardResponse[CrmMyPermissions],
+    summary="The current user's granted crm.* permission codes in this company",
+)
+async def get_my_crm_permissions(
+    company_id: UUID = Path(..., description="Company identifier"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+) -> StandardResponse[CrmMyPermissions]:
+    if current_user.roles and "super_admin" in current_user.roles:
+        permissions = sorted(ALL_CRM_PERMISSION_CODES)
+    elif current_user.user_id is None:
+        permissions = []
+    else:
+        member = CompanyMemberRepository(db).get_by_user_id(
+            user_id=current_user.user_id, company_id=company_id
+        )
+        if member is None or member.status != "active":
+            permissions = []
+        else:
+            role_permissions = RolePermissionRepository(db).get_permissions_for_role(
+                member.role_id
+            )
+            permissions = sorted(
+                rp.permission_id
+                for rp in role_permissions
+                if rp.permission_id.startswith("crm.")
+            )
+    return StandardResponse(
+        data=CrmMyPermissions(permissions=permissions),
+        message="Current user's CRM permissions retrieved.",
+        meta=_meta(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1209,5 +1264,75 @@ async def get_activity_report(
     return StandardResponse(
         data=report,
         message="Activity report retrieved.",
+        meta=_meta(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Module administration (enable/disable) — mounted separately in
+# api/v1/router.py, WITHOUT require_crm_enabled: unlike every other endpoint
+# in this file, these must be reachable while the module is still disabled
+# (a company can't enable CRM through an endpoint that requires CRM to
+# already be enabled). Gated instead by company-admin authority
+# (require_admin_or_above) since "which modules does this company use" is a
+# company-administration decision, not a CRM-domain permission — CRM's own
+# crm.* permissions are meaningless to check before the module is active.
+# ---------------------------------------------------------------------------
+
+admin_router = APIRouter(tags=["crm-admin"])
+
+
+@admin_router.get(
+    "/status",
+    response_model=StandardResponse[CrmStatusRead],
+    summary="Whether the CRM module is enabled for this company",
+)
+async def get_crm_module_status(
+    company_id: UUID = Path(..., description="Company identifier"),
+    _current_user: CurrentUser = Depends(require_authenticated),
+    flag_service: CrmFeatureFlagService = Depends(get_crm_feature_flag_service),
+) -> StandardResponse[CrmStatusRead]:
+    enabled = flag_service.is_enabled(company_id)
+    return StandardResponse(
+        data=CrmStatusRead(enabled=enabled),
+        message="CRM module status retrieved.",
+        meta=_meta(),
+    )
+
+
+@admin_router.post(
+    "/enable",
+    response_model=StandardResponse[CrmStatusRead],
+    summary="Enable the CRM module for this company (owner/admin only)",
+)
+async def enable_crm_module(
+    company_id: UUID = Path(..., description="Company identifier"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    _company: Company = Depends(require_admin_or_above()),
+    flag_service: CrmFeatureFlagService = Depends(get_crm_feature_flag_service),
+) -> StandardResponse[CrmStatusRead]:
+    flag_service.enable(company_id, actor_id=current_user.user_id)
+    return StandardResponse(
+        data=CrmStatusRead(enabled=True),
+        message="CRM module enabled.",
+        meta=_meta(),
+    )
+
+
+@admin_router.post(
+    "/disable",
+    response_model=StandardResponse[CrmStatusRead],
+    summary="Disable the CRM module for this company (owner/admin only)",
+)
+async def disable_crm_module(
+    company_id: UUID = Path(..., description="Company identifier"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    _company: Company = Depends(require_admin_or_above()),
+    flag_service: CrmFeatureFlagService = Depends(get_crm_feature_flag_service),
+) -> StandardResponse[CrmStatusRead]:
+    flag_service.disable(company_id, actor_id=current_user.user_id)
+    return StandardResponse(
+        data=CrmStatusRead(enabled=False),
+        message="CRM module disabled.",
         meta=_meta(),
     )

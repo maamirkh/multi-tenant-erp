@@ -8,6 +8,7 @@ import { classifyCrmError, getCompanyId, type CrmErrorState } from "@/components
 import CrmStateBanner from "@/components/crm/CrmStateBanner";
 import StatusBadge from "@/components/crm/StatusBadge";
 import Pagination from "@/components/crm/Pagination";
+import { useCrmPermissions, useHasCrmPermission } from "@/hooks/crm/useCrmPermissions";
 
 const PAGE_SIZE = 20;
 
@@ -18,6 +19,8 @@ function isOverdue(activity: ActivityRead): boolean {
 
 export default function ActivitiesPage() {
   const companyId = getCompanyId();
+  const permissionsState = useCrmPermissions();
+  const canUpdateActivity = useHasCrmPermission(permissionsState, "crm.activities.update");
 
   const [activities, setActivities] = useState<ActivityRead[]>([]);
   const [total, setTotal] = useState(0);
@@ -208,7 +211,7 @@ export default function ActivitiesPage() {
                     <StatusBadge status={a.status} />
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {a.status === "PLANNED" && (
+                    {canUpdateActivity && a.status === "PLANNED" && (
                       <button
                         disabled={busyId === a.id}
                         onClick={() => handleComplete(a.id)}

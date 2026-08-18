@@ -855,26 +855,26 @@ This order differs from the input brief's suggested 20-step list in one delibera
 
 Epic 9 implementation is DONE only when every item below is true:
 
-- [ ] All 8 CRM tables created via migration `055`, verified bi-directionally against real Postgres (§7.2), zero server-default/constraint drift from their ORM models (§7.1)
-- [ ] All 7 repositories implemented, every method `company_id`-scoped, tenant-isolation tests passing for all 6 business tables (§27.2)
-- [ ] All 9 services implemented, every write path ending in an explicit `db.commit()` (verified by code review against the exact checklist the pre-Epic-9 hardening audit used)
-- [ ] All ~25 API endpoints implemented and live, Router→Service→Repository discipline confirmed (no repository imported into `router.py`)
-- [ ] All 19 RBAC permissions registered and enforced, full 19×8 matrix test passing (§27.4)
-- [ ] `crm_audit_log` recording all actions listed in spec.md §44, verified by an audit-coverage test
-- [ ] All 12 domain events published on their correct trigger, verified by an event-coverage test
-- [ ] `feature.crm.enabled` gates the entire module correctly (flag-off → documented error; flag-on → normal operation)
-- [ ] Customer 360 composes CRM + live Sales + live Accounting data correctly, 6-bounded-query design confirmed (no N+1), verified against seeded AR data
-- [ ] Sales integration: zero Sales files modified; Opportunity→Quotation handoff working end-to-end via the UI-orchestrated flow (§15.2)
-- [ ] Accounting integration: zero Accounting files modified; `AccountsReceivableService` calls confirmed live-correct
-- [ ] All CRM reports/KPIs (§24) return correct aggregates against seeded data
-- [ ] All 12 SEC-01–SEC-12 security test cases passing as real HTTP requests (§27.3)
-- [ ] Performance targets met per spec.md §47 (§27.5/§26), benchmarked at the stated volumes
-- [ ] Full frontend `(crm)/` route group implemented, permission-aware, using existing shared components only
-- [ ] Live Docker/Postgres verification performed for Lead creation, Opportunity creation, and Lead conversion specifically (§27.5) — not SQLite-only
-- [ ] Full regression suite (Epics 1–9) passes with zero unexplained failures; any pre-existing flaky test documented, not silently ignored (§28)
-- [ ] `ruff`/`mypy` clean on all new CRM files (zero new errors; pre-existing repo-wide debt in *other* modules not claimed as CRM's responsibility, matching the established reporting convention from the pre-Epic-9 audit)
-- [ ] `specs/009-crm/data-model.md`, `research.md`, `quickstart.md`, `contracts/events.md` produced (standard SDD artifacts, not yet created in this plan.md-only phase)
-- [ ] This plan's own §29.2 "Modified Files" list is exhaustive and accurate — no other Epic 1–8 file was touched, confirmed via `git diff --stat` against the pre-Epic-9 baseline
+- [x] All 8 CRM tables created via migration `055`, verified bi-directionally against real Postgres (§7.2), zero server-default/constraint drift from their ORM models (§7.1) — T100 item 1, live isolated-container replay.
+- [x] All 7 repositories implemented, every method `company_id`-scoped, tenant-isolation tests passing for all 6 business tables (§27.2) — `test_tenant_isolation.py`, fresh pass.
+- [x] All 9 services implemented, every write path ending in an explicit `db.commit()` (verified by code review against the exact checklist the pre-Epic-9 hardening audit used)
+- [x] All ~25 API endpoints implemented and live, Router→Service→Repository discipline confirmed (no repository imported into `router.py`) — 36 CRM-domain endpoints + 4 module-administration endpoints (`/status`, `/enable`, `/disable`, `/my-permissions`) added post-closure to genuinely close the "CRM can be enabled" and "permission-aware frontend" gaps below; `grep` confirms zero repository imports in `router.py`.
+- [x] All 19 RBAC permissions registered and enforced, full 19×8 matrix test passing (§27.4) — `test_rbac.py`, fresh pass (152/152).
+- [x] `crm_audit_log` recording all actions listed in spec.md §44, verified by an audit-coverage test — `test_audit_coverage.py`, fresh pass; independently re-confirmed live (T100 item 5).
+- [x] All 12 domain events published on their correct trigger, verified by an event-coverage test — `test_event_coverage.py`, fresh pass; independently re-confirmed live (T100 item 6).
+- [x] `feature.crm.enabled` gates the entire module correctly (flag-off → documented error; flag-on → normal operation) — `test_feature_flag_gate.py` fresh pass, plus a **new, genuine gap closed post-closure**: no endpoint previously existed for a company to actually flip this flag from off to on (see the new `/status`/`/enable`/`/disable` endpoints above). Verified live: full off→on→off→on round trip via real HTTP.
+- [x] Customer 360 composes CRM + live Sales + live Accounting data correctly, 6-bounded-query design confirmed (no N+1), verified against seeded AR data — `test_customer_360.py` fresh pass; independently re-confirmed live in this closure pass (real credit status/aging/sales-history rendered for a real converted customer).
+- [x] Sales integration: zero Sales files modified; Opportunity→Quotation handoff working end-to-end via the UI-orchestrated flow (§15.2) — confirmed true, including after this closure pass; zero Sales files appear in any diff across the whole epic.
+- [ ] Accounting integration: zero Accounting files modified; `AccountsReceivableService` calls confirmed live-correct — **the "zero Accounting files modified" half is honestly no longer true**, left unchecked. Live-browser verification found `frontend/src/app/(protected)/(accounting)/dashboard/page.tsx` colliding with CRM's own dashboard at the literal `/dashboard` URL, breaking the entire app (not an `AccountsReceivableService` issue — a pure Next.js routing collision). Fixed via a rename only (`accounting-dashboard/page.tsx`), explicitly approved before being made; zero Accounting business logic touched. `AccountsReceivableService` calls themselves remain confirmed live-correct (see Customer 360 item above). See PHR 0010 for the full account.
+- [x] All CRM reports/KPIs (§24) return correct aggregates against seeded data — live-confirmed in T100 item 12 and again in this closure pass (dashboard KPIs, pipeline/lead/activity reports all rendering real, correct data).
+- [x] All 12 SEC-01–SEC-12 security test cases passing as real HTTP requests (§27.3) — `test_tenant_and_security.py`, 16/16, fresh pass.
+- [x] Performance targets met per spec.md §47 (§27.5/§26), benchmarked at the stated volumes — see tasks.md's Performance Checklist (T092–T095 + T100, all green).
+- [x] Full frontend `(crm)/` route group implemented, permission-aware, using existing shared components only — **the "permission-aware" half was a genuine gap, closed post-closure**: the frontend now hides (not just disables) permission-gated actions via a new `useCrmPermissions()` hook backed by `GET /crm/my-permissions`, wired across Leads/Opportunities/Activities/Settings. Verified live: owner role sees and can use every gated action; the endpoint returns the correct 19/19 codes.
+- [x] Live Docker/Postgres verification performed for Lead creation, Opportunity creation, and Lead conversion specifically (§27.5) — not SQLite-only — T100 items 8–9, plus re-confirmed again via the full happy-path browser pass in this closure round.
+- [x] Full regression suite (Epics 1–9) passes with zero unexplained failures; any pre-existing flaky test documented, not silently ignored (§28) — fresh full-suite run: 5581 passed, 3 failed, all 3 triaged (2 pre-existing Epic 8 flaky/timing, 1 pre-existing environment issue, zero CRM-caused); a 3rd, CRM-suite-only failure observed in one contaminated concurrent run was reproduced in isolation and confirmed passing (test-run contamination from editing `router.py` mid-run, not a real regression).
+- [x] `ruff`/`mypy` clean on all new CRM files (zero new errors; pre-existing repo-wide debt in *other* modules not claimed as CRM's responsibility, matching the established reporting convention from the pre-Epic-9 audit) — re-confirmed after all post-closure changes: `ruff check` all-pass, `mypy` zero errors attributable to any `modules/crm/` file (107 errors remain, all pre-existing transitive debt in `sales`/`auth`/`users_roles`/`core`, unchanged in count from before this epic).
+- [x] `specs/009-crm/data-model.md`, `research.md`, `quickstart.md`, `contracts/events.md` produced (standard SDD artifacts, not yet created in this plan.md-only phase) — all present, confirmed via directory listing.
+- [ ] This plan's own §29.2 "Modified Files" list is exhaustive and accurate — no other Epic 1–8 file was touched, confirmed via `git diff --stat` against the pre-Epic-9 baseline — **honestly no longer exhaustive**, left unchecked to match the Accounting item above. §29.2 pre-dates the post-closure fixes; it does not (and could not) list `accounting-dashboard/page.tsx`, `AuthContext.tsx` (Epic 2), or `companies/[id]/page.tsx` (Epic 3) — all 3 documented in tasks.md's "Post-Closure Gap Remediation" section and in PHR 0010, none rewriting §29.2 retroactively.
 
 ---
 

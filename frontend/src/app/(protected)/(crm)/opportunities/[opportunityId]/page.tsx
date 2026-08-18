@@ -20,11 +20,16 @@ import { classifyCrmError, getCompanyId, type CrmErrorState } from "@/components
 import CrmStateBanner from "@/components/crm/CrmStateBanner";
 import StatusBadge from "@/components/crm/StatusBadge";
 import LinkedActivities from "@/components/crm/LinkedActivities";
+import { useCrmPermissions, useHasCrmPermission } from "@/hooks/crm/useCrmPermissions";
 
 export default function OpportunityDetailPage() {
   const params = useParams<{ opportunityId: string }>();
   const opportunityId = params.opportunityId;
   const companyId = getCompanyId();
+  const permissionsState = useCrmPermissions();
+  const canUpdateOpportunity = useHasCrmPermission(permissionsState, "crm.opportunities.update");
+  const canCloseOpportunity = useHasCrmPermission(permissionsState, "crm.opportunities.close");
+  const canAssignOpportunity = useHasCrmPermission(permissionsState, "crm.opportunities.assign");
 
   const [opportunity, setOpportunity] = useState<OpportunityRead | null>(null);
   const [stages, setStages] = useState<PipelineStageRead[]>([]);
@@ -237,85 +242,91 @@ export default function OpportunityDetailPage() {
 
       {isOpen && (
         <>
-          <div className="border-t border-gray-200 pt-4 mb-4">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">Stage</h2>
-            <select
-              value={opportunity.stage_id}
-              disabled={actionBusy}
-              onChange={(e) => handleStageChange(e.target.value)}
-              className="border border-gray-300 rounded-md px-3 py-1.5 text-sm disabled:opacity-50"
-            >
-              {stages.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="border-t border-gray-200 pt-4 mb-4">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">Close</h2>
-            <div className="flex flex-wrap gap-2">
-              <button
-                disabled={actionBusy}
-                onClick={handleWin}
-                className="px-3 py-1.5 bg-green-600 text-white rounded-md text-sm hover:bg-green-700 disabled:opacity-50"
-              >
-                Mark Won
-              </button>
-              <button
-                disabled={actionBusy}
-                onClick={() => setShowLoseForm((v) => !v)}
-                className="px-3 py-1.5 border border-gray-300 rounded-md text-sm hover:bg-gray-50 disabled:opacity-50"
-              >
-                Mark Lost
-              </button>
-            </div>
-            {showLoseForm && (
-              <div className="mt-3 flex gap-2">
-                <input
-                  placeholder="Lost reason"
-                  value={loseReason}
-                  onChange={(e) => setLoseReason(e.target.value)}
-                  className="flex-1 border border-gray-300 rounded-md px-3 py-1.5 text-sm"
-                />
-                <button
-                  disabled={actionBusy || !loseReason}
-                  onClick={handleLose}
-                  className="px-3 py-1.5 bg-gray-700 text-white rounded-md text-sm hover:bg-gray-800 disabled:opacity-50"
-                >
-                  Confirm
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="border-t border-gray-200 pt-4 mb-4">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">Reassign Owner</h2>
-            <div className="flex gap-2">
+          {canUpdateOpportunity && (
+            <div className="border-t border-gray-200 pt-4 mb-4">
+              <h2 className="text-sm font-semibold text-gray-700 mb-3">Stage</h2>
               <select
-                value={assignTo}
-                onChange={(e) => setAssignTo(e.target.value)}
-                className="border border-gray-300 rounded-md px-3 py-1.5 text-sm"
+                value={opportunity.stage_id}
+                disabled={actionBusy}
+                onChange={(e) => handleStageChange(e.target.value)}
+                className="border border-gray-300 rounded-md px-3 py-1.5 text-sm disabled:opacity-50"
               >
-                <option value="">Select a member…</option>
-                {members.map((m) => (
-                  <option key={m.user_id} value={m.user_id}>
-                    {m.display_name}
+                {stages.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
                   </option>
                 ))}
               </select>
-              <button
-                disabled={actionBusy || !assignTo}
-                onClick={handleAssign}
-                className="px-3 py-1.5 border border-gray-300 rounded-md text-sm hover:bg-gray-50 disabled:opacity-50"
-              >
-                Assign
-              </button>
             </div>
-          </div>
+          )}
 
-          {!opportunity.quotation_id && (
+          {canCloseOpportunity && (
+            <div className="border-t border-gray-200 pt-4 mb-4">
+              <h2 className="text-sm font-semibold text-gray-700 mb-3">Close</h2>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  disabled={actionBusy}
+                  onClick={handleWin}
+                  className="px-3 py-1.5 bg-green-600 text-white rounded-md text-sm hover:bg-green-700 disabled:opacity-50"
+                >
+                  Mark Won
+                </button>
+                <button
+                  disabled={actionBusy}
+                  onClick={() => setShowLoseForm((v) => !v)}
+                  className="px-3 py-1.5 border border-gray-300 rounded-md text-sm hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Mark Lost
+                </button>
+              </div>
+              {showLoseForm && (
+                <div className="mt-3 flex gap-2">
+                  <input
+                    placeholder="Lost reason"
+                    value={loseReason}
+                    onChange={(e) => setLoseReason(e.target.value)}
+                    className="flex-1 border border-gray-300 rounded-md px-3 py-1.5 text-sm"
+                  />
+                  <button
+                    disabled={actionBusy || !loseReason}
+                    onClick={handleLose}
+                    className="px-3 py-1.5 bg-gray-700 text-white rounded-md text-sm hover:bg-gray-800 disabled:opacity-50"
+                  >
+                    Confirm
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {canAssignOpportunity && (
+            <div className="border-t border-gray-200 pt-4 mb-4">
+              <h2 className="text-sm font-semibold text-gray-700 mb-3">Reassign Owner</h2>
+              <div className="flex gap-2">
+                <select
+                  value={assignTo}
+                  onChange={(e) => setAssignTo(e.target.value)}
+                  className="border border-gray-300 rounded-md px-3 py-1.5 text-sm"
+                >
+                  <option value="">Select a member…</option>
+                  {members.map((m) => (
+                    <option key={m.user_id} value={m.user_id}>
+                      {m.display_name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  disabled={actionBusy || !assignTo}
+                  onClick={handleAssign}
+                  className="px-3 py-1.5 border border-gray-300 rounded-md text-sm hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Assign
+                </button>
+              </div>
+            </div>
+          )}
+
+          {canUpdateOpportunity && !opportunity.quotation_id && (
             <div className="border-t border-gray-200 pt-4">
               <h2 className="text-sm font-semibold text-gray-700 mb-3">Link Quotation</h2>
               <p className="text-xs text-gray-500 mb-2">

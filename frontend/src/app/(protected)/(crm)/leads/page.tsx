@@ -7,6 +7,7 @@ import { classifyCrmError, getCompanyId, type CrmErrorState } from "@/components
 import CrmStateBanner from "@/components/crm/CrmStateBanner";
 import StatusBadge from "@/components/crm/StatusBadge";
 import Pagination from "@/components/crm/Pagination";
+import { useCrmPermissions, useHasCrmPermission } from "@/hooks/crm/useCrmPermissions";
 
 const PAGE_SIZE = 20;
 
@@ -27,6 +28,8 @@ export default function LeadsPage() {
   const [sources, setSources] = useState<LeadSourceRead[]>([]);
 
   const companyId = getCompanyId();
+  const permissionsState = useCrmPermissions();
+  const canCreateLead = useHasCrmPermission(permissionsState, "crm.leads.create");
 
   const load = useCallback(async () => {
     if (!companyId) return;
@@ -71,12 +74,14 @@ export default function LeadsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Leads</h1>
           <p className="text-sm text-gray-500 mt-1">{total} total records</p>
         </div>
-        <Link
-          href="leads/new"
-          className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 text-sm font-medium"
-        >
-          New Lead
-        </Link>
+        {canCreateLead && (
+          <Link
+            href="leads/new"
+            className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 text-sm font-medium"
+          >
+            New Lead
+          </Link>
+        )}
       </div>
 
       <div className="mb-4 flex flex-wrap gap-3">
@@ -134,9 +139,11 @@ export default function LeadsPage() {
             : (
               <>
                 No leads found.{" "}
-                <Link href="leads/new" className="text-indigo-600 hover:underline">
-                  Capture the first one.
-                </Link>
+                {canCreateLead && (
+                  <Link href="leads/new" className="text-indigo-600 hover:underline">
+                    Capture the first one.
+                  </Link>
+                )}
               </>
             )}
         </div>

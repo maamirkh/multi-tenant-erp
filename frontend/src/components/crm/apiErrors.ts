@@ -30,6 +30,15 @@ export function classifyCrmError(err: unknown): CrmErrorState {
   };
 }
 
+// Matches CompanyContext's STORAGE_KEY (frontend/src/contexts/CompanyContext.tsx) —
+// the real platform mechanism for the active company, persisted when a user
+// views a company via the Companies module. Read directly from localStorage
+// (not via useCompanyContext()) because CompanyProvider only wraps the
+// (companies) route group, not CRM's sibling route group.
+const ACTIVE_COMPANY_STORAGE_KEY = "erp_active_company_id";
+
 export function getCompanyId(): string {
-  return typeof window !== "undefined" ? (localStorage.getItem("company_id") ?? "") : "";
+  return typeof window !== "undefined"
+    ? (localStorage.getItem(ACTIVE_COMPANY_STORAGE_KEY) ?? "")
+    : "";
 }

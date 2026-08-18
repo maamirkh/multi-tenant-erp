@@ -560,3 +560,31 @@ export async function getActivityReport(
   const query = buildQuery({ date_from: dateFrom, date_to: dateTo });
   return apiClient.get<ActivityReport>(`${crmBase(companyId)}/reports/activities${query}`);
 }
+
+// ---------------------------------------------------------------------------
+// Module administration & current-user permissions
+// ---------------------------------------------------------------------------
+
+export interface CrmStatusRead {
+  enabled: boolean;
+}
+
+export interface CrmMyPermissions {
+  permissions: string[];
+}
+
+export async function getCrmStatus(companyId: string) {
+  return apiClient.get<CrmStatusRead>(`${crmBase(companyId)}/status`);
+}
+
+export async function enableCrm(companyId: string) {
+  return apiClient.post<CrmStatusRead>(`${crmBase(companyId)}/enable`, {});
+}
+
+export async function disableCrm(companyId: string) {
+  return apiClient.post<CrmStatusRead>(`${crmBase(companyId)}/disable`, {});
+}
+
+export async function getMyCrmPermissions(companyId: string) {
+  return apiClient.get<CrmMyPermissions>(`${crmBase(companyId)}/my-permissions`);
+}

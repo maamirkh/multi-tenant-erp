@@ -9,7 +9,7 @@
 
 'use client';
 
-import { use } from 'react';
+import { use, useEffect } from 'react';
 import Link from 'next/link';
 import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,6 +17,7 @@ import { CompanyStatusBadge } from '@/components/companies/CompanyStatusBadge';
 import { CompanyStatusActions } from '@/components/companies/CompanyStatusActions';
 import { useCompany } from '@/hooks/companies/useCompany';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { useCompanyContext } from '@/contexts/CompanyContext';
 import { cn } from '@/lib/utils';
 import { ArrowLeftIcon } from 'lucide-react';
 
@@ -46,6 +47,18 @@ export default function CompanyDetailPage({ params }: PageProps) {
   const { id } = use(params);
   const { data: company, isLoading, isError, error } = useCompany(id);
   const { user } = useAuthContext();
+  const { setActiveCompany } = useCompanyContext();
+
+  // Viewing a company's detail page marks it as the active company context
+  // for the session — the mechanism every other module (Sales, Purchase,
+  // Accounting, CRM) relies on to resolve "which company am I working with"
+  // (persisted to localStorage by CompanyContext; consumed directly from
+  // there, not via the React context, by modules outside this route group).
+  useEffect(() => {
+    if (company) {
+      setActiveCompany(company);
+    }
+  }, [company, setActiveCompany]);
 
   if (isLoading) {
     return <CompanyDetailSkeleton />;
