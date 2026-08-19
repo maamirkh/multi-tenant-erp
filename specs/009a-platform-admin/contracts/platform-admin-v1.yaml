@@ -1,0 +1,285 @@
+openapi: 3.0.3
+info:
+  title: DevSphere ERP — Platform Administration API
+  version: "1.0.0"
+  description: >
+    Platform-scoped control-plane API for Epic 9A. Every path lives under
+    /api/v1/platform/... and is authorized exclusively by a Platform session
+    (JWT typ=platform_access) — never a tenant session/token (BR-9A-002/003).
+    Request/response schemas are intentionally NOT fully specified here; exact
+    field-level schemas are Tasks-phase implementation detail. This contract
+    fixes paths, methods, purpose, and the required permission per plan.md §24.
+servers:
+  - url: /api/v1/platform
+security:
+  - platformBearerAuth: []
+paths:
+  /auth/login:
+    post:
+      summary: Platform Administrator login (issues a platform_access/platform_refresh token pair)
+      security: []
+      responses:
+        "200": { description: OK }
+        "401": { description: Invalid credentials or no active PlatformAdministrator for this user }
+  /auth/refresh:
+    post:
+      summary: Rotate platform refresh token
+      security: []
+      responses:
+        "200": { description: OK }
+  /auth/logout:
+    post:
+      summary: Revoke the current platform session
+      responses:
+        "204": { description: No Content }
+  /dashboard:
+    get:
+      summary: Platform Dashboard aggregates
+      x-permission: platform.dashboard.view
+      responses:
+        "200": { description: OK }
+  /tenants:
+    get:
+      summary: Search/filter/sort/paginate the full tenant list across all CompanyStatus values
+      x-permission: platform.tenants.read
+      responses:
+        "200": { description: OK }
+  /tenants/{companyId}:
+    get:
+      summary: Tenant 360 detail view (aggregate/summary only — never business records, FR-9A-021)
+      x-permission: platform.tenants.read
+      parameters:
+        - { name: companyId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK }
+  /tenants/{companyId}/suspend:
+    post:
+      summary: Suspend a tenant (active/inactive -> suspended); revokes active tenant sessions
+      x-permission: platform.tenants.suspend
+      parameters:
+        - { name: companyId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reason], properties: { reason: { type: string } } }
+      responses:
+        "200": { description: OK }
+        "409": { description: "Tenant already suspended (Edge Case #1)" }
+  /tenants/{companyId}/reactivate:
+    post:
+      summary: Reactivate a tenant (suspended -> pre-suspension status); does NOT restore revoked sessions
+      x-permission: platform.tenants.reactivate
+      parameters:
+        - { name: companyId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reason], properties: { reason: { type: string } } }
+      responses:
+        "200": { description: OK }
+        "409": { description: "Tenant not currently suspended (Edge Case #2)" }
+  /tenants/{companyId}/lifecycle-history:
+    get:
+      summary: Every status transition for a tenant with actor/timestamp/reason
+      x-permission: platform.tenants.read
+      parameters:
+        - { name: companyId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK }
+  /plans:
+    get:
+      summary: List plans
+      x-permission: platform.plans.read
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Create a plan (draft)
+      x-permission: platform.plans.manage
+      responses:
+        "201": { description: Created }
+  /plans/{planId}:
+    patch:
+      summary: Update/publish/retire a plan
+      x-permission: platform.plans.manage
+      parameters:
+        - { name: planId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK }
+  /tenants/{companyId}/subscription:
+    get:
+      summary: View a tenant's current subscription and history
+      x-permission: platform.subscriptions.read
+      parameters:
+        - { name: companyId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Assign/change a tenant's plan (surfaces usage-conflict per FR-9A-165)
+      x-permission: platform.subscriptions.manage
+      parameters:
+        - { name: companyId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK }
+        "409": { description: Usage-conflict requiring explicit acknowledgment }
+  /tenants/{companyId}/entitlements:
+    get:
+      summary: Effective entitlements for a tenant (Plan x Toggle x Override resolution result)
+      x-permission: platform.entitlements.read
+      parameters:
+        - { name: companyId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK }
+  /tenants/{companyId}/entitlement-overrides:
+    post:
+      summary: Grant a time-boxed (or permanent) entitlement override
+      x-permission: platform.entitlements.override
+      parameters:
+        - { name: companyId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [capability_key, reason]
+              properties:
+                capability_key: { type: string }
+                reason: { type: string }
+                expires_at: { type: string, format: date-time, nullable: true }
+      responses:
+        "201": { description: Created }
+  /tenants/{companyId}/entitlement-overrides/{overrideId}:
+    delete:
+      summary: Revoke an active entitlement override
+      x-permission: platform.entitlements.override
+      parameters:
+        - { name: companyId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: overrideId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: No Content }
+  /tenants/{companyId}/quotas:
+    get:
+      summary: Effective quota status per category (ok/approaching/reached/unlimited/unavailable)
+      x-permission: platform.quotas.read
+      parameters:
+        - { name: companyId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK }
+  /tenants/{companyId}/quota-overrides:
+    post:
+      summary: Grant a time-boxed (or permanent) quota override
+      x-permission: platform.quotas.override
+      parameters:
+        - { name: companyId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "201": { description: Created }
+  /administrators:
+    get:
+      summary: List Platform Administrator accounts
+      x-permission: platform.admins.read
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Create a Platform Administrator account (independent of any tenant membership)
+      x-permission: platform.admins.manage
+      responses:
+        "201": { description: Created }
+  /administrators/{adminId}:
+    patch:
+      summary: Activate/deactivate a Platform Administrator; deactivation invalidates active platform sessions
+      x-permission: platform.admins.manage
+      parameters:
+        - { name: adminId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK }
+  /roles:
+    get:
+      summary: List Platform Roles and their permission bundles
+      x-permission: platform.rbac.read
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Create/update a Platform Role's permission bundle
+      x-permission: platform.rbac.manage
+      responses:
+        "200": { description: OK }
+  /administrators/{adminId}/roles:
+    post:
+      summary: Assign a Platform Role to an administrator (self-escalation guarded, BR-9A-012)
+      x-permission: platform.rbac.manage
+      parameters:
+        - { name: adminId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK }
+        "403": { description: Self-escalation or last-Platform-Owner-removal rejected }
+  /tenants/{companyId}/support-access:
+    post:
+      summary: Initiate a time-bounded, reason-required, inspection-only support-access grant
+      x-permission: platform.support_access.initiate
+      parameters:
+        - { name: companyId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reason], properties: { reason: { type: string } } }
+      responses:
+        "201": { description: Created }
+  /support-access/{grantId}:
+    delete:
+      summary: Terminate an active support-access grant
+      x-permission: platform.support_access.initiate
+      parameters:
+        - { name: grantId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: No Content }
+  /support-access:
+    get:
+      summary: List support-access grant history
+      x-permission: platform.support_access.read
+      responses:
+        "200": { description: OK }
+  /audit:
+    get:
+      summary: Platform audit view, filterable by administrator/tenant/action/resource/date/status
+      x-permission: platform.audit.read
+      responses:
+        "200": { description: OK }
+  /tenants/{companyId}/usage:
+    get:
+      summary: Usage records for a tenant per metric/period
+      x-permission: platform.quotas.read
+      parameters:
+        - { name: companyId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK }
+  /tenants/{companyId}/ai-credits:
+    get:
+      summary: AI credit ledger and current balance (empty/"not yet active" until AI capability exists)
+      x-permission: platform.ai_usage.read
+      parameters:
+        - { name: companyId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Manual AI credit adjustment (reason required, audited)
+      x-permission: platform.ai_credits.adjust
+      parameters:
+        - { name: companyId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "201": { description: Created }
+  /health:
+    get:
+      summary: Platform operational health (DB, outbox pending/published counts, honestly labeled stub relay)
+      x-permission: platform.monitoring.read
+      responses:
+        "200": { description: OK }
+components:
+  securitySchemes:
+    platformBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT with typ=platform_access — structurally rejected if typ is the tenant "access" value.
