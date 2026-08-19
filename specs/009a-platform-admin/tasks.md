@@ -138,131 +138,153 @@
 
 ### Tasks
 
-- [ ] T010 Create migration `057` upgrade: platform identity/session/audit tables
+- [X] T010 Create migration `057` upgrade: platform identity/session/audit tables
   - **Purpose**: Platform foundation persistence (data-model.md "Identity & Session").
   - **Files**: `backend/migrations/versions/057_platform_admin_foundation.py`
   - **Deps**: T001
   - **Acceptance**: Creates `platform_administrators`, `platform_roles`, `platform_permissions`, `platform_role_permissions`, `platform_admin_role_assignments`, `platform_sessions`, `platform_refresh_tokens`, `platform_audit_events` with the exact columns/FKs/uniques in data-model.md. `revision="057"`, `down_revision="056"`.
+  - **Result (2026-08-19)**: DONE. All 8 tables created; column-by-column audit against data-model.md performed (see T031 sign-off). `grain`/`enforcement_style`-style "enum(...)" fields implemented as VARCHAR+CHECK, not PG ENUM, consistent with `Plan.status`'s explicit convention and this codebase's project-wide anti-native-ENUM pattern — verified on real PostgreSQL via `\d`.
 
-- [ ] T011 Add to migration `057`: the two additive `companies` lifecycle columns
+- [X] T011 Add to migration `057`: the two additive `companies` lifecycle columns
   - **Purpose**: `pre_suspension_status` + `access_invalidated_at` (ADR-12, ADR-6 Layer 2).
   - **Files**: `backend/migrations/versions/057_platform_admin_foundation.py`
   - **Deps**: T010
   - **Acceptance**: Both columns added as **nullable** with no backfill; existing rows unaffected.
+  - **Result (2026-08-19)**: DONE. Verified via T030's real-PostgreSQL test: pre-existing seeded rows identical after upgrade, both new columns NULL.
 
-- [ ] T012 Add to migration `057`: **mandatory suspended-company preflight guard** (runs before any constraint is created)
+- [X] T012 Add to migration `057`: **mandatory suspended-company preflight guard** (runs before any constraint is created)
   - **Purpose**: plan.md §33.1 — a pre-existing `status='suspended'` row has an unrecoverable prior status; fabricating one would make `suspended → pre-suspension status` non-deterministic.
   - **Files**: `backend/migrations/versions/057_platform_admin_foundation.py`
   - **Deps**: T011
   - **Acceptance**: Queries `SELECT id, slug FROM companies WHERE status='suspended'`. Zero rows → proceed. One or more → `raise RuntimeError(...)` naming the affected slugs **and** the remediation options, having created **no** column and **no** constraint. Must never backfill `active`/`inactive`, never weaken/skip the constraint, never infer from audit.
+  - **Result (2026-08-19)**: DONE, verified on real PostgreSQL by T025/T026 — refusal message names the affected slug and both remediation options; T026 additionally proves zero partial state (schema snapshot equal, `alembic_version` unchanged at `056`).
 
-- [ ] T013 Add to migration `057`: the two CHECK constraints on `companies`
+- [X] T013 Add to migration `057`: the two CHECK constraints on `companies`
   - **Purpose**: Structurally prevent a suspended company without a restore target, and restrict the restore target's domain (plan.md §26).
   - **Files**: `backend/migrations/versions/057_platform_admin_foundation.py`
   - **Deps**: T012
   - **Acceptance**: `CHECK ((status='suspended' AND pre_suspension_status IS NOT NULL) OR (status<>'suspended' AND pre_suspension_status IS NULL))` and `CHECK (pre_suspension_status IS NULL OR pre_suspension_status IN ('active','inactive'))` both present.
+  - **Result (2026-08-19)**: DONE. Both constraints confirmed present via `\d companies` on real PostgreSQL (`ck_companies_pre_suspension_status_presence`, `ck_companies_pre_suspension_status_domain`).
 
-- [ ] T014 Add migration `057` indexes on `platform_audit_events`
+- [X] T014 Add migration `057` indexes on `platform_audit_events`
   - **Purpose**: FR-9A-200's filter set must not table-scan.
   - **Files**: `backend/migrations/versions/057_platform_admin_foundation.py`
   - **Deps**: T010
   - **Acceptance**: Indexes on `actor_platform_administrator_id`, `company_id`, `action`, `created_at`.
+  - **Result (2026-08-19)**: DONE. All 4 indexes created (`ix_platform_audit_events_{actor_id,company_id,action,created_at}`).
 
-- [ ] T015 Write migration `057` downgrade
+- [X] T015 Write migration `057` downgrade
   - **Purpose**: Constitution §18 requires reversible migrations.
   - **Files**: `backend/migrations/versions/057_platform_admin_foundation.py`
   - **Deps**: T010–T014
   - **Acceptance**: Drops both `companies` columns + both constraints and all 8 tables in reverse FK order. Preflight has no downgrade counterpart (upgrade-time guard only).
+  - **Result (2026-08-19)**: DONE, verified via real-PostgreSQL up→down→up cycle (T027) — all 8 tables and both columns/constraints cleanly absent after downgrade to `056`.
 
-- [ ] T016 Create migration `058`: capabilities, plans, plan_capabilities, subscriptions + `companies.subscription_id` FK
+- [X] T016 Create migration `058`: capabilities, plans, plan_capabilities, subscriptions + `companies.subscription_id` FK
   - **Purpose**: Commercial control plane persistence (data-model.md "Entitlement").
   - **Files**: `backend/migrations/versions/058_platform_plans_entitlements.py`
   - **Deps**: T015
   - **Acceptance**: All 4 tables per data-model.md; **partial unique index** `ON subscriptions (company_id) WHERE status='active'`; real FK added to the already-nullable `companies.subscription_id`; `status` columns are VARCHAR+CHECK (not PG ENUM), matching `CompanyStatus`'s convention.
+  - **Result (2026-08-19)**: DONE. Verified via `\d+ subscriptions` on real PostgreSQL: `uq_subscriptions_company_active UNIQUE, btree (company_id) WHERE status::text = 'active'::text`, `fk_companies_subscription_id` present. `Subscription.reason` implemented nullable at the DB level — data-model.md states "NOT NULL for **administrative** changes" (a conditional business rule enforced at the service layer in a later phase), not an unconditional DB constraint; a blanket NOT NULL would have wrongly rejected the initial non-administrative assignment path.
 
-- [ ] T017 Write migration `058` downgrade
+- [X] T017 Write migration `058` downgrade
   - **Files**: `backend/migrations/versions/058_platform_plans_entitlements.py`
   - **Deps**: T016
   - **Acceptance**: Drops the FK constraint (leaving the pre-existing nullable column intact — it predates Epic 9A) then the 4 tables in reverse order.
+  - **Result (2026-08-19)**: DONE, verified via T027 — after downgrade to `056`, `companies.subscription_id` column still present (only its FK dropped), all 4 tables absent.
 
-- [ ] T018 Create migration `059`: quota_definitions, plan_quotas, tenant_quota_overrides, entitlement_overrides
+- [X] T018 Create migration `059`: quota_definitions, plan_quotas, tenant_quota_overrides, entitlement_overrides
   - **Purpose**: Quota + override persistence (data-model.md "Quotas & Overrides"). Consumed by the Phase 8 quota foundation.
   - **Files**: `backend/migrations/versions/059_platform_quotas_overrides.py`
   - **Deps**: T017
   - **Acceptance**: 4 tables; partial unique indexes `WHERE is_active=true` on both override tables; `limit_value >= 0` CHECK where not null; `expires_at > granted_at` CHECK where not null.
+  - **Result (2026-08-19)**: DONE. Both partial unique indexes and all CHECK constraints confirmed via `\d+` on real PostgreSQL. Also added `ck_tenant_quota_overrides_expiry`/`ck_entitlement_overrides_expiry` (`expires_at > granted_at`) per plan.md §26 ("Valid date ranges" — applies to override and support-access tables), sourced from plan.md since data-model.md's compact field table doesn't restate every CHECK per section.
 
-- [ ] T019 Write migration `059` downgrade
+- [X] T019 Write migration `059` downgrade
   - **Files**: `backend/migrations/versions/059_platform_quotas_overrides.py`
   - **Deps**: T018
   - **Acceptance**: Clean reverse drop.
+  - **Result (2026-08-19)**: DONE, verified via T027's up→down→up cycle.
 
-- [ ] T020 Create migration `060`: usage_records, ai_credit_ledger_entries
+- [X] T020 Create migration `060`: usage_records, ai_credit_ledger_entries
   - **Purpose**: Usage metering + provider-neutral AI readiness (data-model.md "Usage & AI Readiness").
   - **Files**: `backend/migrations/versions/060_platform_usage_ai_readiness.py`
   - **Deps**: T019
   - **Acceptance**: Both tables with indexed `company_id`; `ai_credit_ledger_entries.delta` signed numeric; `provider`/`model` free-text nullable (no vendor coupling, BR-9A-026).
+  - **Result (2026-08-19)**: DONE. `provider`/`model` are plain nullable VARCHAR (no enum/FK to a provider table) — confirmed provider-neutral. `reason` implemented nullable at the DB level, matching data-model.md's conditional wording ("Required when `actor_platform_administrator_id` is populated" — a service-layer rule, not an unconditional DB constraint).
 
-- [ ] T021 Write migration `060` downgrade
+- [X] T021 Write migration `060` downgrade
   - **Files**: `backend/migrations/versions/060_platform_usage_ai_readiness.py`
   - **Deps**: T020
   - **Acceptance**: Clean reverse drop.
+  - **Result (2026-08-19)**: DONE, verified via T027's up→down→up cycle.
 
-- [ ] T022 Create migration `061`: support_access_grants + `platform_audit_events.support_access_grant_id` FK
+- [X] T022 Create migration `061`: support_access_grants + `platform_audit_events.support_access_grant_id` FK
   - **Purpose**: Support-access persistence and its audit linkage (BR-9A-022 — no parallel audit table).
   - **Files**: `backend/migrations/versions/061_platform_support_access.py`
   - **Deps**: T021
   - **Acceptance**: `support_access_grants` per data-model.md; nullable FK column added to `platform_audit_events`; indexed `platform_administrator_id`, `company_id`. **This is the final Epic 9A migration — no `062` exists.**
+  - **Result (2026-08-19)**: DONE. Deferred FK (`fk_platform_audit_events_support_access_grant_id`, added in 057 as a bare nullable column, FK closed here — same technique as migration 055's `crm_leads`/`crm_opportunities` cycle) confirmed via `\d platform_audit_events`. No `062` file exists — verified by T029.
 
-- [ ] T023 Write migration `061` downgrade
+- [X] T023 Write migration `061` downgrade
   - **Files**: `backend/migrations/versions/061_platform_support_access.py`
   - **Deps**: T022
   - **Acceptance**: Drops the FK column then the table.
+  - **Result (2026-08-19)**: DONE, verified via T027's up→down→up cycle.
 
-- [ ] T024 [P] Migration test: clean database with **no** suspended companies → `057` succeeds
+- [X] T024 [P] Migration test: clean database with **no** suspended companies → `057` succeeds
   - **Purpose**: Gate A normal path.
   - **Files**: `backend/tests/integration/migrations/test_057_preflight.py`
   - **Deps**: T015
   - **Acceptance**: Both columns and both CHECK constraints exist afterwards.
+  - **Result (2026-08-19, real Docker/PostgreSQL, ephemeral per-test database on `erp-system-db-1`)**: PASS — `test_057_succeeds_with_no_suspended_companies`.
 
-- [ ] T025 [P] Migration test: database with a pre-existing `status='suspended'` row → `057` **refuses**
+- [X] T025 [P] Migration test: database with a pre-existing `status='suspended'` row → `057` **refuses**
   - **Purpose**: Gate A — the core Correction-2 guarantee.
   - **Files**: `backend/tests/integration/migrations/test_057_preflight.py`
   - **Deps**: T015
   - **Acceptance**: Raises with a message naming the affected company and the remediation options; exit is a failure, not a warning.
+  - **Result (2026-08-19, real PostgreSQL)**: PASS — `test_057_refuses_with_pre_existing_suspended_row`. Asserts the affected slug, "cannot proceed", "MUST NOT be guessed", and both remediation words ("active"/"inactive") are all present in the raised message.
 
-- [ ] T026 [P] Migration test: refused `057` leaves the database **byte-for-byte unchanged**
+- [X] T026 [P] Migration test: refused `057` leaves the database **byte-for-byte unchanged**
   - **Purpose**: Proves no partial/fabricated state (no column added, no constraint created, no `pre_suspension_status` backfilled).
   - **Files**: `backend/tests/integration/migrations/test_057_preflight.py`
   - **Deps**: T025
   - **Acceptance**: Post-failure schema snapshot equals pre-run snapshot; `pre_suspension_status` column absent.
+  - **Result (2026-08-19, real PostgreSQL)**: PASS — `test_refused_057_leaves_no_partial_state`. Column set, CHECK constraint set, and `alembic_version` all identical before/after the failed attempt (version stays `056`), proving Alembic's own transaction wrapper rolled back every DDL statement the migration had issued before raising.
 
-- [ ] T027 **[Gate A]** Real-PostgreSQL migration cycle `056 → 061 → 056 → 061`
+- [X] T027 **[Gate A]** Real-PostgreSQL migration cycle `056 → 061 → 056 → 061`
   - **Purpose**: Partial unique indexes and CHECK constraints are PostgreSQL-specific; SQLite cannot substitute (plan.md §32).
   - **Files**: Docker Compose `db` service; `backend/tests/integration/migrations/test_migration_cycle_postgres.py`
   - **Deps**: T023, T024–T026
   - **Acceptance**: Clean in both directions; `\dt platform_*`, `\d companies`, `\d subscriptions` verified after each step.
+  - **Result (2026-08-19, real Docker/PostgreSQL)**: PASS — `test_full_up_down_up_cycle_on_real_postgres`. All 19 platform/entitlement/quota/usage/support tables present after each upgrade step and absent after downgrade; `companies.subscription_id` column survives downgrade (only its FK is dropped, per T017); the `subscriptions` partial unique index present/absent/present correctly across the cycle.
 
-- [ ] T028 **[Gate A]** Real-PostgreSQL test: after remediation of a suspended row, `057` succeeds and the cycle completes
+- [X] T028 **[Gate A]** Real-PostgreSQL test: after remediation of a suspended row, `057` succeeds and the cycle completes
   - **Purpose**: Proves the documented operator remediation path actually works.
   - **Files**: `backend/tests/integration/migrations/test_057_preflight.py`
   - **Deps**: T027
   - **Acceptance**: Operator sets the row's status back to its true prior value → re-run succeeds → up/down/up clean.
+  - **Result (2026-08-19, real PostgreSQL)**: PASS — `test_remediation_then_057_succeeds_and_cycle_completes`. Suspended row remediated to `active` → `057` succeeds → full chain to `061` → downgrade to `056` → upgrade to `061` again, all clean.
 
-- [ ] T029 [P] **[Gate A]** Verify migrations create **no** Platform Owner and that no `062` exists
+- [X] T029 [P] **[Gate A]** Verify migrations create **no** Platform Owner and that no `062` exists
   - **Purpose**: ADR-8 — credential provisioning is decoupled from schema versioning; also freezes the migration contract.
   - **Files**: `backend/tests/integration/migrations/test_no_bootstrap_in_migrations.py`
   - **Deps**: T027
   - **Acceptance**: After `upgrade head`, `SELECT count(*) FROM platform_administrators` is `0`. No migration file references bootstrap env vars. **No file named `062_*.py` exists** and head is `061`.
+  - **Result (2026-08-19, real PostgreSQL + static filesystem scan)**: PASS — 3 tests: `platform_administrators` count is `0` after `upgrade head`; no migration file references `PLATFORM_OWNER_BOOTSTRAP_EMAIL`/`PLATFORM_OWNER_BOOTSTRAP_PASSWORD_HASH`; no `062_*.py` file exists and the migration DAG's sole head is `061`.
 
-- [ ] T030 [P] **[Gate A]** Verify existing tenant data is untouched by `057`–`061`
+- [X] T030 [P] **[Gate A]** Verify existing tenant data is untouched by `057`–`061`
   - **Purpose**: Backward-compatibility guarantee (plan.md §33).
   - **Files**: `backend/tests/integration/migrations/test_existing_tenant_preservation.py`
   - **Deps**: T027
   - **Acceptance**: Seed companies/members/feature-flag rows before upgrade; all identical afterwards; new columns NULL everywhere.
+  - **Result (2026-08-19, real PostgreSQL)**: PASS — `test_pre_epic_9a_rows_survive_057_to_061_unchanged`. Seeded `companies`/`roles`/`company_members`/`inventory_feature_flags` rows at `056`; all fields byte-for-byte identical after upgrade to `061`; both new `companies` columns NULL on the seeded row.
 
-- [ ] T031 **[Gate A]** Gate A sign-off — record results in the implementation log
+- [X] T031 **[Gate A]** Gate A sign-off — record results in the implementation log
   - **Deps**: T024–T030
   - **Acceptance**: All Gate A tasks green. **Do not start Phase 3 until this passes.**
+  - **Result (2026-08-19)**: **GATE A: PASS.** 9/9 real-PostgreSQL tests green (T024, T025, T026, T027, T028, T029×3, T030) on the actual Docker Compose `db` service via ephemeral per-test databases — SQLite never used as proof for any Postgres-specific behaviour. Full migration chain `001→061` verified from empty; up→down→up cycle clean; preflight guard proven both to refuse correctly and to leave zero partial state; no bootstrap credential path exists in any migration; no `062` file exists; pre-existing tenant data (companies/roles/members/feature-flags) proven byte-for-byte unaffected. Phase 3 may now begin.
 
 ---
 
