@@ -62,59 +62,71 @@
 
 ### Tasks
 
-- [ ] T001 Verify Alembic head is still `056` and the revision chain `001→056` is linear
+- [X] T001 Verify Alembic head is still `056` and the revision chain `001→056` is linear
   - **Purpose**: plan.md §33 numbers new migrations from `057`; a different head invalidates the whole migration plan.
   - **Files**: `backend/migrations/versions/` (read-only)
   - **Deps**: none
   - **Acceptance**: Highest file is `056_crm_permission_backfill.py` with `revision = "056"`; no branching `down_revision`. If not → STOP and report.
+  - **Result (2026-08-19)**: PASS. Single head `056`, no duplicate `down_revision`, full chain `001→056` walks cleanly (56/56 revisions). 8 Sales-epic migration files (`026`–`033`) embed a descriptive suffix in their `revision` string (e.g. `"030_sales_delivery"`) rather than a bare zero-padded number — a pre-existing naming quirk, not a chain break; the linear walk succeeds regardless.
 
-- [ ] T002 [P] Verify `Session` model still has no `company_id` and `Session.created_at` is still inherited/immutable
+- [X] T002 [P] Verify `Session` model still has no `company_id` and `Session.created_at` is still inherited/immutable
   - **Purpose**: ADR-6's entire authentication-freshness mechanism depends on this (plan.md §3.1).
   - **Files**: `backend/modules/auth/models/session.py`, `backend/core/database/models/base_model.py` (read-only)
   - **Deps**: none
   - **Acceptance**: `sessions` has `user_id`, `is_revoked`, `revoked_at`, no `company_id`; `created_at` comes from `BaseModel` with `server_default=func.now()`. If drifted → STOP.
+  - **Result (2026-08-19)**: PASS. No drift from plan.md §3.1.
 
-- [ ] T003 [P] Verify `login()` creates a new `Session` and `refresh()` reuses the existing `session_id`
+- [X] T003 [P] Verify `login()` creates a new `Session` and `refresh()` reuses the existing `session_id`
   - **Purpose**: The single fact that makes `Session.created_at` a valid authentication-freshness value (ADR-6).
   - **Files**: `backend/modules/auth/services/auth_service.py` (read-only)
   - **Deps**: none
   - **Acceptance**: `login()` calls `create_session(...)`; `refresh()` calls `create_access_token(session_id=new_record.session_id)` and never `create_session`. If drifted → STOP; ADR-6 must be re-planned, not patched.
+  - **Result (2026-08-19)**: PASS. `refresh()` contains zero calls to `create_session`. No drift.
 
-- [ ] T004 [P] Verify `CompanyStatus` enum values and `Company` lifecycle fields are unchanged
+- [X] T004 [P] Verify `CompanyStatus` enum values and `Company` lifecycle fields are unchanged
   - **Purpose**: §9's suspend/reactivate design reuses the existing 5-state enum exactly.
   - **Files**: `backend/modules/companies/models/enums.py`, `models/company.py` (read-only)
   - **Deps**: none
   - **Acceptance**: Enum still `pending_setup|active|inactive|suspended|deleted`; `subscription_id` still nullable with no FK.
+  - **Result (2026-08-19)**: PASS. No drift.
 
-- [ ] T005 [P] Verify all five business-module routers still mount `get_current_company_member` and that it still does **not** read `Company.status`
+- [X] T005 [P] Verify all five business-module routers still mount `get_current_company_member` and that it still does **not** read `Company.status`
   - **Purpose**: The §3.3 enforcement gap that Phase 7 closes; also the mount point Phase 9 adds entitlement enforcement to.
   - **Files**: `backend/api/v1/router.py`, `backend/modules/users_roles/dependencies.py` (read-only)
   - **Deps**: none
   - **Acceptance**: Inventory/Purchase/Sales/Accounting/CRM all mount `get_current_company_member`; that function checks only `CompanyMember.status`. If a company-status check was added meanwhile → re-scope Phase 7 and report.
+  - **Result (2026-08-19)**: PASS. All five mount it via `backend/api/v1/router.py`; the dependency body checks only `CompanyMember.status in ("active", "pending_invitation")`. No drift; Phase 7 scope stands as planned.
 
-- [ ] T006 [P] Verify feature-toggle authorization findings still hold: Inventory/Sales/Purchase unguarded; Accounting/CRM already gated
+- [X] T006 [P] Verify feature-toggle authorization findings still hold: Inventory/Sales/Purchase unguarded; Accounting/CRM already gated
   - **Purpose**: Phase 10 hardens exactly 3 modules; hardening an already-fixed module is wasted/duplicated work.
   - **Files**: `backend/modules/{inventory,sales,purchase,accounting,crm}/router.py` (read-only)
   - **Deps**: none
   - **Acceptance**: Inventory/Sales/Purchase `PUT .../feature-flags/{flag_key}` still only `require_authenticated` + membership; Accounting still calls `user_has_accounting_permission`; CRM still `require_admin_or_above()`.
+  - **Result (2026-08-19)**: PASS. No drift; Phase 10's 3-module scope stands as planned.
 
-- [ ] T007 [P] Verify the `/platform-admin/...` frontend namespace and `/api/v1/platform/...` API namespace are still collision-free
+- [X] T007 [P] Verify the `/platform-admin/...` frontend namespace and `/api/v1/platform/...` API namespace are still collision-free
   - **Purpose**: Epic 9 lost days to a Next.js dynamic-route collision; plan.md §3.14 verified this namespace is clear.
   - **Files**: `frontend/src/app/(protected)/`, `backend/api/v1/router.py` (read-only)
   - **Deps**: none
   - **Acceptance**: No existing route group produces `/platform-admin/*`; no router mounts `/platform`. Confirm `(crm)` still owns bare `/reports` and `/settings` (must not be reused).
+  - **Result (2026-08-19)**: PASS. No collision; `(crm)` still owns bare `/reports` and `/settings`.
 
-- [ ] T008 [P] Verify `frontend/src/lib/api/client.ts` still hardcodes tenant auth at module scope
+- [X] T008 [P] Verify `frontend/src/lib/api/client.ts` still hardcodes tenant auth at module scope
   - **Purpose**: ADR-11's `AuthStrategy` refactor is scoped to this exact shape.
   - **Files**: `frontend/src/lib/api/client.ts` (read-only)
   - **Deps**: none
   - **Acceptance**: `buildHeaders()`/`postMultipart()` call `getAccessToken()` directly; 401 branch calls `acquireRefreshLock()` directly; constructor already accepts `baseUrl`.
+  - **Result (2026-08-19)**: PASS. No drift; ADR-11's refactor scope stands as planned.
 
-- [ ] T009 Establish green baseline: full backend suite + `tsc --noEmit` + `eslint` before any Epic 9A change
+- [X] T009 Establish green baseline: full backend suite + `tsc --noEmit` + `eslint` before any Epic 9A change
   - **Purpose**: Any later failure must be attributable to Epic 9A, not pre-existing breakage.
   - **Files**: `backend/tests/`, `frontend/`
   - **Deps**: T001–T008
   - **Acceptance**: Baseline pass/fail counts recorded in the implementation log. Known-flaky tests noted explicitly, not silently ignored.
+  - **Result (2026-08-19, real Docker/PostgreSQL, `erp-system-api-1`/`erp-system-web-1`)**: Backend: **5638 passed, 3 failed, 8 skipped** (5649 collected, 4125.51s). Frontend: `tsc --noEmit` clean (0 errors); `eslint` 0 errors, 55 pre-existing warnings (mostly `no-img-element`). 3 backend failures characterized individually (none touch `platform_admin`, `auth`, `companies`, or any file Epic 9A will modify — zero source files were changed this session, so none are attributable to Epic 9A):
+    - `tests/unit/core/test_settings.py::test_settings_default_debug_is_false` — **pre-existing environment artifact**, not flaky: fails deterministically because the container's `.env` sets `DEBUG=true` for local dev and `Settings()` reads it from the environment, overriding the test's assumed default. Reproduces in isolation.
+    - `tests/performance/accounting/test_report_performance.py::TestReportPerformance::test_trial_balance_and_balance_sheet_regression_guard` — **Full suite: FAILED. Isolation rerun: PASSED.** Characterized as load/order-sensitive or flaky based on the available evidence — a performance/timing-threshold test contending with 5648 other tests in one process. The full-suite failure is not rewritten as a pass; both results are recorded.
+    - `tests/unit/modules/accounting/test_recurring_journal_service.py::TestDueTemplateExecutes::test_due_template_creates_and_posts_journal` — **Full suite: FAILED. Isolation rerun: PASSED.** Same characterization as above; both results recorded.
 
 ---
 
