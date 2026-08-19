@@ -1,9 +1,9 @@
 # Epic 9A — Platform Administration / Super Admin: Official Business Specification
 
 **Feature Branch**: `009a-platform-admin`
-**Epic Sequence**: Inserted after completed **Epic 8 — Accounting & Finance**, alongside **Epic 9 — CRM** (in progress, not yet completed — see [§8 Assumptions](#8-assumptions)), and before **Epic 10 — Installments**. No existing Epic is renumbered.
+**Epic Sequence**: Inserted after completed **Epic 8 — Accounting & Finance** and completed **Epic 9 — CRM** (see [Assumption A1](#8-assumptions)), and before **Epic 10 — Installments**. No existing Epic is renumbered. Sequence: Epic 8 ✅ Complete → Epic 9 ✅ Complete → **Epic 9A ← Current** → Epic 10 ← Next.
 **Created**: 2026-08-18
-**Status**: Complete — all Open Questions resolved 2026-08-19, ready for `/sp.plan`
+**Status**: Ready for Product Owner approval — all Open Questions and final-consistency-review findings resolved 2026-08-19; ready for `/sp.plan` after approval
 **Input**: User description — "Epic 9A — Platform Administration / Super Admin: create the complete Specification for the DevSphere ERP SaaS Platform Administration / SaaS Control Plane capability."
 
 ---
@@ -50,8 +50,8 @@
 | Epic ID | 9A |
 | Epic Title | Platform Administration / Super Admin |
 | Epic Type | SaaS Control Plane (cross-cutting platform capability, not a tenant-facing business module) |
-| Inserted Between | Epic 8 (Accounting & Finance, complete) and Epic 10 (Installments, not started) |
-| Concurrent Epic | Epic 9 (CRM) — in progress on a separate branch; Epic 9A does not depend on Epic 9 and does not block it |
+| Inserted Between | Epic 9 — CRM (complete; Epic 9A is built directly on the completed Epic 9 codebase) and Epic 10 — Installments (not started) |
+| Preceding Epic | Epic 9 (CRM) — complete; Epic 9A's branch (`009a-platform-admin`) is a direct descendant of the completed Epic 9 branch (`009-crm`), not a concurrent/divergent branch |
 | Constitution Version | v1.2.1 |
 | Primary Constitution Anchor | §50 Platform Administration & SaaS Control Plane Principles |
 | Owning Layer | New platform-level module(s) within the existing Modular Monolith (§5) — not a separate system, not a microservice |
@@ -106,7 +106,7 @@ Epic 9A resolves these by specifying — at the business/requirements level — 
 - Epic 9A does NOT redesign tenant-level (Company/Tenant Admin) RBAC, authentication, or Better Auth/JWT infrastructure — it consumes and extends them.
 - Epic 9A does NOT introduce microservices, Kubernetes, a separate identity server, or a data warehouse.
 - Epic 9A does NOT grant Platform Admins unrestricted browsing/editing of tenant business transactions (invoices, journal entries, sales orders, etc.).
-- Epic 9A does NOT fix pre-existing, unrelated defects discovered during research (e.g., the missing role/permission checks on the four modules' feature-flag endpoints, or the frontend admin page calling a non-existent endpoint) — these are flagged in [§28 Risks](#28-risks) as adjacent findings for separate remediation, not resolved by this Epic.
+- Epic 9A does NOT fix pre-existing, unrelated defects discovered during research that are NOT prerequisites for Epic 9A's own entitlement security (e.g., the frontend admin page calling a non-existent `listCompanies()` endpoint instead of `listAdminCompanies()`, or the `SUPER_ADMIN`/`super_admin` casing inconsistency in `purchase/router.py`) — these remain flagged in [§28 Risks](#28-risks) for separate remediation. **The missing role/permission checks on the four modules' feature-flag mutation endpoints are the one exception**: because Epic 9A's Plan Entitlement layer sits directly above the existing Tenant Feature Toggle layer and depends on toggle mutations being properly authorized, this specific gap is an in-scope Epic 9A security prerequisite, not an adjacent unrelated defect — see [§17.4](#174-feature-toggle-authorization-hardening-security-prerequisite).
 
 ---
 
@@ -144,6 +144,7 @@ Platform Administration governs the platform. Company Administration governs the
 - BR-9A-001 (see [§13](#13-business-rules)): A Company/Tenant Admin MUST NOT gain Platform Admin capability through tenant roles, tenant permissions, tenant sessions, tenant API endpoints, feature toggles, subscription plans, or manipulated tenant context.
 - A Platform Admin account MUST NOT implicitly gain access to a tenant's business data merely by having platform authority — cross-tenant business-data access requires the explicit privileged pathway in [§18](#18-supportcross-tenant-access-requirements).
 - A Platform Admin session/token MUST be structurally distinguishable from a tenant session/token (different claim namespace or token type), so that no tenant-scoped code path can accidentally honor platform authority, and no platform-scoped code path can accidentally honor a tenant session.
+- Platform Admin's tenant-selection mechanism (for inspection, support access, or lifecycle actions) MUST remain structurally separate from the tenant-side canonical `CompanyContext` / `erp_active_company_id` mechanism — selecting a tenant for platform-level inspection MUST NOT mutate, read, or masquerade as that tenant's own active-company context, and platform permissions MUST NEVER be derived from `erp_active_company_id` or any other tenant-context value (BR-9A-034, BR-9A-035, BR-9A-036).
 
 ---
 
@@ -169,6 +170,7 @@ Platform Administration governs the platform. Company Administration governs the
 16. Platform-wide configuration (distinct from tenant business configuration)
 17. Administrative notifications/alerts (requirements and integration boundary only, not a full notification product)
 18. Commercialization readiness labeling (in-scope-now vs. foundation vs. out-of-scope)
+19. Feature-toggle authorization hardening on the four existing modules' (Inventory, Sales, Purchase, Accounting) feature-flag mutation endpoints — a security prerequisite for the Plan Entitlement model, not a redesign of those modules (see [§17.4](#174-feature-toggle-authorization-hardening-security-prerequisite))
 
 ### 7.2 Out of Scope
 
@@ -178,7 +180,7 @@ See [§27](#27-out-of-scope) for the complete, itemized list.
 
 ## 8. Assumptions
 
-- **A1 — Epic 9 (CRM) is not actually complete.** The instruction that Epic 9A is "inserted after completed Epic 9" reflects the intended epic *sequence*, not literal completion status: repository inspection confirms Epic 9 (CRM) is mid-development on a separate branch (uncommitted work), not merged or closed. Epic 9A has no functional dependency on CRM and does not need Epic 9 to be complete to proceed; the sequence numbering (9 → 9A → 10) is preserved regardless.
+- **A1 — Epic 9 (CRM) is complete and forms the base for Epic 9A.** Epic 9 (CRM) closed on 2026-08-18 (implementation, live-browser verification, and gap-remediation all complete on the `009-crm` branch). Epic 9A's branch (`009a-platform-admin`) is a direct descendant of the completed `009-crm` state — the sequence is Epic 8 → Epic 9 → Epic 9A → Epic 10, with Epic 9A built on top of, not developed concurrently with, Epic 9. Epic 9A still has no *functional* dependency on CRM's specific business logic (it treats "module" entitlement generically, per [Assumption A7](#8-assumptions)), but it does inherit Epic 9's completed codebase as its base.
 - **A2 — "Deactivated" maps to the existing `inactive` status, and remains Owner-controlled.** The existing `CompanyStatus` enum already models 5 states (`pending_setup`, `active`, `inactive`, `suspended`, `deleted`) with documented transition ownership: `active↔inactive` and `active/inactive→deleted` are Owner-only; `active/inactive↔suspended` are documented SuperAdmin-only. Epic 9A reuses this exactly — Platform Admin's tenant-lifecycle write authority is scoped to **Suspend** and **Reactivate (lift suspension)** only. Platform Admin does not gain new authority over `inactive` (owner deactivation) or `deleted` (owner soft-delete); it retains read/inspect visibility into those states. This is the "reasonable default" that avoids contradicting the already-implemented and documented model.
 - **A3 — Trial tenants are confirmed future-ready only; not implemented in this Epic.** No trial concept exists in the codebase today. Per resolved [OQ-1](#29-open-questions--clarifications) (decided 2026-08-19), Epic 9A does not implement a trial subscription state now — only `active` and `ended` are mandatory-now subscription states ([§23.2](#232-subscription-lifecycle-new--minimal-model)). The Plan/Subscription data model MUST remain extensible enough to add `trial` later without a breaking redesign (FR-9A-130).
 - **A4 — Platform Admin identity is a new, first-class concept**, not a repurposing of the existing (effectively dead) `super_admin` JWT-role-string check. The existing check is treated as legacy scaffolding to be superseded, not extended, because it is provably unreachable in production (`CurrentUser.roles` is always `[]`).
@@ -206,6 +208,7 @@ See [§27](#27-out-of-scope) for the complete, itemized list.
 | Health endpoints | `GET /api/v1/health`, `/health/live`, `/health/ready` | The operational signal source for the Platform Health dashboard |
 | Transactional outbox / event pattern | `backend/core/events/outbox.py`, `relay.py` | The durable-event pattern platform notifications should prefer, acknowledging the relay is currently a logging-only stub |
 | SaaS Readiness principle | Constitution §37 | The plan/company-plan/quota/limit concept this Epic operationalizes |
+| Canonical tenant context (`CompanyContext` / `erp_active_company_id`) | `frontend/src/contexts/CompanyContext.tsx` | The single, existing source of truth for which tenant/company is currently active in tenant-scoped frontend flows. Epic 9A MUST resolve tenant context through this mechanism wherever tenant-scoped behavior is involved, and MUST NOT introduce a second, competing tenant-context mechanism (BR-9A-034). |
 
 ### 9.2 New Requirements Introduced by Epic 9A
 
@@ -218,6 +221,8 @@ See [§27](#27-out-of-scope) for the complete, itemized list.
 - A platform-level, cross-tenant, actor-centric audit view — does not exist today (three tenant/system-scoped audit tables exist independently).
 - Platform-wide configuration governance, distinct from tenant business configuration — does not exist today.
 - AI usage/credit readiness schema-level requirements — does not exist today.
+- Authorization hardening on the four existing modules' (Inventory, Sales, Purchase, Accounting) tenant feature-toggle mutation endpoints — a new security prerequisite for the Plan Entitlement layer, since those endpoints today have no role/permission check beyond active tenant membership (see [§17.4](#174-feature-toggle-authorization-hardening-security-prerequisite)).
+- An explicit constraint that Epic 9A MUST resolve tenant context exclusively through the existing canonical `CompanyContext`/`erp_active_company_id` mechanism, and MUST NOT introduce a competing one — this did not need stating before because no platform-level tenant-selection concept existed prior to this Epic (BR-9A-034–BR-9A-036).
 
 ---
 
@@ -265,7 +270,7 @@ See [§27](#27-out-of-scope) for the complete, itemized list.
 **Authorization**: `platform.tenants.suspend` (for suspend), `platform.tenants.reactivate` (for reactivate) — modeled as separate permissions so an operator can hold one without the other.
 **Audit**: Full audit record mandatory (Constitution §35 schema), including the mandatory reason as part of `context` or `metadata`.
 **Acceptance Scenarios**:
-1. **Given** an `active` tenant and a Platform Admin with `platform.tenants.suspend`, **When** they suspend it with a reason, **Then** the tenant's status becomes `suspended`, tenant users immediately lose access on their next request, and an audit record is written with before=`active`, after=`suspended`, and the reason.
+1. **Given** an `active` tenant and a Platform Admin with `platform.tenants.suspend`, **When** they suspend it with a reason, **Then** the tenant's status becomes `suspended`, all of that tenant's currently active user sessions are immediately revoked/invalidated (not merely blocked on next request), and an audit record is written with before=`active`, after=`suspended`, and the reason.
 2. **Given** a `suspended` tenant, **When** a Platform Admin without `platform.tenants.reactivate` attempts to reactivate it, **Then** the request is rejected with an authorization error and no state change occurs.
 3. **Given** a Platform Admin submits a suspend request with no reason, **When** the request is validated, **Then** it is rejected before any state change, and no audit record (other than the rejected-attempt itself, per [§19](#19-audit--security-requirements)) is written.
 
@@ -394,7 +399,7 @@ Cross-cutting scenarios not tied to a single user story, proving tenant/platform
 2. **Given** a Company/Tenant Admin manipulates their tenant context or session claims client-side, **When** they attempt to reach a platform endpoint, **Then** the platform authorization boundary rejects the request — platform authority is never derivable from tenant-supplied context.
 3. **Given** a Platform Admin account with no tenant membership anywhere in the system, **When** they authenticate, **Then** they can exercise their platform permissions without being blocked by any tenant-membership check.
 4. **Given** a Platform Admin's platform session, **When** it is used against a tenant-scoped (`/api/v1/companies/{id}/...` non-admin) endpoint without an active, explicit support-access grant, **Then** it is treated as any other unauthenticated-for-that-tenant request — platform authority does not implicitly unlock tenant endpoints.
-5. **Given** a suspended tenant, **When** any of its tenant users attempt any tenant-scoped action, **Then** every such action is rejected via the existing `CompanySuspendedError` pathway — suspension takes effect for all tenant users, not just new logins.
+5. **Given** a suspended tenant, **When** the suspension is applied, **Then** all of that tenant's currently active user sessions are immediately revoked, and any subsequent action attempted by any tenant user — whether using an old, now-revoked session or attempting a fresh login — is rejected; suspension takes effect immediately and universally, not just for new logins.
 6. **Given** two Platform Admins concurrently attempt to suspend the same already-active tenant, **When** both requests are processed, **Then** exactly one succeeds and the other receives a specific "state already changed" error, not a silent duplicate audit entry (see [Edge Cases](#22-edge-cases)).
 7. **Given** a Platform Admin without `platform.audit.read`, **When** they call the platform audit endpoint directly, **Then** the request is rejected regardless of what other platform permissions they hold — permission areas are independent, not implied by seniority alone (except for the Platform Owner bundle, which holds all permissions explicitly, not by inference).
 
@@ -421,6 +426,8 @@ Requirements are grouped by domain. Each is unambiguous, testable, and implement
 - **FR-9A-014**: Every tenant lifecycle transition performed by a Platform Admin MUST produce a full audit record and fire the corresponding domain event.
 - **FR-9A-015**: Suspending a tenant MUST NOT delete, truncate, or archive any tenant business data.
 - **FR-9A-016**: The system MUST provide a lifecycle history view per tenant, showing every status transition with actor, timestamp, and reason.
+- **FR-9A-017**: The system MUST actively revoke/invalidate all currently active tenant-user sessions for a tenant at the moment that tenant is suspended (resolved [OQ-3](#29-open-questions--clarifications)) — this MUST occur as part of the same transactional suspension operation (permission check → confirmation → mandatory reason → state change → session revocation → audit record), using the same session-revocation mechanism already required for Platform Administrator account deactivation (FR-9A-220).
+- **FR-9A-018**: Reactivating a tenant MUST restore tenant availability but MUST NOT automatically restore sessions revoked at suspension time; tenant users MUST authenticate again through the normal login flow to obtain a new session after reactivation.
 
 ### 12.3 Tenant Detail / 360° View
 
@@ -539,6 +546,11 @@ See [§21](#21-operational-monitoring-requirements).
 | BR-9A-029 | Bulk lifecycle or entitlement actions MUST produce one audit record per affected tenant, never a single blended record covering multiple tenants. |
 | BR-9A-030 | A quota's enforcement style (hard limit, soft/warning limit, or informational-only) MUST be explicitly declared per quota category — no quota category defaults silently to hard enforcement without that being a deliberate configuration choice. |
 | BR-9A-031 | The first Platform Owner account MUST be created via a one-time, out-of-band seed/migration mechanism, never via the normal in-app account-creation API — because every in-app creation path requires an already-authenticated Platform Admin (self-referential bootstrap problem), resolved per [OQ-5](#29-open-questions--clarifications). |
+| BR-9A-032 | Tenant suspension MUST actively revoke/invalidate all currently active sessions belonging to that tenant's users, not merely block their next request; blocking on next request MAY remain as a secondary defense but is not sufficient on its own. Reactivation restores tenant access but does not restore previously revoked sessions — users MUST re-authenticate (resolved [OQ-3](#29-open-questions--clarifications), FR-9A-017, FR-9A-018). |
+| BR-9A-033 | Tenant feature-toggle mutation endpoints MUST require an appropriate tenant-administration permission, not mere active tenant membership; this hardening is an in-scope Epic 9A security prerequisite for the Plan Entitlement model, not an unrelated defect (see [§17.4](#174-feature-toggle-authorization-hardening-security-prerequisite)). |
+| BR-9A-034 | Tenant-scoped frontend behavior and entitlement checks MUST resolve the currently active tenant exclusively through the canonical `CompanyContext` / `erp_active_company_id` mechanism; Epic 9A MUST NOT introduce a second, competing tenant-context source of truth. |
+| BR-9A-035 | A Platform Administrator selecting a tenant for inspection or support access MUST NOT mutate, read from, or otherwise interact with the normal tenant-side `CompanyContext` / `erp_active_company_id` mechanism — Platform Admin's tenant-selection context is a structurally separate, platform-scoped concept. |
+| BR-9A-036 | Platform permissions MUST NEVER be derived from, or evaluated against, `erp_active_company_id` or any other tenant-context value; manipulating client-side company/tenant context MUST NEVER grant platform authority or cross-tenant access (reinforces BR-9A-002, BR-9A-003). |
 
 ---
 
@@ -563,10 +575,10 @@ Epic 9A reuses the existing `CompanyStatus` enum exactly as implemented (`backen
 
 ### 14.3 Effect of Suspension on Access and Data
 
-- Suspension MUST block all tenant-scoped API access for every user of that tenant, immediately (already enforced today via `CompanySuspendedError` at the read boundary — Epic 9A supplies the missing write path).
+- Suspension MUST block all tenant-scoped API access for every user of that tenant, immediately.
+- Suspension MUST actively revoke/invalidate all currently active tenant-user sessions for that tenant at the moment of suspension (resolved [OQ-3](#29-open-questions--clarifications), final decision 2026-08-19; FR-9A-017, BR-9A-032) — this is a stronger guarantee than blocking only the *next* request. Already-issued session tokens for that tenant's users MUST stop being honored immediately, using the same session-revocation mechanism already required for Platform Administrator account deactivation ([§19.4](#194-session-and-access-revocation)). The existing `CompanySuspendedError` "blocked on next request" pathway MAY remain as an additional defense-in-depth layer, but it is NOT a substitute for active session invalidation.
 - Suspension MUST NOT delete, archive, or modify any tenant business data.
-- Suspension is NOT required to actively force-terminate already-established tenant sessions (resolved [OQ-3](#29-open-questions--clarifications), decided 2026-08-19) — blocking the *next* request from any tenant session, via the existing `CompanySuspendedError` pathway, satisfies this requirement. Active session force-termination at the moment of suspension remains a documented possible future security-posture enhancement (see [§19.4](#194-session-and-access-revocation) for the distinct, already-required case of *account deactivation*, which MUST invalidate active sessions immediately), not an in-scope requirement of this Epic.
-- Reactivation MUST restore full access without requiring any tenant data migration or re-onboarding.
+- Reactivation MUST restore tenant availability (data, configuration, entitlements) without requiring any tenant data migration or re-onboarding, but MUST NOT automatically restore sessions that were revoked at suspension (FR-9A-018) — tenant users MUST re-authenticate through the normal authentication flow after reactivation to obtain a new session.
 
 ### 14.4 Platform Administrator Accounts
 
@@ -687,13 +699,22 @@ These are candidates to be confirmed during Plan/product review, not mandatory h
 - FR-9A-181: The system MUST distinguish and clearly render five usage states per quota: `ok`, `approaching` (configurable threshold), `reached`, `unlimited` (plan grants no cap), and `unavailable` (measurement failure).
 - FR-9A-182: "Unlimited" MUST be a distinct, explicit plan/entitlement value — never represented by an implausibly large number.
 
+### 17.4 Feature-Toggle Authorization Hardening (Security Prerequisite)
+
+Epic 9A's Plan Entitlement layer sits directly above the existing per-module Tenant Feature Toggle tables (§17.1) and treats their mutation as a security-relevant action gating what a tenant can access up to the Plan Entitlement ceiling. Today, the four modules' (Inventory, Sales, Purchase, Accounting) feature-flag mutation endpoints have no role/permission check beyond active tenant membership — any authenticated tenant member can toggle any feature flag for their company. Because Epic 9A's own entitlement model depends on toggle mutations being properly authorized, this gap is treated as an in-scope Epic 9A security prerequisite, not an adjacent unrelated defect.
+
+- FR-9A-183: Ordinary tenant users MUST NOT be able to modify company/module feature-toggle state merely because they are active members of the tenant.
+- FR-9A-184: Tenant feature-toggle mutations MUST require an appropriate tenant-administration permission (e.g., tenant `owner`/`admin` role or an equivalent explicit permission), not mere active membership.
+- FR-9A-185: A tenant feature toggle MUST NEVER allow access beyond the Platform Plan Entitlement ceiling (per [§17.2](#172-resolution-rules)) — feature-toggle mutation MUST NOT provide an entitlement-escalation path.
+- FR-9A-186: This hardening applies uniformly to every module exposing mutable feature-toggle state — including Inventory, Sales, Purchase, Accounting, CRM, and any future optional module — using the same authorization pattern in each. This Specification does not redesign each module's endpoints individually; that mapping is Plan/Tasks/Implementation-phase work.
+
 ---
 
 ## 18. Support/Cross-Tenant Access Requirements
 
 ### 18.1 Principle
 
-Normal Platform Admin screens (dashboard, tenant list/detail, plans, subscriptions, entitlements, quotas, audit, monitoring) expose only aggregate/summary data, never tenant business records. Any need to inspect tenant-specific business context requires the explicit workflow below.
+Normal Platform Admin screens (dashboard, tenant list/detail, plans, subscriptions, entitlements, quotas, audit, monitoring) expose only aggregate/summary data, never tenant business records. Any need to inspect tenant-specific administrative context (configuration, entitlements, users, lifecycle/audit information — see [§18.3](#183-what-support-access-grants-this-epic)) requires the explicit workflow below.
 
 ### 18.2 Workflow Requirements
 
@@ -745,11 +766,14 @@ Normal Platform Admin screens (dashboard, tenant list/detail, plans, subscriptio
 - FR-9A-215: Platform Admin UI/API responses MUST NEVER expose secrets, credentials, or internal error details, consistent with Constitution §19/§21.
 - FR-9A-216: Platform Admin session revocation and account-access revocation MUST be immediate and MUST invalidate already-issued tokens/sessions for that account (not merely block new logins).
 - FR-9A-217: The Platform Admin surface MUST be architecturally ready for future MFA enforcement; MFA is not implemented anywhere in the codebase today (confirmed: zero existing MFA infrastructure), so this is a readiness requirement, not an in-scope implementation.
+- FR-9A-218: Tenant-scoped frontend behavior and entitlement checks MUST resolve the active tenant exclusively via the canonical `CompanyContext` / `erp_active_company_id` mechanism (BR-9A-034); Platform Admin surfaces MUST use a structurally separate tenant-selection mechanism for inspection/support access (BR-9A-035) and MUST NEVER derive platform authority from it (BR-9A-036).
+- FR-9A-219: Where implementation/verification during Plan/Tasks discovers existing code paths using an inconsistent or ad-hoc company-id mechanism instead of the canonical `CompanyContext` / `erp_active_company_id`, those paths MUST be normalized to the canonical mechanism where required for secure entitlement enforcement, as part of Epic 9A's hardening work.
 
 ### 19.4 Session and Access Revocation
 
 - FR-9A-220: Deactivating a Platform Administrator account MUST invalidate all of that account's active platform sessions within the bound defined in [§24](#24-non-functional-requirements).
 - FR-9A-221: Revoking a specific platform permission MUST take effect on the account's next privileged action at the latest — a long-lived session MUST NOT be able to continue exercising a revoked permission indefinitely.
+- FR-9A-222: Suspending a tenant MUST trigger immediate revocation of all of that tenant's currently active user sessions, using the same underlying session-revocation mechanism as Platform Administrator account deactivation (FR-9A-220) — this is a mandatory, not optional, part of the suspend operation (resolved [OQ-3](#29-open-questions--clarifications), FR-9A-017, BR-9A-032).
 
 ---
 
@@ -808,7 +832,7 @@ Built on existing infrastructure only — no new observability platform is intro
 | 16 | Subscription dates invalid (e.g., end date before effective date) | Rejected at validation time before the subscription record is created/changed. |
 | 17 | Plan change partially fails (e.g., entitlement update succeeds, audit write fails) | Entire operation MUST be transactional; a partial failure MUST leave the tenant's subscription/entitlements in their pre-change state, not a half-applied state (BR-9A-024 extended to subscription changes). |
 | 18 | Audit write failure during a privileged operation | The privileged operation itself fails (fail-closed, BR-9A-024) — this is a deliberate, stricter-than-default choice for platform-level actions. |
-| 19 | Tenant is suspended while its users have active sessions | Suspension blocks the *next* request from any of those sessions, via the existing `CompanySuspendedError` pathway (§14.3). Per resolved [OQ-3](#29-open-questions--clarifications), active force-termination of already-open sessions at the moment of suspension is NOT required by this Epic — blocking on next request is sufficient. |
+| 19 | Tenant is suspended while its users have active sessions | All of that tenant's currently active sessions are immediately revoked/invalidated as part of the suspension operation (resolved [OQ-3](#29-open-questions--clarifications), FR-9A-017, BR-9A-032, §14.3) — not merely blocked on next request. Any further request from those sessions is rejected. |
 | 20 | AI credits adjusted concurrently (future) | Same concurrency-safety expectation as edge case #14 — exactly one adjustment applies per logical request; the model MUST NOT be implemented in a way that allows a lost-update race, once AI credits exist. |
 | 21 | Platform dependency/health source unavailable | Health view shows that specific check as `unavailable`/`degraded` with the check name, never a blanket "unknown" that hides which dependency failed (FR-9A-243). |
 | 22 | *(Discovered during research, not in the original list)* A Platform Admin account is created but never assigned a role | Account exists but is effectively non-functional (holds zero permissions) — this is a valid, intentional intermediate state (e.g., during onboarding), not an error; FR-9A-143 governs the reverse case (last role removed). |
@@ -835,8 +859,8 @@ deleted ──(Owner: restore, within retention window)──▶ inactive
 |---|---|---|---|---|
 | `pending_setup → active` | Owner | No | Yes (existing) | Full access begins |
 | `active ↔ inactive` | Owner | No (existing behavior) | Yes (existing) | Owner-paused: existing behavior unchanged by this Epic |
-| `active/inactive → suspended` | Platform Admin, `platform.tenants.suspend` | **Yes** | **Yes** | All tenant users blocked |
-| `suspended → active` | Platform Admin, `platform.tenants.reactivate` | **Yes** | **Yes** | Full access restored |
+| `active/inactive → suspended` | Platform Admin, `platform.tenants.suspend` | **Yes** | **Yes** | All tenant users' active sessions revoked/invalidated; all further access blocked |
+| `suspended → active` | Platform Admin, `platform.tenants.reactivate` | **Yes** | **Yes** | Tenant availability restored; revoked sessions are NOT automatically restored — tenant users must re-authenticate |
 | `active/inactive → deleted` | Owner | Yes (existing, `deletion_reason` field) | Yes (existing) | Existing soft-delete behavior unchanged |
 | `deleted → inactive` | Owner, within retention window | — | Yes (existing) | Existing restore behavior unchanged |
 
@@ -867,6 +891,8 @@ An intermediate `trial` state and a `past_due`/`grace_period` state (relevant on
 ### Security
 - All platform endpoints require authentication via a Platform Administrator Account and platform session; least privilege is enforced per permission, not per role bundle alone.
 - All state-changing platform operations require CSRF protection, consistent with Constitution §19.
+- Tenant suspension MUST immediately revoke active tenant-user sessions, using the same session-revocation mechanism required for Platform Administrator account deactivation (FR-9A-222).
+- Tenant-scoped context resolution MUST use only the canonical `CompanyContext`/`erp_active_company_id` mechanism; Platform Admin's own tenant-selection context is structurally separate and never a source of platform authority (BR-9A-034–BR-9A-036).
 
 ### Performance
 - Dashboard aggregate queries and tenant list/search MUST remain responsive at a scale proportionate to the platform's current tenant count. Per resolved [OQ-4](#29-open-questions--clarifications) (decided 2026-08-19), this Epic deliberately does NOT commit to specific numeric latency/throughput targets — no existing project benchmark was found, and fabricating a number would misrepresent an unvalidated target as a requirement. Numeric SLOs MAY be established later via a dedicated ADR once real usage data exists, without requiring a revision to this Epic's functional scope.
@@ -905,6 +931,7 @@ An intermediate `trial` state and a `past_due`/`grace_period` state (relevant on
 - SC-6: A tenant-scoped session or token — under any tenant role, including Owner — cannot reach any platform-level capability, verified by explicit negative test scenarios (§11 Acceptance Scenarios).
 - SC-7: Platform operations remain tenant-safe under a simulated dependency failure (e.g., health-check source down): tenant isolation and audit integrity are unaffected even when a monitoring widget shows "unavailable."
 - SC-8: Cross-tenant support access is never obtainable without an explicit reason and a visible time bound, verified by attempting to bypass each requirement individually and observing rejection.
+- SC-9: No Epic 9A code path introduces a tenant-context mechanism other than the canonical `CompanyContext`/`erp_active_company_id`; Platform Admin's own tenant-selection context is verifiably separate and never derives platform authority (BR-9A-034–BR-9A-036).
 
 ---
 
@@ -917,7 +944,7 @@ An intermediate `trial` state and a `past_due`/`grace_period` state (relevant on
 | **Users/Roles** | Platform Administration's RBAC model is structurally separate but conceptually mirrors the existing `SYSTEM_ROLES`/`Permission` pattern; no shared tables. |
 | **Feature Toggles** | Platform Administration's Plan Entitlement layer sits above the existing per-module tenant feature-toggle tables and resolves against them per §17.2; it does not replace them. |
 | **Audit** | Platform-level audit records follow the existing Constitution §35 schema; whether they live in a new platform-scoped table or a cross-cutting view over existing tables is a Plan-phase decision, not specified here. |
-| **Existing ERP modules** (Inventory, Purchase, Sales, Accounting, future CRM) | Consulted only for usage metering (e.g., transaction counts) and entitlement enforcement; Platform Administration never directly manipulates their business records. |
+| **Existing ERP modules** (Inventory, Purchase, Sales, Accounting, CRM) | Consulted only for usage metering (e.g., transaction counts) and entitlement enforcement; Platform Administration never directly manipulates their business records. |
 | **Future Billing Provider** | Integrated via the existing Plugin/Adapter pattern (Constitution §47); Epic 9A defines the Subscription/Plan data concepts the adapter will eventually act on, not the adapter itself. |
 | **Future AI Provider** | Integrated via the existing Plugin/Adapter pattern (Constitution §47); Epic 9A defines the provider-neutral usage/credit schema requirements only. |
 | **Future Notification Provider** | Integrated via the existing Plugin/Adapter pattern (Constitution §47); Epic 9A defines administrative alert *requirements*, not a notification product. |
@@ -937,19 +964,19 @@ An intermediate `trial` state and a `past_due`/`grace_period` state (relevant on
 - Arbitrary browsing or editing of tenant business transactions by Platform Admins.
 - Unrestricted user impersonation ("login as user").
 - Production infrastructure redesign.
-- Features belonging to future ERP Epics (e.g., CRM's own business logic, Installments, Reports).
-- Fixing pre-existing, unrelated defects surfaced during research (missing role checks on feature-flag endpoints across four modules; the frontend admin page calling a non-existent `listCompanies()` endpoint instead of `listAdminCompanies()`; the `SUPER_ADMIN`/`super_admin` casing inconsistency in `purchase/router.py`) — these are flagged in [§28 Risks](#28-risks) for separate remediation.
+- Business logic outside Epic 9A's Platform Administration scope (e.g., CRM business logic, Installments, Reports).
+- Fixing pre-existing, unrelated defects surfaced during research that are NOT prerequisites for Epic 9A's entitlement security (the frontend admin page calling a non-existent `listCompanies()` endpoint instead of `listAdminCompanies()`; the `SUPER_ADMIN`/`super_admin` casing inconsistency in `purchase/router.py`) — these remain flagged in [§28 Risks](#28-risks) for separate remediation. (The missing role/permission checks on the four modules' feature-flag mutation endpoints are the one exception — see [§17.4](#174-feature-toggle-authorization-hardening-security-prerequisite), an in-scope Epic 9A security prerequisite.)
 
 ---
 
 ## 28. Risks
 
 1. **Legacy `super_admin` scaffolding is dead code that must be superseded, not extended.** Three independent redeclarations of `_ROLE_SUPER_ADMIN` exist, and the underlying `CurrentUser.roles` is always empty in production. Risk: an implementation could be tempted to "just populate `roles=["super_admin"]`" as a shortcut instead of building the real Platform Administrator Account model this spec requires, reintroducing a single-flag authorization model instead of genuine RBAC. Mitigation: this spec explicitly requires (BR-9A-002) that platform authority never derives from `CurrentUser.roles`.
-2. **Adjacent, pre-existing security gap**: the four modules' feature-flag update endpoints (`inventory`, `sales`, `purchase`, `accounting`) currently have no role/permission check beyond active tenant membership — any authenticated tenant member can toggle any feature flag for their company. This is not caused by, or fixed by, Epic 9A, but Epic 9A's Plan Entitlement layer sits directly above this gap; the Plan phase should flag this to the owning modules for separate remediation.
+2. **Feature-toggle authorization gap is an Epic 9A entitlement-security prerequisite, not merely adjacent.** The four modules' (`inventory`, `sales`, `purchase`, `accounting`) feature-flag update endpoints currently have no role/permission check beyond active tenant membership — any authenticated tenant member can toggle any feature flag for their company. Because Epic 9A's Plan Entitlement layer sits directly above this gap and depends on toggle mutations being properly authorized ([§17.4](#174-feature-toggle-authorization-hardening-security-prerequisite)), this is an in-scope Epic 9A security prerequisite: Plan/Tasks/Implementation MUST harden these endpoints as part of Epic 9A's secure rollout, not defer it indefinitely to the owning modules alone.
 3. **Frontend admin page does not reach the real backend endpoint** (`AdminCompanyListPage` calls `listCompanies()`, not `listAdminCompanies()`, and no bare `GET /companies` route exists). Building on top of this without noticing could cause the new Platform Dashboard to inherit the same disconnect. Mitigation: flagged explicitly here for the Plan/implementation phase.
 4. **Naming inconsistency** (`SUPER_ADMIN` vs. `super_admin`) if not deliberately resolved during the Plan phase could propagate into the new Platform RBAC permission-code naming.
-5. **Epic 9 (CRM) concurrency**: Epic 9A and Epic 9 are being developed on separate, divergent branches. If Epic 9A introduces module-entitlement concepts that assume CRM's eventual feature-flag table shape, there is a risk of rework once CRM merges. Mitigation: this spec treats "module" entitlement generically (any module, not CRM-specific), minimizing coupling.
-6. **Audit fail-closed design (BR-9A-024)** is stricter than the existing pattern in Accounting/Companies modules (which log-and-continue on audit issues in some paths). This is a deliberate elevation given platform-level blast radius, but it must be explicitly confirmed with the product owner during Plan review since it changes operational behavior (a Platform Admin action can now fail due to an audit-infrastructure problem, not just a business-rule violation).
+5. **Module-entitlement coupling to any single module's feature-flag shape.** Although Epic 9 (CRM) is now complete and Epic 9A is built directly on top of it, Epic 9A's Plan Entitlement layer must still avoid assuming CRM's (or any other module's) feature-flag table shape is uniquely authoritative. Mitigation: this spec treats "module" entitlement generically (any module, not CRM-specific — see [Assumption A7](#8-assumptions) and [§17.4](#174-feature-toggle-authorization-hardening-security-prerequisite)), minimizing coupling to any one module's implementation details.
+6. **Audit fail-closed design (BR-9A-024)** is stricter than the existing pattern in Accounting/Companies modules (which log-and-continue on audit issues in some paths). This is a deliberate, already-approved Epic 9A requirement given platform-level blast radius — it is NOT an open product decision requiring reconfirmation during `/sp.plan` (see [§29](#29-open-questions--clarifications)). Plan/implementation MUST account for its transactional and operational consequences (a Platform Admin action can now fail due to an audit-infrastructure problem, not just a business-rule violation).
 
 ---
 
@@ -962,11 +989,18 @@ All five clarifications originally raised during specification were resolved wit
 - **OQ-2 — During an active cross-tenant support-access session, may a Platform Admin view (read-only) the target tenant's own business records (e.g., a specific invoice a customer is complaining about), or is support access strictly limited to configuration/entitlement/user inspection?** BR-9A-021 defaulted to inspection-only in the narrow sense (configuration/entitlements/users), but real support scenarios could plausibly require seeing an actual business record.
   **Resolved: Strictly inspection-only — no business-record access, read or write, ever, in or out of a support session.** BR-9A-021 and §18.3/§18.4 are updated accordingly. If a genuine future need for read-only business-record access during support sessions is confirmed, it requires its own explicit specification update, not an implicit extension of this Epic.
 - **OQ-3 — When a tenant is suspended, must already-established tenant-user sessions be actively force-terminated at the moment of suspension, or is "blocked on next request" sufficient?** The existing `CompanySuspendedError` pathway already blocks the next request; whether Epic 9A must add active session termination was a security-posture decision affecting NFR scope.
-  **Resolved: "Blocked on next request" is sufficient.** No new active session-termination mechanism is required for suspension in this Epic ([§14.3](#143-effect-of-suspension-on-access-and-data), Edge Case #19). This reuses existing behavior and keeps scope minimal; active force-termination on suspension remains a possible future security-posture enhancement, not a requirement.
+  **Resolved (final, 2026-08-19): Active session revocation is required.** Tenant suspension MUST actively revoke/invalidate all of that tenant's currently active user sessions at the moment of suspension — this is a mandatory part of the suspend operation (FR-9A-017, FR-9A-018, FR-9A-222, BR-9A-032, [§14.3](#143-effect-of-suspension-on-access-and-data), [§19.4](#194-session-and-access-revocation), Edge Case #19), using the same session-revocation mechanism already required for Platform Administrator account deactivation. The `CompanySuspendedError` "blocked on next request" pathway MAY remain as an additional defense-in-depth layer but is NOT, by itself, sufficient. Reactivation restores tenant availability but does NOT automatically restore revoked sessions — tenant users must re-authenticate.
 - **OQ-4 — Are there specific performance/scale targets (tenant count, concurrent Platform Admin users, dashboard load time) that Platform Administration must meet?** No existing project standard was found for this.
   **Resolved: No specific numeric targets in this Epic.** Non-functional requirements stay qualitative ("responsive," "paginated from the outset," per [§24](#24-non-functional-requirements)). Fabricating a number would misrepresent an unvalidated target as a requirement; numeric SLOs MAY be established later via a dedicated ADR once real usage data exists.
 - **OQ-5 — Should Platform Admin account creation itself require an existing Platform Owner to approve it (bootstrap problem), or is the very first Platform Owner account provisioned out-of-band (e.g., a seed/migration script)?** This affects Epic 9A's own "Definition of Done" — there must be some non-circular way to create the first Platform Admin.
   **Resolved: Out-of-band seed/migration script.** The very first Platform Owner account is provisioned by a one-time seed/migration mechanism outside the normal `platform.admins.manage`-gated API (FR-9A-036, BR-9A-031, Assumption A8, [§14.4](#144-platform-administrator-accounts)). This is a standard, auditable bootstrap pattern that cleanly breaks the circularity.
+
+**Additional corrections from the final consistency review (2026-08-19)** — not originally-numbered Open Questions, but findings surfaced during a pre-`/sp.plan` review that required the same explicit-resolution treatment:
+
+- **Epic 9 (CRM) status** was stale in several places (described as "in progress"/"concurrent"). Corrected throughout the specification: Epic 9 is complete; Epic 9A is built directly on the completed Epic 9 codebase (see [Assumption A1](#8-assumptions), [§1](#1-epic-title--metadata)).
+- **Suspension session-revocation behavior** — see OQ-3 above, which was revised from its original resolution to the final decision: active session revocation is required, not merely "blocked on next request."
+- **Feature-toggle authorization hardening scope** — originally classified as an adjacent, unrelated defect. Corrected: this is now an in-scope Epic 9A security prerequisite for the Plan Entitlement model (BR-9A-033, [§17.4](#174-feature-toggle-authorization-hardening-security-prerequisite)).
+- **Canonical tenant context** — the specification did not previously reference the existing `CompanyContext`/`erp_active_company_id` mechanism at all. Added as an explicit dependency and security requirement: Epic 9A MUST use this existing mechanism and MUST NOT introduce a competing one (BR-9A-034–BR-9A-036, [§9.1](#91-existing-dependencies-reused-not-redefined), [§19.3](#193-platform-security-requirements)).
 
 ---
 
@@ -975,8 +1009,8 @@ All five clarifications originally raised during specification were resolved wit
 | Constitution Section | How Epic 9A Complies |
 |---|---|
 | §5 Modular Monolith | Platform Administration is specified as platform-level module(s) within the existing architecture ([§7.1](#71-in-scope-this-epic), [§24](#24-non-functional-requirements) Maintainability) — no microservice, no separate deployable system. |
-| §9 Multi-Tenant Principles | Tenant isolation is never weakened; all cross-tenant capability is explicit, privileged, and audited ([§6](#6-actors--trust-boundaries), [§18](#18-supportcross-tenant-access-requirements)), fulfilling §9's existing requirement that "admin access to tenant data uses separate, audited pathways." |
-| §11 Feature Toggles | Epic 9A does not replace tenant feature toggles; it adds the Plan Entitlement layer above them and defines their interaction deterministically ([§17](#17-entitlement--quota-requirements)). |
+| §9 Multi-Tenant Principles | Tenant isolation is never weakened; all cross-tenant capability is explicit, privileged, and audited ([§6](#6-actors--trust-boundaries), [§18](#18-supportcross-tenant-access-requirements)), fulfilling §9's existing requirement that "admin access to tenant data uses separate, audited pathways." Epic 9A also reinforces the single canonical tenant-context mechanism (`CompanyContext`/`erp_active_company_id`) rather than introducing a competing one, and keeps Platform Admin's own tenant-selection context structurally separate from it (BR-9A-034–BR-9A-036). |
+| §11 Feature Toggles | Epic 9A does not replace tenant feature toggles; it adds the Plan Entitlement layer above them, defines their interaction deterministically ([§17](#17-entitlement--quota-requirements)), and requires the existing tenant feature-toggle mutation endpoints to be properly authorized as a security prerequisite for that layer ([§17.4](#174-feature-toggle-authorization-hardening-security-prerequisite)). |
 | §16 Authentication & Authorization | Platform Administration consumes existing authentication infrastructure; it adds a distinct Platform RBAC layer, never bypassing or replacing tenant authorization ([§15](#15-platform-rbac-requirements), [§26](#26-integration-boundaries)). |
 | §19 Security Principles | Least privilege, IDOR/BOLA protection, CSRF protection, safe error responses, and session revocation are all specified explicitly ([§19.3](#193-platform-security-requirements)). |
 | §22 Logging & Observability | Platform Health builds on existing structured logging and health-check infrastructure; no new observability platform is introduced ([§21](#21-operational-monitoring-requirements)). |
@@ -987,4 +1021,4 @@ All five clarifications originally raised during specification were resolved wit
 | §49 Event-Driven Communication | Suspend/reactivate reuse the already-defined (currently unused) `CompanySuspendedEvent`/`CompanySuspensionLiftedEvent` domain events rather than inventing a parallel notification path ([§9.1](#91-existing-dependencies-reused-not-redefined)). |
 | §50 Platform Administration & SaaS Control Plane Principles | This Epic is the direct specification-level realization of §50 in its entirety — distinct actor, central control plane, platform RBAC, audited cross-tenant pathways, tenant lifecycle governance, and AI/billing readiness, all without introducing unnecessary infrastructure complexity. |
 
-**Self-Review Confirmation** (per calling prompt §41): This specification does not renumber any existing Epic; does not modify `constitution.md`; does not design database tables, API routes, or UI components (implementation is deferred to Plan); did not invent business rules where genuine product ambiguity existed — instead surfaced five Open Questions and resolved all of them with the product owner on 2026-08-19 (see [§29](#29-open-questions--clarifications)); and every requirement is traceable to either an existing, researched codebase fact or an explicit new-capability decision documented in [§9.2](#92-new-requirements-introduced-by-epic-9a). No open questions remain; this specification is ready for `/sp.plan`.
+**Self-Review Confirmation** (per calling prompt §41): This specification does not renumber any existing Epic; does not modify `constitution.md`; does not design database tables, API routes, or UI components (implementation is deferred to Plan); did not invent business rules where genuine product ambiguity existed — instead surfaced five Open Questions and resolved all of them with the product owner on 2026-08-19 (see [§29](#29-open-questions--clarifications)), and a subsequent final consistency review surfaced and resolved four further findings (Epic 9 status staleness, suspension session-revocation behavior, feature-toggle authorization scope, and canonical tenant-context dependency); every requirement is traceable to either an existing, researched codebase fact or an explicit new-capability decision documented in [§9.2](#92-new-requirements-introduced-by-epic-9a). No open questions or blocking architectural ambiguities remain. This specification is **ready for Product Owner approval**, and ready for `/sp.plan` once approved.
