@@ -1,0 +1,1654 @@
+# Tasks: Epic 9A — Platform Administration / Super Admin
+
+**Branch**: `009a-platform-admin` | **Date**: 2026-08-19 | **Revision**: 2 (dependency-correction pass)
+**Input**: `specs/009a-platform-admin/spec.md` (30 sections) + `plan.md` (42 sections, 13 ADRs) + `research.md` + `data-model.md` + `contracts/platform-admin-v1.yaml` + `quickstart.md`
+**Planning commit**: `fd3d55e` | **Constitution**: v1.2.1 (§50 authoritative)
+
+## Format: `Txxx [P?] [Tag?] Description`
+
+- **[P]**: Parallelizable — different files, no dependency on an incomplete task
+- **Tags**: `[US-n]` user story (spec §10), `[FR-9A-nnn]`, `[BR-9A-nnn]`, `[SC-n]`, `[ADR-n]` (plan §37), `[Gate X]` critical gate
+- Each task has: **Purpose**, **Files**, **Deps**, **Acceptance**
+- Backend: `backend/modules/platform_admin/...` | Frontend: `frontend/src/app/(platform-admin)/...`, `frontend/src/lib/api/platform.ts`
+- Tests: `backend/tests/{unit,integration,security,performance}/modules/platform_admin/`
+
+> **Revision 2 note**: this file was corrected for dependency/order defects only — scope, architecture, security model, ADR decisions and acceptance criteria are unchanged. Task IDs were renumbered because tasks were split and moved; see the mapping in the correction report. Migration ownership remains **frozen at `057`–`061`** with no `062`.
+
+> **Tooling note**: `.specify/scripts/bash/{setup-plan,check-prerequisites}.sh` reject this branch name (regex `^[0-9]{3}-` does not match `009a-`). Paths resolved manually; the same scripts' `find_feature_dir_by_prefix()` fallback resolves correctly. Pre-existing narrow tooling gap, not an Epic 9A defect.
+
+---
+
+## User Story Map
+
+| Story | Priority | Spec §10 | Delivered in Phase |
+|---|---|---|---|
+| US-1 Platform Admin views platform overview | P1 | US-1 | 13, 15 |
+| US-2 Platform Admin searches/inspects tenants | P1 | US-2 | 7, 13, 15 |
+| US-3 Authorized admin changes tenant lifecycle | P1 | US-3 | 7, 15 |
+| US-4 Platform Admin manages SaaS plans | P2 | US-4 | 8, 15 |
+| US-5 Platform Admin assigns/changes subscriptions | P2 | US-5 | 8, 15 |
+| US-6 Platform Admin manages entitlements/limits | P2 | US-6 | 9, 11, 15 |
+| US-7 Authorized admin manages Platform RBAC | P2 | US-7 | 3, 5, 15 |
+| US-8 Security/Audit Admin reviews privileged actions | P2 | US-8 | 3, 6, 13, 15 |
+| US-9 Support Admin obtains controlled tenant access | P3 | US-9 | 12, 15 |
+| US-10 Platform Admin reviews usage and quota status | P2 | US-10 | 8, 11, 15 |
+| US-11 Platform Admin reviews operational health | P2 | US-11 | 13, 15 |
+| US-12 Platform Admin reviews AI usage/credits | P3 | US-12 | 11, 15 |
+| US-0 Foundation (no independent user value; blocking) | P0 | — | 1–6 |
+
+---
+
+## Critical Gates (blocking — do not proceed past a failed gate)
+
+| Gate | Proves | Signed off in | Depends only on |
+|---|---|---|---|
+| **A — Migration Safety** | 057 preflight works on real PostgreSQL; lifecycle restore state never fabricated; up/down/up clean | Phase 2 (T031) | Phase 1–2 |
+| **B — Platform Trust Boundary** | Tenant tokens cannot reach Platform APIs and vice versa; Platform auth/session independent; RBAC enforced on the routes that exist by Phase 5; bootstrap authority protected; self-escalation and last-owner rejected | Phase 5 (T077) | Phase 1–5 only |
+| **E — Audit Atomicity** | Audit-write failure rolls back the privileged mutation (proved on a real Phase-5 audited mutation) | Phase 6 (T081) | Phase 1–6 only |
+| **C — Lifecycle / Auth Freshness** | Suspend/reactivate correct; old access token denied; **old refresh path denied**; genuine login required; Company B survives Company A suspension; **plus** the full 3-way state+audit+outbox atomicity proof | Phase 7 (T102) | Phase 1–7 |
+| **D — Entitlement Security** | Plan ceiling enforced at point of use; stale toggle cannot bypass downgrade; all 5 modules | Phase 9 (T137) | Phase 1–9 |
+| **F — Support Security Boundary** | Support access cannot reach tenant business records | Phase 12 (T166) | Phase 1–12 |
+| **G — Real-Stack Regression** | Epics 1–9 still function on real Docker/PostgreSQL | Phase 17 (T225) | All phases |
+
+**Gate ordering is A → B → E → C → D → F → G.** Gate E precedes Gate C because its foundational proof uses a Phase-5 audited mutation; the tenant-suspension 3-way atomicity proof (T101) lives inside Phase 7 under Gate C.
+
+---
+
+## Phase 1: Preflight / Drift Verification
+
+**Objective**: Confirm repository reality has not drifted from the facts plan.md §3 was built on. Detection only — no implementation.
+**Prerequisites**: none.
+**Exit condition**: All drift checks pass, or implementation **stops** and the drift is reported.
+
+### Tasks
+
+- [ ] T001 Verify Alembic head is still `056` and the revision chain `001→056` is linear
+  - **Purpose**: plan.md §33 numbers new migrations from `057`; a different head invalidates the whole migration plan.
+  - **Files**: `backend/migrations/versions/` (read-only)
+  - **Deps**: none
+  - **Acceptance**: Highest file is `056_crm_permission_backfill.py` with `revision = "056"`; no branching `down_revision`. If not → STOP and report.
+
+- [ ] T002 [P] Verify `Session` model still has no `company_id` and `Session.created_at` is still inherited/immutable
+  - **Purpose**: ADR-6's entire authentication-freshness mechanism depends on this (plan.md §3.1).
+  - **Files**: `backend/modules/auth/models/session.py`, `backend/core/database/models/base_model.py` (read-only)
+  - **Deps**: none
+  - **Acceptance**: `sessions` has `user_id`, `is_revoked`, `revoked_at`, no `company_id`; `created_at` comes from `BaseModel` with `server_default=func.now()`. If drifted → STOP.
+
+- [ ] T003 [P] Verify `login()` creates a new `Session` and `refresh()` reuses the existing `session_id`
+  - **Purpose**: The single fact that makes `Session.created_at` a valid authentication-freshness value (ADR-6).
+  - **Files**: `backend/modules/auth/services/auth_service.py` (read-only)
+  - **Deps**: none
+  - **Acceptance**: `login()` calls `create_session(...)`; `refresh()` calls `create_access_token(session_id=new_record.session_id)` and never `create_session`. If drifted → STOP; ADR-6 must be re-planned, not patched.
+
+- [ ] T004 [P] Verify `CompanyStatus` enum values and `Company` lifecycle fields are unchanged
+  - **Purpose**: §9's suspend/reactivate design reuses the existing 5-state enum exactly.
+  - **Files**: `backend/modules/companies/models/enums.py`, `models/company.py` (read-only)
+  - **Deps**: none
+  - **Acceptance**: Enum still `pending_setup|active|inactive|suspended|deleted`; `subscription_id` still nullable with no FK.
+
+- [ ] T005 [P] Verify all five business-module routers still mount `get_current_company_member` and that it still does **not** read `Company.status`
+  - **Purpose**: The §3.3 enforcement gap that Phase 7 closes; also the mount point Phase 9 adds entitlement enforcement to.
+  - **Files**: `backend/api/v1/router.py`, `backend/modules/users_roles/dependencies.py` (read-only)
+  - **Deps**: none
+  - **Acceptance**: Inventory/Purchase/Sales/Accounting/CRM all mount `get_current_company_member`; that function checks only `CompanyMember.status`. If a company-status check was added meanwhile → re-scope Phase 7 and report.
+
+- [ ] T006 [P] Verify feature-toggle authorization findings still hold: Inventory/Sales/Purchase unguarded; Accounting/CRM already gated
+  - **Purpose**: Phase 10 hardens exactly 3 modules; hardening an already-fixed module is wasted/duplicated work.
+  - **Files**: `backend/modules/{inventory,sales,purchase,accounting,crm}/router.py` (read-only)
+  - **Deps**: none
+  - **Acceptance**: Inventory/Sales/Purchase `PUT .../feature-flags/{flag_key}` still only `require_authenticated` + membership; Accounting still calls `user_has_accounting_permission`; CRM still `require_admin_or_above()`.
+
+- [ ] T007 [P] Verify the `/platform-admin/...` frontend namespace and `/api/v1/platform/...` API namespace are still collision-free
+  - **Purpose**: Epic 9 lost days to a Next.js dynamic-route collision; plan.md §3.14 verified this namespace is clear.
+  - **Files**: `frontend/src/app/(protected)/`, `backend/api/v1/router.py` (read-only)
+  - **Deps**: none
+  - **Acceptance**: No existing route group produces `/platform-admin/*`; no router mounts `/platform`. Confirm `(crm)` still owns bare `/reports` and `/settings` (must not be reused).
+
+- [ ] T008 [P] Verify `frontend/src/lib/api/client.ts` still hardcodes tenant auth at module scope
+  - **Purpose**: ADR-11's `AuthStrategy` refactor is scoped to this exact shape.
+  - **Files**: `frontend/src/lib/api/client.ts` (read-only)
+  - **Deps**: none
+  - **Acceptance**: `buildHeaders()`/`postMultipart()` call `getAccessToken()` directly; 401 branch calls `acquireRefreshLock()` directly; constructor already accepts `baseUrl`.
+
+- [ ] T009 Establish green baseline: full backend suite + `tsc --noEmit` + `eslint` before any Epic 9A change
+  - **Purpose**: Any later failure must be attributable to Epic 9A, not pre-existing breakage.
+  - **Files**: `backend/tests/`, `frontend/`
+  - **Deps**: T001–T008
+  - **Acceptance**: Baseline pass/fail counts recorded in the implementation log. Known-flaky tests noted explicitly, not silently ignored.
+
+---
+
+## Phase 2: Database & Migration Foundation — **Gate A**
+
+**Objective**: Create migrations `057`–`061` exactly as owned in plan.md §33 / data-model.md. No migration `062` (bootstrap is deliberately not a migration, ADR-8).
+**Prerequisites**: Phase 1 green.
+**Exit condition (Gate A)**: T024–T031 pass on real PostgreSQL.
+
+### Tasks
+
+- [ ] T010 Create migration `057` upgrade: platform identity/session/audit tables
+  - **Purpose**: Platform foundation persistence (data-model.md "Identity & Session").
+  - **Files**: `backend/migrations/versions/057_platform_admin_foundation.py`
+  - **Deps**: T001
+  - **Acceptance**: Creates `platform_administrators`, `platform_roles`, `platform_permissions`, `platform_role_permissions`, `platform_admin_role_assignments`, `platform_sessions`, `platform_refresh_tokens`, `platform_audit_events` with the exact columns/FKs/uniques in data-model.md. `revision="057"`, `down_revision="056"`.
+
+- [ ] T011 Add to migration `057`: the two additive `companies` lifecycle columns
+  - **Purpose**: `pre_suspension_status` + `access_invalidated_at` (ADR-12, ADR-6 Layer 2).
+  - **Files**: `backend/migrations/versions/057_platform_admin_foundation.py`
+  - **Deps**: T010
+  - **Acceptance**: Both columns added as **nullable** with no backfill; existing rows unaffected.
+
+- [ ] T012 Add to migration `057`: **mandatory suspended-company preflight guard** (runs before any constraint is created)
+  - **Purpose**: plan.md §33.1 — a pre-existing `status='suspended'` row has an unrecoverable prior status; fabricating one would make `suspended → pre-suspension status` non-deterministic.
+  - **Files**: `backend/migrations/versions/057_platform_admin_foundation.py`
+  - **Deps**: T011
+  - **Acceptance**: Queries `SELECT id, slug FROM companies WHERE status='suspended'`. Zero rows → proceed. One or more → `raise RuntimeError(...)` naming the affected slugs **and** the remediation options, having created **no** column and **no** constraint. Must never backfill `active`/`inactive`, never weaken/skip the constraint, never infer from audit.
+
+- [ ] T013 Add to migration `057`: the two CHECK constraints on `companies`
+  - **Purpose**: Structurally prevent a suspended company without a restore target, and restrict the restore target's domain (plan.md §26).
+  - **Files**: `backend/migrations/versions/057_platform_admin_foundation.py`
+  - **Deps**: T012
+  - **Acceptance**: `CHECK ((status='suspended' AND pre_suspension_status IS NOT NULL) OR (status<>'suspended' AND pre_suspension_status IS NULL))` and `CHECK (pre_suspension_status IS NULL OR pre_suspension_status IN ('active','inactive'))` both present.
+
+- [ ] T014 Add migration `057` indexes on `platform_audit_events`
+  - **Purpose**: FR-9A-200's filter set must not table-scan.
+  - **Files**: `backend/migrations/versions/057_platform_admin_foundation.py`
+  - **Deps**: T010
+  - **Acceptance**: Indexes on `actor_platform_administrator_id`, `company_id`, `action`, `created_at`.
+
+- [ ] T015 Write migration `057` downgrade
+  - **Purpose**: Constitution §18 requires reversible migrations.
+  - **Files**: `backend/migrations/versions/057_platform_admin_foundation.py`
+  - **Deps**: T010–T014
+  - **Acceptance**: Drops both `companies` columns + both constraints and all 8 tables in reverse FK order. Preflight has no downgrade counterpart (upgrade-time guard only).
+
+- [ ] T016 Create migration `058`: capabilities, plans, plan_capabilities, subscriptions + `companies.subscription_id` FK
+  - **Purpose**: Commercial control plane persistence (data-model.md "Entitlement").
+  - **Files**: `backend/migrations/versions/058_platform_plans_entitlements.py`
+  - **Deps**: T015
+  - **Acceptance**: All 4 tables per data-model.md; **partial unique index** `ON subscriptions (company_id) WHERE status='active'`; real FK added to the already-nullable `companies.subscription_id`; `status` columns are VARCHAR+CHECK (not PG ENUM), matching `CompanyStatus`'s convention.
+
+- [ ] T017 Write migration `058` downgrade
+  - **Files**: `backend/migrations/versions/058_platform_plans_entitlements.py`
+  - **Deps**: T016
+  - **Acceptance**: Drops the FK constraint (leaving the pre-existing nullable column intact — it predates Epic 9A) then the 4 tables in reverse order.
+
+- [ ] T018 Create migration `059`: quota_definitions, plan_quotas, tenant_quota_overrides, entitlement_overrides
+  - **Purpose**: Quota + override persistence (data-model.md "Quotas & Overrides"). Consumed by the Phase 8 quota foundation.
+  - **Files**: `backend/migrations/versions/059_platform_quotas_overrides.py`
+  - **Deps**: T017
+  - **Acceptance**: 4 tables; partial unique indexes `WHERE is_active=true` on both override tables; `limit_value >= 0` CHECK where not null; `expires_at > granted_at` CHECK where not null.
+
+- [ ] T019 Write migration `059` downgrade
+  - **Files**: `backend/migrations/versions/059_platform_quotas_overrides.py`
+  - **Deps**: T018
+  - **Acceptance**: Clean reverse drop.
+
+- [ ] T020 Create migration `060`: usage_records, ai_credit_ledger_entries
+  - **Purpose**: Usage metering + provider-neutral AI readiness (data-model.md "Usage & AI Readiness").
+  - **Files**: `backend/migrations/versions/060_platform_usage_ai_readiness.py`
+  - **Deps**: T019
+  - **Acceptance**: Both tables with indexed `company_id`; `ai_credit_ledger_entries.delta` signed numeric; `provider`/`model` free-text nullable (no vendor coupling, BR-9A-026).
+
+- [ ] T021 Write migration `060` downgrade
+  - **Files**: `backend/migrations/versions/060_platform_usage_ai_readiness.py`
+  - **Deps**: T020
+  - **Acceptance**: Clean reverse drop.
+
+- [ ] T022 Create migration `061`: support_access_grants + `platform_audit_events.support_access_grant_id` FK
+  - **Purpose**: Support-access persistence and its audit linkage (BR-9A-022 — no parallel audit table).
+  - **Files**: `backend/migrations/versions/061_platform_support_access.py`
+  - **Deps**: T021
+  - **Acceptance**: `support_access_grants` per data-model.md; nullable FK column added to `platform_audit_events`; indexed `platform_administrator_id`, `company_id`. **This is the final Epic 9A migration — no `062` exists.**
+
+- [ ] T023 Write migration `061` downgrade
+  - **Files**: `backend/migrations/versions/061_platform_support_access.py`
+  - **Deps**: T022
+  - **Acceptance**: Drops the FK column then the table.
+
+- [ ] T024 [P] Migration test: clean database with **no** suspended companies → `057` succeeds
+  - **Purpose**: Gate A normal path.
+  - **Files**: `backend/tests/integration/migrations/test_057_preflight.py`
+  - **Deps**: T015
+  - **Acceptance**: Both columns and both CHECK constraints exist afterwards.
+
+- [ ] T025 [P] Migration test: database with a pre-existing `status='suspended'` row → `057` **refuses**
+  - **Purpose**: Gate A — the core Correction-2 guarantee.
+  - **Files**: `backend/tests/integration/migrations/test_057_preflight.py`
+  - **Deps**: T015
+  - **Acceptance**: Raises with a message naming the affected company and the remediation options; exit is a failure, not a warning.
+
+- [ ] T026 [P] Migration test: refused `057` leaves the database **byte-for-byte unchanged**
+  - **Purpose**: Proves no partial/fabricated state (no column added, no constraint created, no `pre_suspension_status` backfilled).
+  - **Files**: `backend/tests/integration/migrations/test_057_preflight.py`
+  - **Deps**: T025
+  - **Acceptance**: Post-failure schema snapshot equals pre-run snapshot; `pre_suspension_status` column absent.
+
+- [ ] T027 **[Gate A]** Real-PostgreSQL migration cycle `056 → 061 → 056 → 061`
+  - **Purpose**: Partial unique indexes and CHECK constraints are PostgreSQL-specific; SQLite cannot substitute (plan.md §32).
+  - **Files**: Docker Compose `db` service; `backend/tests/integration/migrations/test_migration_cycle_postgres.py`
+  - **Deps**: T023, T024–T026
+  - **Acceptance**: Clean in both directions; `\dt platform_*`, `\d companies`, `\d subscriptions` verified after each step.
+
+- [ ] T028 **[Gate A]** Real-PostgreSQL test: after remediation of a suspended row, `057` succeeds and the cycle completes
+  - **Purpose**: Proves the documented operator remediation path actually works.
+  - **Files**: `backend/tests/integration/migrations/test_057_preflight.py`
+  - **Deps**: T027
+  - **Acceptance**: Operator sets the row's status back to its true prior value → re-run succeeds → up/down/up clean.
+
+- [ ] T029 [P] **[Gate A]** Verify migrations create **no** Platform Owner and that no `062` exists
+  - **Purpose**: ADR-8 — credential provisioning is decoupled from schema versioning; also freezes the migration contract.
+  - **Files**: `backend/tests/integration/migrations/test_no_bootstrap_in_migrations.py`
+  - **Deps**: T027
+  - **Acceptance**: After `upgrade head`, `SELECT count(*) FROM platform_administrators` is `0`. No migration file references bootstrap env vars. **No file named `062_*.py` exists** and head is `061`.
+
+- [ ] T030 [P] **[Gate A]** Verify existing tenant data is untouched by `057`–`061`
+  - **Purpose**: Backward-compatibility guarantee (plan.md §33).
+  - **Files**: `backend/tests/integration/migrations/test_existing_tenant_preservation.py`
+  - **Deps**: T027
+  - **Acceptance**: Seed companies/members/feature-flag rows before upgrade; all identical afterwards; new columns NULL everywhere.
+
+- [ ] T031 **[Gate A]** Gate A sign-off — record results in the implementation log
+  - **Deps**: T024–T030
+  - **Acceptance**: All Gate A tasks green. **Do not start Phase 3 until this passes.**
+
+---
+
+## Phase 3: Platform Domain, Audit Foundation & Administrator Identity
+
+**Objective**: Create `backend/modules/platform_admin/`, the **fail-closed audit foundation** (needed by every audited mutation from here on), and the `PlatformAdministrator` principal (ADR-1). Per plan.md §36 Phase A, audit foundation belongs alongside identity — it is created here so that no later task references an audit service that does not yet exist.
+**Prerequisites**: Gate A.
+**Exit condition**: `import modules.platform_admin` clean; a trivial audited mutation writes an audit row atomically (T044).
+
+### Tasks
+
+- [ ] T032 Create the `platform_admin` module skeleton
+  - **Purpose**: Match the most complete existing module shape (accounting/crm, plan.md §4).
+  - **Files**: `backend/modules/platform_admin/{__init__,constants,exceptions}.py` + `{models,repositories,services,schemas,events}/__init__.py` + `dependencies.py`, `router.py`
+  - **Deps**: T031
+  - **Acceptance**: `import modules.platform_admin` succeeds; directory shape matches `modules/accounting/`.
+
+- [ ] T033 Define `PLATFORM_PERMISSION_CODES` and candidate role bundles in `constants.py`
+  - **Purpose**: Single source of truth for the permission catalogue (spec §15.1, plan §8).
+  - **Files**: `backend/modules/platform_admin/constants.py`
+  - **Deps**: T032
+  - **Acceptance**: All permission codes from spec §15.1 present as a frozenset; the 6 candidate role bundles from spec §15.2 defined as **data**, not enum members (configurable per FR-9A-140/Constitution §46).
+
+- [ ] T034 Define Platform exception types
+  - **Purpose**: Consistent error envelope matching the project-wide `ApplicationException` convention.
+  - **Files**: `backend/modules/platform_admin/exceptions.py`
+  - **Deps**: T032
+  - **Acceptance**: `PlatformSessionInvalidError` (401), `InsufficientPlatformPermissionError` (403), `CapabilityNotEntitledError` (403), `SupportAccessExpiredError` (403), `LastPlatformOwnerError` (409), `TenantLifecycleTransitionError` (409) — each with a stable `code`.
+
+- [ ] T035 [US-8] [BR-9A-022] Create `PlatformAuditEvent` model
+  - **Purpose**: Audit persistence must exist before any audited mutation is written (moved ahead of identity/RBAC in Revision 2).
+  - **Files**: `backend/modules/platform_admin/models/platform_audit_event.py`
+  - **Deps**: T032
+  - **Acceptance**: Full column set per data-model.md incl. nullable `company_id`, `reason`, `before_state`/`after_state` JSONB, `context` (with `request_id`), and the nullable `support_access_grant_id` FK (populated from Phase 12 onward).
+
+- [ ] T036 [BR-9A-023] Create `PlatformAuditRepository` — **flush only, never commit**
+  - **Purpose**: The mechanical precondition for fail-closed atomicity (ADR-5, plan §3.5).
+  - **Files**: `backend/modules/platform_admin/repositories/platform_audit_repository.py`
+  - **Deps**: T035
+  - **Acceptance**: `record()` does `db.add()` + `db.flush()` and **never** `db.commit()`; there is no update or delete method at all (append-only).
+
+- [ ] T037 [ADR-5] Create the audited-mutation service helper
+  - **Purpose**: One reusable pattern so every privileged service commits state + audit (+ outbox) together. Every audited task in Phases 3–12 depends on this.
+  - **Files**: `backend/modules/platform_admin/services/platform_audit_service.py`
+  - **Deps**: T036
+  - **Acceptance**: Callers flush their state change, flush the audit row, then perform a **single** service-level `db.commit()`. Must not use `BaseRepository.create()/.update()`'s auto-commit for audited paths.
+
+- [ ] T038 [US-7] [FR-9A-030] Create `PlatformAdministrator` model
+  - **Purpose**: First-class platform principal, 1:1 with `User`, **never** `TenantBaseModel` (no `company_id`).
+  - **Files**: `backend/modules/platform_admin/models/platform_administrator.py`
+  - **Deps**: T032
+  - **Acceptance**: Inherits `BaseModel`; `user_id` FK UNIQUE NOT NULL; `is_active`, `last_login_at`, `deactivated_at`, `deactivated_by` per data-model.md.
+
+- [ ] T039 [US-7] Create `PlatformAdministratorRepository`
+  - **Purpose**: Platform-scoped data access; must **not** use `BaseRepository` (which mandates `company_id` filtering).
+  - **Files**: `backend/modules/platform_admin/repositories/platform_administrator_repository.py`
+  - **Deps**: T038
+  - **Acceptance**: `get_by_user_id`, `get_by_id`, `list_paginated`, `create`, `set_active`. Audited write paths use `flush()` only, never `commit()` (ADR-5).
+
+- [ ] T040 [US-7] [FR-9A-031] Create `PlatformAdministratorService` — account lifecycle **without** session revocation
+  - **Purpose**: Domain foundation for create/activate/deactivate. Session revocation is deliberately **not** here — `PlatformSessionRepository` does not exist until Phase 4 (Revision 2 split).
+  - **Files**: `backend/modules/platform_admin/services/platform_administrator_service.py`
+  - **Deps**: T039, T037
+  - **Acceptance**: Create/activate/deactivate change `is_active` and write an audit row in one transaction via T037's helper. Deactivation is **not yet complete** with respect to BR-9A-011 — T054 adds mandatory session revocation, and the service must expose a seam (e.g. an injected revoker) rather than being rewritten later.
+
+- [ ] T041 [P] [US-7] Create Platform administrator request/response schemas
+  - **Files**: `backend/modules/platform_admin/schemas/platform_administrator.py`
+  - **Deps**: T032
+  - **Acceptance**: Pydantic v2 with explicit field allow-lists (mass-assignment protection, plan §28); no password or token field ever echoed.
+
+- [ ] T042 [P] [US-7] [BR-9A-010] Test: a Platform Administrator with **zero** company memberships is a valid, complete principal
+  - **Files**: `backend/tests/integration/services/platform_admin/test_platform_administrator.py`
+  - **Deps**: T040
+  - **Acceptance**: Account created with no `CompanyMember` row anywhere; no membership check blocks its creation or role assignment. (API-level proof follows in T059.)
+
+- [ ] T043 [P] [US-7] [BR-9A-001] Test: tenant `owner`/`admin` role grants **no** Platform authority
+  - **Files**: `backend/tests/security/modules/platform_admin/test_identity_boundary.py`
+  - **Deps**: T040
+  - **Acceptance**: Creating a `CompanyMember` never creates a `PlatformAdministrator`; no tenant role value maps to a platform principal. (API-level proof follows in T055.)
+
+- [ ] T044 [ADR-5] Test: the audit foundation writes atomically on a trivial audited action
+  - **Purpose**: plan.md §36 Phase A — "audit foundation proven with a trivial first audited action", before any complex mutation depends on it.
+  - **Files**: `backend/tests/integration/services/platform_admin/test_audit_foundation.py`
+  - **Deps**: T040, T037
+  - **Acceptance**: A `PlatformAdministrator` deactivation writes exactly one `PlatformAuditEvent` with correct before/after, committed in the same transaction as the `is_active` change.
+
+---
+
+## Phase 4: Platform Authentication / Session Boundary
+
+**Objective**: A structurally separate Platform session system (ADR-1), and completion of BR-9A-011 session-revoking deactivation now that `PlatformSessionRepository` exists.
+**Prerequisites**: Phase 3.
+**Exit condition**: Platform login/refresh/logout work; tenant and platform tokens are mutually unusable; deactivation revokes sessions.
+
+### Tasks
+
+- [ ] T045 [FR-9A-036] Create `PlatformSession` model
+  - **Files**: `backend/modules/platform_admin/models/platform_session.py`
+  - **Deps**: T032
+  - **Acceptance**: Mirrors `sessions`' shape (`platform_administrator_id`, `is_revoked`, `revoked_at`, `ip_address`, `user_agent`, `expires_at`); a **separate table**, never reusing tenant `sessions` (BR-9A-003).
+
+- [ ] T046 Create `PlatformRefreshToken` model
+  - **Files**: `backend/modules/platform_admin/models/platform_refresh_token.py`
+  - **Deps**: T045
+  - **Acceptance**: SHA-256 `token_hash` (raw token never persisted), FK to `platform_sessions`, rotate-on-use fields, `is_revoked`/`revoked_at`.
+
+- [ ] T047 Create `PlatformSessionRepository` (incl. bulk revoke-by-administrator)
+  - **Purpose**: Ordered before every consumer (Revision 2 fix — previously created after the service that needed it).
+  - **Files**: `backend/modules/platform_admin/repositories/platform_session_repository.py`
+  - **Deps**: T045
+  - **Acceptance**: `create`, `get_by_id`, `revoke`, `revoke_all_for_administrator`. Audited paths flush-only.
+
+- [ ] T048 Implement Platform JWT issuance with a distinct `typ`
+  - **Purpose**: The structural guarantee that a tenant token can never be a platform token (ADR-1).
+  - **Files**: `backend/modules/platform_admin/services/platform_jwt_service.py`
+  - **Deps**: T045
+  - **Acceptance**: Access tokens carry `typ="platform_access"`, refresh `typ="platform_refresh"`; reuses the existing `PyJWT`/HS256 settings — **no new crypto, no new secret management**.
+
+- [ ] T049 Implement `POST /api/v1/platform/auth/login`
+  - **Purpose**: Authenticate against the same `User.password_hash`, then require an **active** `PlatformAdministrator` row.
+  - **Files**: `backend/modules/platform_admin/services/platform_auth_service.py`, `router.py`
+  - **Deps**: T048, T047, T040
+  - **Acceptance**: Creates a `PlatformSession` + `PlatformRefreshToken`; a `User` without an active `PlatformAdministrator` gets a **generic** invalid-credentials response that does not reveal whether the email exists as a tenant user.
+
+- [ ] T050 Implement `POST /api/v1/platform/auth/refresh` (rotate-on-use)
+  - **Files**: `backend/modules/platform_admin/services/platform_auth_service.py`, `router.py`
+  - **Deps**: T049
+  - **Acceptance**: Rotates the platform refresh token, reuses the same `PlatformSession`, rejects a revoked session or a deactivated administrator.
+
+- [ ] T051 Implement `POST /api/v1/platform/auth/logout`
+  - **Files**: `backend/modules/platform_admin/services/platform_auth_service.py`, `router.py`
+  - **Deps**: T049
+  - **Acceptance**: Revokes the `PlatformSession` and all its refresh tokens.
+
+- [ ] T052 [FR-9A-220] Implement `get_current_platform_admin()` dependency **with revocation check**
+  - **Purpose**: Unlike the tenant path, platform sessions check `is_revoked` from day one (plan §10.4).
+  - **Files**: `backend/modules/platform_admin/dependencies.py`
+  - **Deps**: T048, T047
+  - **Acceptance**: Rejects any token whose `typ` is not `platform_access`; rejects revoked `PlatformSession`; rejects inactive `PlatformAdministrator`. **Makes no change to `get_current_user()`.**
+
+- [ ] T053 Mount the platform router at `/api/v1/platform`
+  - **Files**: `backend/api/v1/router.py`
+  - **Deps**: T052
+  - **Acceptance**: Mounted **without** `get_current_company_member` (platform is never company-scoped); no path collision with existing mounts.
+
+- [ ] T054 [BR-9A-011] Complete session-revoking administrator deactivation
+  - **Purpose**: The second half of the Revision 2 split — deactivation must revoke all that admin's active platform sessions atomically. **This is where BR-9A-011 becomes fully satisfied.**
+  - **Files**: `backend/modules/platform_admin/services/platform_administrator_service.py`
+  - **Deps**: T047, T040
+  - **Acceptance**: Deactivation revokes every `PlatformSession` for that administrator **in the same transaction** as the `is_active` change and its audit row (single commit via T037's helper). Session invalidation is not weakened or deferred — a deactivated admin's in-flight token stops working immediately (proved by T059).
+
+- [ ] T055 [P] [BR-9A-002] Test: tenant access token → every Platform API → denied
+  - **Files**: `backend/tests/security/modules/platform_admin/test_token_boundary.py`
+  - **Deps**: T053
+  - **Acceptance**: Every `/api/v1/platform/*` route existing at this point rejects a valid tenant token, regardless of the tenant user's role (including `owner`).
+
+- [ ] T056 [P] Test: platform access token is never accepted as a tenant session
+  - **Files**: `backend/tests/security/modules/platform_admin/test_token_boundary.py`
+  - **Deps**: T053
+  - **Acceptance**: A `platform_access` token against `/api/v1/companies/{id}/...` is rejected by `get_current_user()` (wrong `typ`), and does not implicitly unlock any tenant endpoint (spec §11 scenario 4).
+
+- [ ] T057 [P] Test: revoked platform session is rejected
+  - **Files**: `backend/tests/security/modules/platform_admin/test_platform_session.py`
+  - **Deps**: T052
+  - **Acceptance**: Explicit logout → the still-unexpired access token is rejected on the next request.
+
+- [ ] T058 [P] Test: unauthenticated request to every Platform API → denied
+  - **Files**: `backend/tests/security/modules/platform_admin/test_token_boundary.py`
+  - **Deps**: T053
+  - **Acceptance**: No `/api/v1/platform/*` route is reachable without a valid platform token.
+
+- [ ] T059 [BR-9A-011] Test: deactivated Platform Administrator cannot access Platform APIs, immediately
+  - **Purpose**: The API-level proof of T054; moved here from Phase 3 in Revision 2 because it requires Platform APIs to exist.
+  - **Files**: `backend/tests/security/modules/platform_admin/test_identity_boundary.py`
+  - **Deps**: T054, T053
+  - **Acceptance**: Admin logs in → is deactivated → the **same, still-unexpired** access token is rejected on the very next request; the session rows are already revoked in the database.
+
+---
+
+## Phase 5: Platform RBAC & Owner Bootstrap — **Gate B**
+
+**Objective**: Genuinely enforced permission-code RBAC (ADR-2) + the out-of-band bootstrap command (ADR-8), then prove the trust boundary on the routes that exist by the end of this phase.
+**Prerequisites**: Phase 4.
+**Exit condition (Gate B)**: T077 — independently passable using only Phase 1–5 work. The **exhaustive** all-routes permission matrix is deliberately deferred to T206 (Phase 16), after every Platform router exists.
+
+### Tasks
+
+- [ ] T060 [US-7] Create `PlatformPermission`, `PlatformRole`, `PlatformRolePermission`, `PlatformAdminRoleAssignment` models
+  - **Files**: `backend/modules/platform_admin/models/platform_rbac.py`
+  - **Deps**: T032
+  - **Acceptance**: Per data-model.md; permission uses code-as-PK (mirroring the tenant `Permission` convention); unique pairs on both join tables.
+
+- [ ] T061 [US-7] Create the RBAC repositories
+  - **Files**: `backend/modules/platform_admin/repositories/platform_rbac_repository.py`
+  - **Deps**: T060
+  - **Acceptance**: Role CRUD, permission listing, assignment add/remove, and an effective-permission query (union across the admin's roles).
+
+- [ ] T062 [US-7] Implement permission seeding for codes and candidate role bundles
+  - **Purpose**: Roles/permissions are configuration data, addable without code change (FR-9A-140).
+  - **Files**: `backend/modules/platform_admin/services/platform_rbac_seed_service.py`
+  - **Deps**: T061, T033
+  - **Acceptance**: Idempotent; seeds every code in `PLATFORM_PERMISSION_CODES` and the 6 candidate bundles; re-running changes nothing. **Not a migration.**
+
+- [ ] T063 [FR-9A-142] Implement the effective-permission resolver
+  - **Files**: `backend/modules/platform_admin/services/platform_rbac_service.py`
+  - **Deps**: T061
+  - **Acceptance**: Union of all assigned roles' permissions, resolved **per request** (never cached in the token, FR-9A-221).
+
+- [ ] T064 [BR-9A-008] Implement `require_platform_permission(code)` dependency
+  - **Purpose**: The single server-side enforcement primitive every sensitive Platform route uses.
+  - **Files**: `backend/modules/platform_admin/dependencies.py`
+  - **Deps**: T063, T052
+  - **Acceptance**: Holding one permission never implies another; raises `InsufficientPlatformPermissionError`; the denial is logged as a security-relevant event (plan §30).
+
+- [ ] T065 [US-7] [BR-9A-012] Implement role assignment/removal with self-escalation prevention
+  - **Purpose**: Also serves as the canonical **audited privileged mutation** available for the Gate E foundation proof (T079).
+  - **Files**: `backend/modules/platform_admin/services/platform_rbac_service.py`
+  - **Deps**: T063, T037
+  - **Acceptance**: Requires `platform.rbac.manage`; assigning `platform_owner` additionally requires the actor to already hold it; every change is audited via T037's helper in a single transaction.
+
+- [ ] T066 Implement last-Platform-Owner protection
+  - **Purpose**: Prevent locking the platform out of itself (plan §8, §26).
+  - **Files**: `backend/modules/platform_admin/services/platform_rbac_service.py`
+  - **Deps**: T065, T054
+  - **Acceptance**: Removing the final active `platform_owner` assignment — or deactivating the last owner account — raises `LastPlatformOwnerError`. Service-level check (not expressible as a single-row CHECK).
+
+- [ ] T067 [FR-9A-036] [ADR-8] Implement the out-of-band bootstrap command
+  - **Purpose**: Break the bootstrap circularity without coupling credentials to Alembic versioning.
+  - **Files**: `backend/modules/platform_admin/bootstrap.py` (with `if __name__ == "__main__":`)
+  - **Deps**: T062, T040, T065
+  - **Acceptance**: Reads `PLATFORM_OWNER_BOOTSTRAP_EMAIL` + `PLATFORM_OWNER_BOOTSTRAP_PASSWORD_HASH` (**pre-hashed**, never plaintext in source). Exit `0` on create **or** on "already provisioned"; **non-zero** on missing or invalid config. Never overwrites an existing owner. No HTTP route. **No Alembic migration.** No Click/Typer framework introduced.
+
+- [ ] T068 [US-7] [FR-9A-030..034] Implement the **Platform Administrator management routes**
+  - **Purpose**: The HTTP surface the contract declares and the Phase-15 Administrators page consumes. Revision 3 fix — these routes were implied by services and frontend tasks but never had explicit implementation tasks.
+  - **Files**: `backend/modules/platform_admin/router.py`, `backend/modules/platform_admin/schemas/platform_administrator.py`
+  - **Deps**: T064, T054, T041, T053, T066
+  - **Acceptance**: Implements exactly the three contract operations, no more:
+    - `GET /api/v1/platform/administrators` → `require_platform_permission("platform.admins.read")`; paginated + filterable list; response = administrator summary schema (T041); no audit (read).
+    - `POST /api/v1/platform/administrators` → `platform.admins.manage`; request = create schema with an explicit field allow-list (no `is_active`/role mass-assignment); delegates to `PlatformAdministratorService` (T040); **fail-closed audited** per ADR-5 (state + audit in one commit); 409 if a `PlatformAdministrator` already exists for that `user_id`.
+    - `PATCH /api/v1/platform/administrators/{adminId}` → `platform.admins.manage`; activate/deactivate only; **deactivation MUST call the completed session-revoking path (T054)**, never the Phase-3 domain-only behaviour, so all active `PlatformSession` rows are revoked in the same transaction; returns `LastPlatformOwnerError` (409) when deactivating the final owner (T066).
+  - **Router discipline**: routers delegate to the service layer — **no business logic in the router**. Errors use the project-wide `StandardResponse` envelope. Contract traceability: operations 20–22 of `platform-admin-v1.yaml`.
+
+- [ ] T069 [US-7] [BR-9A-012] Implement the **Platform RBAC management routes**
+  - **Purpose**: The role/assignment HTTP surface the contract declares and the Phase-15 Roles page consumes.
+  - **Files**: `backend/modules/platform_admin/router.py`, `backend/modules/platform_admin/schemas/platform_rbac.py`
+  - **Deps**: T064, T065, T066, T053
+  - **Acceptance**: Implements exactly the three contract operations, no more:
+    - `GET /api/v1/platform/roles` → `require_platform_permission("platform.rbac.read")`; lists roles with their permission bundles; paginated; no audit (read).
+    - `POST /api/v1/platform/roles` → `platform.rbac.manage`; create/update a role's permission bundle; explicit field allow-list; **fail-closed audited**; rejects unknown permission codes against `PLATFORM_PERMISSION_CODES` (T033).
+    - `POST /api/v1/platform/administrators/{adminId}/roles` → `platform.rbac.manage`; assigns a role; delegates to `PlatformRbacService` (T065) so **self-escalation prevention** and **last-Platform-Owner protection** (T066) both apply; returns 403 on self-escalation and 409 on last-owner violation; **fail-closed audited**.
+  - **Not implemented** (deliberately — the contract does not declare them, and inventing CRUD is forbidden): no `GET /permissions` catalogue route, no `DELETE` role-assignment route. If either is genuinely needed later it requires a contract change first.
+  - **Router discipline**: delegates to the service layer; no business logic in the router. Contract traceability: operations 23–25 of `platform-admin-v1.yaml`.
+
+- [ ] T070 [P] Test: first successful bootstrap creates User + PlatformAdministrator + owner role assignment
+  - **Files**: `backend/tests/integration/services/platform_admin/test_bootstrap.py`
+  - **Deps**: T067
+  - **Acceptance**: All three rows created in one transaction; exit `0`; administrator id printed.
+
+- [ ] T071 [P] Test: bootstrap with **missing** configuration exits non-zero and writes nothing
+  - **Purpose**: The Correction-4 guarantee — a missing config must never look like success.
+  - **Files**: `backend/tests/integration/services/platform_admin/test_bootstrap.py`
+  - **Deps**: T067
+  - **Acceptance**: Non-zero exit; message names the missing variables; zero rows written; re-running after fixing config succeeds.
+
+- [ ] T072 [P] Test: repeated bootstrap with an owner present is a safe no-op
+  - **Files**: `backend/tests/integration/services/platform_admin/test_bootstrap.py`
+  - **Deps**: T067
+  - **Acceptance**: Exit `0`, "already provisioned" message, **no** second owner, existing owner's credentials unchanged.
+
+- [ ] T073 [P] Test: bootstrap with invalid configuration exits non-zero
+  - **Files**: `backend/tests/integration/services/platform_admin/test_bootstrap.py`
+  - **Deps**: T067
+  - **Acceptance**: Malformed email or unusable password hash → specific validation error, non-zero exit, nothing written.
+
+- [ ] T074 [P] [BR-9A-001] Test: tenant signup cannot create Platform authority
+  - **Files**: `backend/tests/security/modules/platform_admin/test_bootstrap_abuse.py`
+  - **Deps**: T067
+  - **Acceptance**: No code path in `backend/modules/auth/` touches `platform_administrators`; no HTTP route can create one without `platform.admins.manage`.
+
+- [ ] T075 [P] Test: self-escalation and last-owner removal are both rejected
+  - **Files**: `backend/tests/security/modules/platform_admin/test_rbac_escalation.py`
+  - **Deps**: T066
+  - **Acceptance**: Both raise; no state change; both attempts are audited.
+
+- [ ] T076 **[Gate B]** Permission-enforcement test over the routes that exist at end of Phase 5
+  - **Purpose**: Proves RBAC enforcement genuinely works, scoped to the currently-existing surface. Revision 2 split — the exhaustive all-routes matrix is T206, after every router exists.
+  - **Files**: `backend/tests/security/modules/platform_admin/test_permission_enforcement_phase5.py`
+  - **Deps**: T064, T053, T068, T069
+  - **Acceptance**: Covers the **9 operations that genuinely exist at end of Phase 5**, split into two semantically distinct categories — the 3 `/auth/*` operations are **public authentication endpoints and carry no Platform RBAC permission**, so the permission-positive/adjacent-negative test does not apply to them:
+    - **3 public authentication operations** (`POST /auth/login`, `/auth/refresh`, `/auth/logout` — no `x-permission` in the contract): verify correct public/auth semantics — login issues a `platform_access`/`platform_refresh` pair only for an **active** `PlatformAdministrator`, and returns a generic invalid-credentials response otherwise; refresh rotates and rejects a revoked session or deactivated administrator; logout revokes the session. Verify the tenant/Platform authentication isolation boundary: a **tenant** token is never accepted as a platform session, and a `platform_access` token is never accepted by `get_current_user()`. **No Platform RBAC permission is required or asserted for these three.**
+    - **6 permission-guarded Administrator/RBAC operations** (3 from T068, 3 from T069): holding the required Platform permission succeeds; holding **only** an adjacent/unrelated permission fails; unauthenticated requests are rejected; tenant-token attempts are rejected.
+  - The in-scope operation list — and its split into 3 public + 6 guarded — is asserted explicitly in the test, so T206 can later prove completeness against the full 33-operation contract (30 guarded + 3 public). **No route outside this Phase-5 surface is referenced.**
+
+- [ ] T077 **[Gate B]** Gate B sign-off
+  - **Deps**: T055–T059, T074, T075, T076
+  - **Acceptance**: Tenant tokens cannot reach Platform APIs; Platform tokens cannot act as tenant sessions; Platform auth/session is independent; RBAC enforcement works; bootstrap authority is protected; self-escalation and last-owner removal are rejected. **All dependencies are Phase 1–5 only — no forward reference.** Do not start Phase 6 until this passes.
+
+---
+
+## Phase 6: Platform Audit Query Surface — **Gate E**
+
+**Objective**: The audit read/query surface, and the blocking fail-closed atomicity proof using a **real audited mutation that already exists** (role assignment, T065). The tenant-suspension 3-way proof follows in Phase 7 (T101).
+**Prerequisites**: Gate B.
+**Exit condition (Gate E)**: T081 — depends only on Phase 1–6 work.
+
+### Tasks
+
+- [ ] T078 [US-8] [FR-9A-200] Implement the audit query service (filter + paginate)
+  - **Files**: `backend/modules/platform_admin/services/platform_audit_query_service.py`
+  - **Deps**: T036
+  - **Acceptance**: Filters by administrator, tenant, action, resource, date range, result/status; paginated; uses the T014 indexes (no table scan).
+
+- [ ] T079 **[Gate E]** Negative test: forced audit-write failure rolls back a privileged mutation
+  - **Purpose**: The single most important correctness test in the Epic (plan §32). Revision 2 fix — uses the Phase-5 role-assignment mutation, which legally exists here, instead of forward-referencing a Phase-7 lifecycle task.
+  - **Files**: `backend/tests/integration/services/platform_admin/test_audit_fail_closed.py`
+  - **Deps**: T037, T065
+  - **Acceptance**: Inject a constraint violation on the audit insert during a **platform role assignment** → assert the role-assignment row is **also** rolled back; nothing partial remains committed. quickstart.md §9 explicitly permits "whichever privileged mutation was under test".
+
+- [ ] T080 [P] [BR-9A-023] Test: platform audit records are append-only through every API surface
+  - **Files**: `backend/tests/security/modules/platform_admin/test_audit_immutability.py`
+  - **Deps**: T078
+  - **Acceptance**: No route updates or deletes an audit row; the repository exposes no such method.
+
+- [ ] T081 **[Gate E]** Gate E sign-off
+  - **Deps**: T079, T080
+  - **Acceptance**: Audit atomicity proven against a real privileged mutation using only Phase 1–6 work. The **fuller** state+audit+outbox 3-way proof on tenant suspension is mandatory and blocking in Phase 7 (T101) — Gate E does not substitute for it.
+
+---
+
+## Phase 7: Tenant Lifecycle & Company-Scoped Access Invalidation — **Gate C**
+
+**Objective**: Suspend/reactivate with persisted `pre_suspension_status` (ADR-12), company-scoped access invalidation keyed on `Session.created_at` (ADR-6), and the full 3-way audit atomicity proof. **This is the most security-sensitive phase.**
+**Prerequisites**: Gate B, Gate E.
+**Exit condition (Gate C)**: T102.
+
+### Tasks
+
+- [ ] T082 [FR-9A-017] [ADR-6] Implement `assert_company_access_allowed(db, company_id, session_id)`
+  - **Purpose**: Layer 1 (company status) + Layer 2 (authentication-freshness watermark) in one shared helper.
+  - **Files**: `backend/modules/platform_admin/services/company_access_service.py`
+  - **Deps**: T031
+  - **Acceptance**: Denies when `Company.status` is `suspended` (raising the existing `CompanySuspendedError`) or `deleted`; **and** denies when `Session.created_at <= Company.access_invalidated_at`. Loads `Session` by the `sid` already surfaced as `CurrentUser.session_id`. **Must not use the token's `iat`.**
+
+- [ ] T083 Wire `assert_company_access_allowed` into `get_current_company_member`
+  - **Purpose**: Closes the §3.3 gap — this is what makes suspension effective on all five business modules.
+  - **Files**: `backend/modules/users_roles/dependencies.py`
+  - **Deps**: T082
+  - **Acceptance**: All five module mounts inherit the check with no per-module change. **`get_current_user()` is not modified** (no new claim, no new query, no new failure mode there).
+
+- [ ] T084 Wire `assert_company_access_allowed` into `get_current_company`
+  - **Purpose**: The companies module already checks status; it additionally gains the watermark check.
+  - **Files**: `backend/modules/companies/dependencies.py`
+  - **Deps**: T082
+  - **Acceptance**: Behaviour for non-suspended companies is byte-identical to today (regression-checked in T087).
+
+- [ ] T085 [P] Unit tests for the freshness comparison
+  - **Files**: `backend/tests/unit/modules/platform_admin/test_company_access_rule.py`
+  - **Deps**: T082
+  - **Acceptance**: Covers `created_at <`, `=`, `>` watermark; NULL watermark denies nothing; `suspended`/`deleted`/`active` status paths.
+
+- [ ] T086 [P] Test: a NULL `access_invalidated_at` (every pre-existing company) denies nothing
+  - **Purpose**: Proves rollout safety — no existing tenant loses access when Phase 7 ships.
+  - **Files**: `backend/tests/integration/api/v1/platform_admin/test_company_access.py`
+  - **Deps**: T083, T084
+  - **Acceptance**: All five modules behave exactly as before for every existing tenant.
+
+- [ ] T087 Regression: all five business modules still function for non-suspended tenants
+  - **Purpose**: T083 touches a dependency every company-scoped route uses.
+  - **Files**: existing `backend/tests/integration/api/v1/{inventory,purchase,sales,accounting,crm}/`
+  - **Deps**: T083, T084
+  - **Acceptance**: Full existing suite green; any delta explained before proceeding.
+
+- [ ] T088 [US-3] [FR-9A-011] Implement `TenantLifecycleService.suspend()`
+  - **Purpose**: The missing write path for `CompanyStatus.suspended` (spec §3 item 3).
+  - **Files**: `backend/modules/platform_admin/services/tenant_lifecycle_service.py`
+  - **Deps**: T037, T082
+  - **Acceptance**: `SELECT ... FOR UPDATE` on the `Company` row → validate status is `active`/`inactive` → set `pre_suspension_status` → set `status='suspended'` → set `access_invalidated_at=now()` → enqueue `CompanySuspendedEvent` as an `OutboxRecord` → flush → audit row (before/after + mandatory reason) → **single commit**.
+
+- [ ] T089 [US-3] [FR-9A-012] Implement `TenantLifecycleService.reactivate()`
+  - **Purpose**: Restore the **recorded** pre-suspension status — never hardcoded `active` (ADR-12).
+  - **Files**: `backend/modules/platform_admin/services/tenant_lifecycle_service.py`
+  - **Deps**: T088
+  - **Acceptance**: Locks the row → requires current status `suspended` → reads `pre_suspension_status` → sets `status` to it → sets `pre_suspension_status=NULL` → **retains** `access_invalidated_at` → enqueues `CompanySuspensionLiftedEvent` → audits before/after → single commit. Fails closed with an explicit error if the restore target is somehow NULL.
+
+- [ ] T090 Implement the suspend/reactivate routes with mandatory reason + permission
+  - **Files**: `backend/modules/platform_admin/router.py`
+  - **Deps**: T088, T089, T064
+  - **Acceptance**: `POST /platform/tenants/{companyId}/suspend` requires `platform.tenants.suspend`; `/reactivate` requires `platform.tenants.reactivate` (separate permissions per spec US-3); both validate a non-empty `reason` server-side before any state change.
+
+- [ ] T091 [P] Test: `active → suspended → active`
+  - **Files**: `backend/tests/integration/services/platform_admin/test_tenant_lifecycle.py`
+  - **Deps**: T090
+  - **Acceptance**: Final status is `active`; `pre_suspension_status` is NULL afterwards; both transitions audited with correct before/after.
+
+- [ ] T092 [P] Test: `inactive → suspended → inactive`
+  - **Purpose**: The case a hardcoded `active` would silently corrupt.
+  - **Files**: `backend/tests/integration/services/platform_admin/test_tenant_lifecycle.py`
+  - **Deps**: T090
+  - **Acceptance**: Final status is `inactive`, **not** `active`.
+
+- [ ] T093 [P] Test: repeated suspension and repeated reactivation are both rejected
+  - **Files**: `backend/tests/integration/services/platform_admin/test_tenant_lifecycle.py`
+  - **Deps**: T090
+  - **Acceptance**: Specific "already suspended" / "not currently suspended" errors (spec Edge Cases #1/#2); no duplicate audit row.
+
+- [ ] T094 [P] Test: concurrent suspend attempts — exactly one commits
+  - **Files**: `backend/tests/integration/services/platform_admin/test_tenant_lifecycle_concurrency.py`
+  - **Deps**: T090
+  - **Acceptance**: Two concurrent transactions against one company → one succeeds, the other gets the state-conflict error; exactly one audit row (spec §11 scenario 6). Real PostgreSQL (row locking is not meaningfully testable on SQLite).
+
+- [ ] T095 **[Gate C]** Test A: old **access token** denied after suspend→reactivate
+  - **Files**: `backend/tests/security/modules/platform_admin/test_auth_freshness.py`
+  - **Deps**: T090
+  - **Acceptance**: Login → suspend → reactivate → replay the original access token → **denied** for that company.
+
+- [ ] T096 **[Gate C]** Test B: old **refresh token** cannot restore access — the refresh-bypass regression guard
+  - **Purpose**: This test must fail if anyone re-keys the check to the token's `iat` (ADR-6).
+  - **Files**: `backend/tests/security/modules/platform_admin/test_auth_freshness.py`
+  - **Deps**: T090
+  - **Acceptance**: Login → suspend → reactivate → redeem the **pre-suspension refresh token** → a brand-new access token is minted → using it is **still denied**, because it is bound to the same pre-suspension `Session`.
+
+- [ ] T097 **[Gate C]** Test C: genuine new login restores access
+  - **Files**: `backend/tests/security/modules/platform_admin/test_auth_freshness.py`
+  - **Deps**: T090
+  - **Acceptance**: After reactivation, a real login creates a new `Session` with `created_at > access_invalidated_at` → access allowed if membership is otherwise valid.
+
+- [ ] T098 **[Gate C]** Test D: multi-tenant user — suspending A does not affect B
+  - **Purpose**: The tenant-isolation guarantee that rejected blanket session revocation (ADR-6).
+  - **Files**: `backend/tests/security/modules/platform_admin/test_cross_tenant_suspension.py`
+  - **Deps**: T090
+  - **Acceptance**: User X is an active member of A and B → suspend A → A denied, **B still succeeds on the same token/session**.
+
+- [ ] T099 **[Gate C]** Test E: multi-device semantics
+  - **Files**: `backend/tests/security/modules/platform_admin/test_auth_freshness.py`
+  - **Deps**: T090
+  - **Acceptance**: Two devices logged in pre-suspension → both denied for A after reactivation → Device 1 re-logs in and regains A → **Device 2 remains denied** until it re-authenticates → both keep B throughout (plan §10.3.1).
+
+- [ ] T100 **[Gate C]** Test F: manipulation cannot fabricate freshness
+  - **Files**: `backend/tests/security/modules/platform_admin/test_auth_freshness.py`
+  - **Deps**: T090
+  - **Acceptance**: Tampering with `iat`, `sid`, `erp_active_company_id`, or the request company id never bypasses the check (signature protects `sid`; `Session.created_at` is server-generated and unwritable via any API).
+
+- [ ] T101 **[Gate C]** [ADR-5] Full 3-way atomicity: forced audit failure during tenant suspension
+  - **Purpose**: The canonical fail-closed proof the plan intends — state change **+** audit **+** outbox in one transaction. Revision 2 moved this here (rather than forward-referencing from Phase 6), so it runs at the earliest point where suspension actually exists.
+  - **Files**: `backend/tests/integration/services/platform_admin/test_audit_fail_closed.py`
+  - **Deps**: T088, T037
+  - **Acceptance**: Inject a constraint violation on the audit insert during a suspension → assert the `Company.status` change, the `pre_suspension_status` write, the `access_invalidated_at` watermark, **and** the `OutboxRecord` are **all** rolled back; nothing partial remains committed. Blocking — Gate C cannot pass without it.
+
+- [ ] T102 **[Gate C]** Gate C sign-off
+  - **Deps**: T091–T101
+  - **Acceptance**: Lifecycle, authentication-freshness (including the refresh bypass), cross-tenant isolation, multi-device behaviour, and full 3-way audit atomicity all proven.
+
+---
+
+## Phase 8: Plans, Subscriptions, Capabilities & Quota Foundation
+
+**Objective**: The SaaS commercial control plane (spec §16), the generic capability registry (ADR-3), and the **quota foundation** its downgrade validation and the Phase-9 baseline plan both require. No billing/payment/tax.
+**Prerequisites**: Gate C.
+**Revision 2 note**: quota models + the effective-quota resolver moved here from Phase 11 so that T113 (downgrade check) and T125 (baseline plan) no longer consume infrastructure that does not yet exist. Phase 11 retains override workflows, usage metering, AI readiness and the admin quota APIs. **There is exactly one quota model set and one resolver** — nothing is duplicated.
+
+### Tasks
+
+- [ ] T103 [P] [US-4] Create `Plan` model
+  - **Files**: `backend/modules/platform_admin/models/plan.py`
+  - **Deps**: T032
+  - **Acceptance**: Per data-model.md; `status` VARCHAR+CHECK (`draft|published|retired`); `billing_cycle_metadata`/`pricing_metadata` inert JSONB (Assumption A5); **no hardcoded plan names** (FR-9A-151).
+
+- [ ] T104 [P] Create `Capability` model + registry
+  - **Files**: `backend/modules/platform_admin/models/capability.py`
+  - **Deps**: T032
+  - **Acceptance**: `key` PK, `module`, `grain` (`module|feature`), `display_name`, `is_active`. Adding a future module needs one row, **no** schema change and **no** per-module boolean column on `Company`.
+
+- [ ] T105 Create `PlanCapability` model (the Plan Entitlement ceiling)
+  - **Files**: `backend/modules/platform_admin/models/plan_capability.py`
+  - **Deps**: T103, T104
+  - **Acceptance**: `(plan_id, capability_key)` unique; `allowed` boolean.
+
+- [ ] T106 [US-5] Create `Subscription` model
+  - **Files**: `backend/modules/platform_admin/models/subscription.py`
+  - **Deps**: T103
+  - **Acceptance**: Per data-model.md; `status` VARCHAR+CHECK limited to `active|ended` (**no `trial`** — resolved OQ-1); partial unique index enforces one active subscription per company.
+
+- [ ] T107 [US-10] Create the quota foundation models + repositories
+  - **Purpose**: `QuotaDefinition`, `PlanQuota`, `TenantQuotaOverride` — required by T113's downgrade check and T125's baseline plan. Tables already exist from migration `059`.
+  - **Files**: `backend/modules/platform_admin/models/quota.py`, `repositories/quota_repository.py`
+  - **Deps**: T103, T018
+  - **Acceptance**: Generic key-based registry (`users`, `branches`, `transactions`, `storage`, `api_calls`, `ai_credits`); **no per-quota-type column**; `enforcement_style` (`hard|soft|informational`) declared explicitly per BR-9A-030. `PlanQuota.limit_value` nullable where **NULL means unlimited** (FR-9A-182) — never a large sentinel.
+
+- [ ] T108 [US-10] [FR-9A-181] Implement the effective-quota resolver — the single authoritative resolution path
+  - **Files**: `backend/modules/platform_admin/services/quota_service.py`
+  - **Deps**: T107
+  - **Acceptance**: Override → `PlanQuota` → unlimited; renders the five states `ok|approaching|reached|unlimited|unavailable`. This is the **only** quota resolver in the codebase; Phase 11 consumes it rather than re-implementing it.
+
+- [ ] T109 [P] Test: quota states, unlimited semantics and enforcement styles
+  - **Files**: `backend/tests/unit/modules/platform_admin/test_quota_resolution.py`
+  - **Deps**: T108
+  - **Acceptance**: All five states; each enforcement style behaves as declared; entitlement and quota remain independent concepts; NULL limit resolves to unlimited, never to a number.
+
+- [ ] T110 Create Plan/Capability/Subscription repositories
+  - **Files**: `backend/modules/platform_admin/repositories/{plan,capability,subscription}_repository.py`
+  - **Deps**: T103–T106
+  - **Acceptance**: Paginated list/filter; audited writes flush-only (ADR-5).
+
+- [ ] T111 [US-4] Implement `PlanService` (create/update/publish/retire)
+  - **Files**: `backend/modules/platform_admin/services/plan_service.py`
+  - **Deps**: T110, T037
+  - **Acceptance**: Retiring blocks **new** assignments only; existing subscriptions keep their entitlements unchanged (BR-9A-018). Every write audited.
+
+- [ ] T112 [US-5] Implement `SubscriptionService.assign_or_change()`
+  - **Files**: `backend/modules/platform_admin/services/subscription_service.py`
+  - **Deps**: T110, T037
+  - **Acceptance**: Keeps `companies.subscription_id` in sync in the same transaction (denormalised pointer; the partial unique index remains authoritative, ADR-9). Every change audited with before/after plan + effective date + reason.
+
+- [ ] T113 [US-5] [FR-9A-165] [FR-9A-166] Implement downgrade usage-conflict acknowledgement
+  - **Purpose**: Revision 2 fix — previously depended on a non-existent "T132 quota resolver"; now correctly depends on T108, which exists earlier in this same phase.
+  - **Files**: `backend/modules/platform_admin/services/subscription_service.py`
+  - **Deps**: T112, T108
+  - **Acceptance**: If current usage exceeds the target plan's limits, the change is **rejected** unless the request carries an explicit acknowledgement flag; once applied, the tenant is **flagged over-quota** rather than truncated. No tenant data is ever removed or truncated.
+
+- [ ] T114 Implement plan/subscription routes
+  - **Files**: `backend/modules/platform_admin/router.py`
+  - **Deps**: T111, T112, T113, T064
+  - **Acceptance**: `GET/POST /platform/plans`, `PATCH /platform/plans/{planId}`, `GET/POST /platform/tenants/{companyId}/subscription` — permissions exactly as in `contracts/platform-admin-v1.yaml`.
+
+- [ ] T115 [P] Test: retired plan keeps existing subscriptions intact but is unassignable
+  - **Files**: `backend/tests/integration/services/platform_admin/test_plan_lifecycle.py`
+  - **Deps**: T114
+  - **Acceptance**: 12 subscribed tenants keep entitlements; the plan no longer appears as an assignment option (spec US-4 scenario 2).
+
+- [ ] T116 [P] Test: one-active-subscription-per-company invariant is DB-enforced
+  - **Files**: `backend/tests/integration/repositories/platform_admin/test_subscription_constraints.py`
+  - **Deps**: T114
+  - **Acceptance**: A second active subscription raises at the database level (partial unique index), not merely in application code. Real PostgreSQL.
+
+- [ ] T117 [P] Test: subscription date validation and downgrade acknowledgement
+  - **Files**: `backend/tests/integration/services/platform_admin/test_subscription.py`
+  - **Deps**: T114
+  - **Acceptance**: End date before effective date is rejected (spec Edge Case #16); an over-limit downgrade without acknowledgement is rejected, and with acknowledgement applies and flags over-quota without data loss.
+
+---
+
+## Phase 9: Entitlement Resolver, Safe Rollout & Point-of-Use Enforcement — **Gate D**
+
+**Objective**: One authoritative entitlement resolver (ADR-3), a staged rollout that cannot break existing tenants (plan §34), then live enforcement on all five modules.
+**Prerequisites**: Phase 8 (quota foundation included).
+**Ordering rule**: enforcement (T129–T133) must **not** activate before the rollout mapping is verified (T128).
+
+### Tasks
+
+- [ ] T118 Define the `ModuleEnablementProvider` protocol
+  - **Purpose**: Per-module Tenant Toggle lookup without assuming a uniform master-key convention (ADR-3, plan §40).
+  - **Files**: `backend/modules/platform_admin/services/module_enablement.py`
+  - **Deps**: T104
+  - **Acceptance**: Protocol with one method; documented default rule — **a module with no module-grain master toggle returns `enabled=True`**, so the Plan ceiling alone governs it.
+
+- [ ] T119 [P] Implement the five module enablement providers
+  - **Files**: `backend/modules/platform_admin/services/module_enablement.py`
+  - **Deps**: T118
+  - **Acceptance**: CRM reads `feature.crm.enabled`; Inventory/Sales/Purchase/Accounting apply the documented default rule unless a verified master key exists. Each provider reads its module's existing table **read-only** — never writes a tenant toggle.
+
+- [ ] T120 [US-6] [FR-9A-170] Implement `PlatformEntitlementService.resolve_effective_entitlement()`
+  - **Purpose**: The single deterministic resolver — no module re-implements this logic (BR-9A-015/016).
+  - **Files**: `backend/modules/platform_admin/services/entitlement_service.py`
+  - **Deps**: T118, T105, T106
+  - **Acceptance**: Implements spec §17.2's table exactly: Plan Entitlement × Tenant Toggle × active Override. Evaluated per request, never cached indefinitely. Also consults tenant lifecycle and current subscription.
+
+- [ ] T121 [P] Unit tests: the full entitlement matrix
+  - **Files**: `backend/tests/unit/modules/platform_admin/test_entitlement_matrix.py`
+  - **Deps**: T120
+  - **Acceptance**: Every row of spec §17.2 covered, including "Not Allowed + Enabled → Unavailable" and "moved to a plan lacking a previously-entitled module → Unavailable, toggle preserved".
+
+- [ ] T122 Implement `require_capability_entitled(capability_key)` dependency
+  - **Purpose**: The **point-of-use** ceiling — mutation-time checks alone are insufficient (ADR-3).
+  - **Files**: `backend/modules/platform_admin/dependencies.py`
+  - **Deps**: T120, T034
+  - **Acceptance**: Raises `CapabilityNotEntitledError` (403) when the effective result is Unavailable; usable as a router-mount dependency.
+
+- [ ] T123 [US-6] Implement the read-only entitlement endpoint for UX
+  - **Files**: `backend/modules/platform_admin/router.py`
+  - **Deps**: T120, T064
+  - **Acceptance**: `GET /platform/tenants/{companyId}/entitlements` requires `platform.entitlements.read`. Frontend use is **UX only** — never the security boundary.
+
+- [ ] T124 Seed the five module capability rows
+  - **Purpose**: Rollout step 2 (plan §34) — must exist before any plan references them.
+  - **Files**: `backend/modules/platform_admin/services/capability_seed_service.py`
+  - **Deps**: T104
+  - **Acceptance**: Idempotent seed of `inventory`, `purchase`, `sales`, `accounting`, `crm` at module grain. **Not a migration.**
+
+- [ ] T125 Create the baseline "Legacy/Unlimited" plan
+  - **Purpose**: Rollout step 3 — guarantees existing tenants lose nothing. Revision 2 fix — `PlanQuota` now legitimately exists (T107).
+  - **Files**: `backend/modules/platform_admin/services/rollout_service.py`
+  - **Deps**: T124, T111, T107
+  - **Acceptance**: One published plan with `PlanCapability.allowed=true` for all five capabilities and `PlanQuota.limit_value=NULL` (unlimited) for every quota key. Idempotent.
+
+- [ ] T126 Bulk-assign every existing tenant to the baseline plan
+  - **Purpose**: Rollout step 4 — the step that makes `companies.subscription_id` non-null for pre-existing tenants.
+  - **Files**: `backend/modules/platform_admin/services/rollout_service.py`
+  - **Deps**: T125, T112
+  - **Acceptance**: One active `Subscription` per existing company, actor = bootstrap Platform Owner, fully audited, idempotent and re-runnable. **Does not touch any tenant feature-toggle row.**
+
+- [ ] T127 Verify existing feature-toggle rows are byte-for-byte preserved by the rollout
+  - **Purpose**: Rollout step 5 (plan §34, requirement 6).
+  - **Files**: `backend/tests/integration/services/platform_admin/test_entitlement_rollout.py`
+  - **Deps**: T126
+  - **Acceptance**: Snapshot all five modules' feature-flag tables before/after T124–T126 → identical. CRM enabled/disabled state specifically unchanged.
+
+- [ ] T128 Verify every existing tenant resolves to "available" for everything it had before
+  - **Purpose**: Rollout step 5 verification — the go/no-go for enforcement.
+  - **Files**: `backend/tests/integration/services/platform_admin/test_entitlement_rollout.py`
+  - **Deps**: T127, T120
+  - **Acceptance**: For every existing company × capability, effective entitlement matches pre-rollout effective access exactly. **Enforcement must not be activated until this is green.**
+
+- [ ] T129 Mount `require_capability_entitled("inventory")` on the Inventory router
+  - **Files**: `backend/api/v1/router.py`
+  - **Deps**: T128, T122
+  - **Acceptance**: Added alongside the existing `get_current_company_member`; the module's own code is unchanged.
+
+- [ ] T130 [P] Mount `require_capability_entitled("purchase")` on the Purchase router
+  - **Files**: `backend/api/v1/router.py`
+  - **Deps**: T129
+  - **Acceptance**: Same pattern.
+
+- [ ] T131 [P] Mount `require_capability_entitled("sales")` on the Sales router
+  - **Files**: `backend/api/v1/router.py`
+  - **Deps**: T129
+  - **Acceptance**: Same pattern.
+
+- [ ] T132 [P] Mount `require_capability_entitled("accounting")` on the Accounting router
+  - **Files**: `backend/api/v1/router.py`
+  - **Deps**: T129
+  - **Acceptance**: Same pattern; Accounting's existing permission checks are untouched.
+
+- [ ] T133 Mount `require_capability_entitled("crm")` **in front of** the preserved `require_crm_enabled`
+  - **Purpose**: `require_crm_enabled` alone is explicitly insufficient — it reads only the toggle (plan §35).
+  - **Files**: `backend/api/v1/router.py`
+  - **Deps**: T129
+  - **Acceptance**: Mount order is `get_current_company_member` → `require_capability_entitled("crm")` → `require_crm_enabled`. **No CRM source file is modified.**
+
+- [ ] T134 **[Gate D]** Test: Plan allows + toggle enabled → allowed; Plan denies + toggle enabled → denied
+  - **Files**: `backend/tests/security/modules/platform_admin/test_entitlement_enforcement.py`
+  - **Deps**: T129–T133
+  - **Acceptance**: Parametrised across **all five** modules.
+
+- [ ] T135 **[Gate D]** Test: Plan downgrade denies access on the next request without touching the toggle
+  - **Purpose**: The Correction-1 bypass regression guard.
+  - **Files**: `backend/tests/security/modules/platform_admin/test_entitlement_enforcement.py`
+  - **Deps**: T134
+  - **Acceptance**: Tenant on an allowing plan with the toggle on → move to a denying plan → next request **denied** → assert the toggle row in the database is **still `true`** (preference preserved, never rewritten).
+
+- [ ] T136 **[Gate D]** Test: re-upgrading restores access at the tenant's preserved preference
+  - **Files**: `backend/tests/security/modules/platform_admin/test_entitlement_enforcement.py`
+  - **Deps**: T135
+  - **Acceptance**: Moving back to an allowing plan resumes access automatically, with no toggle mutation at any point.
+
+- [ ] T137 **[Gate D]** Gate D sign-off
+  - **Deps**: T134–T136
+  - **Acceptance**: Plan ceiling proven at point of use across all five modules.
+
+---
+
+## Phase 10: Existing Feature-Toggle Mutation Hardening
+
+**Objective**: Close the confirmed authorization gap on exactly the three vulnerable modules (plan §14, §27). Accounting and CRM are **not** rewritten.
+**Prerequisites**: Gate D.
+
+### Tasks
+
+- [ ] T138 Add `inventory.settings.manage` permission + check to the Inventory toggle endpoint
+  - **Purpose**: Ordinary active members must not be able to flip module feature state (FR-9A-183/184).
+  - **Files**: `backend/modules/inventory/router.py`, `backend/modules/inventory/constants.py`
+  - **Deps**: T137
+  - **Acceptance**: Replicates Accounting's existing `user_has_accounting_permission` pattern exactly; the endpoint additionally consults the entitlement ceiling (secondary guard, FR-9A-185).
+
+- [ ] T139 [P] Add `sales.settings.manage` permission + check to the Sales toggle endpoint
+  - **Files**: `backend/modules/sales/router.py`, `backend/modules/sales/constants.py`
+  - **Deps**: T138
+  - **Acceptance**: Same pattern.
+
+- [ ] T140 [P] Add `purchase.settings.manage` permission + check to the Purchase toggle endpoint
+  - **Files**: `backend/modules/purchase/router.py`, `backend/modules/purchase/constants.py`
+  - **Deps**: T138
+  - **Acceptance**: Same pattern.
+
+- [ ] T141 Seed the three new permissions onto existing tenant `owner`/`admin` roles via `RoleSeedService`
+  - **Purpose**: Prevents locking out tenant admins who legitimately relied on the previous (unguarded) behaviour (plan §38 risk mitigation). Revision 2 fix — the previous "migration **or** RoleSeedService" wording was ambiguous and could have produced a forbidden `062`.
+  - **Files**: `backend/modules/users_roles/constants.py` (add the 3 codes to `INITIAL_PERMISSIONS` and to `DEFAULT_ROLE_PERMISSIONS` for `owner`/`admin`), `backend/modules/users_roles/services/role_seed_service.py` (existing idempotent seeder — extend only if required, do not rewrite)
+  - **Deps**: T138–T140
+  - **Acceptance**: The three codes are seeded through the **existing `RoleSeedService`** mechanism, which plan.md §14 names explicitly ("seeded via the existing `RoleSeedService` convention") and which is already idempotent (skips duplicates via unique constraints). Existing owner/admin members can still manage toggles immediately after deploy; ordinary members cannot. **NO NEW MIGRATION `062` MAY BE CREATED** — the Epic 9A migration sequence is frozen at `057`–`061` and T029 asserts this. If a backfill onto already-existing role rows proves impossible through `RoleSeedService` alone, **STOP and report** rather than adding a migration.
+
+- [ ] T142 [P] Security test: ordinary active member cannot mutate feature state on the three hardened modules
+  - **Files**: `backend/tests/security/modules/platform_admin/test_feature_toggle_hardening.py`
+  - **Deps**: T141
+  - **Acceptance**: 403 for a plain member; success for an owner/admin — across Inventory, Sales, Purchase.
+
+- [ ] T143 [P] Regression test: Accounting and CRM toggle behaviour is unchanged
+  - **Purpose**: Proves the already-correct modules were not disturbed.
+  - **Files**: `backend/tests/security/modules/platform_admin/test_feature_toggle_hardening.py`
+  - **Deps**: T141
+  - **Acceptance**: Accounting still requires `accounting.approvalworkflow.manage`; CRM still requires `require_admin_or_above()`; behaviour identical to the Phase 1 baseline.
+
+- [ ] T144 [P] Test: a tenant cannot enable a toggle beyond the Plan ceiling
+  - **Files**: `backend/tests/security/modules/platform_admin/test_feature_toggle_hardening.py`
+  - **Deps**: T141
+  - **Acceptance**: With a denying plan, even a tenant owner's enable attempt is rejected with a clear error (no silently-ineffective write).
+
+---
+
+## Phase 11: Overrides, Quota Administration, Usage & AI-Credit Readiness
+
+**Objective**: Administrative overrides (spec §16), quota administration workflows on top of the Phase-8 foundation, PostgreSQL usage metering, and provider-neutral AI readiness.
+**Prerequisites**: Gate D.
+**Revision 2 note**: quota **models and the resolver** now live in Phase 8; this phase adds the override/administration workflows that consume them. No model or resolver is duplicated.
+
+### Tasks
+
+- [ ] T145 [US-6] Create `EntitlementOverride` model + repository
+  - **Files**: `backend/modules/platform_admin/models/entitlement_override.py`, `repositories/override_repository.py`
+  - **Deps**: T104
+  - **Acceptance**: Per data-model.md; mandatory `reason`; nullable `expires_at` (**NULL = permanent, explicitly distinguishable**); partial unique index on active rows.
+
+- [ ] T146 [US-6] [FR-9A-171] Implement override grant/revoke service
+  - **Files**: `backend/modules/platform_admin/services/override_service.py`
+  - **Deps**: T145, T037
+  - **Acceptance**: Requires `platform.entitlements.override`; records tenant, capability, reason, actor, optional expiry; grant and revoke both audited.
+
+- [ ] T147 [FR-9A-172] Implement expiry-at-read-time semantics + audited automatic reversion
+  - **Purpose**: Correctness must not depend on a scheduler (none exists in this repo, plan §40).
+  - **Files**: `backend/modules/platform_admin/services/override_service.py`, `entitlement_service.py`
+  - **Deps**: T146, T120
+  - **Acceptance**: The resolver checks `expires_at > now()` at read time and never trusts a stale `is_active`; reversion writes an audit entry.
+
+- [ ] T148 [P] Test: override precedence and expiry
+  - **Files**: `backend/tests/unit/modules/platform_admin/test_override_precedence.py`
+  - **Deps**: T147
+  - **Acceptance**: Active override beats a denying plan; an **expired** override is never effective even if `is_active` was left stale.
+
+- [ ] T149 [US-10] Implement tenant quota override grant/revoke + quota administration service
+  - **Purpose**: The workflow layer over the Phase-8 `TenantQuotaOverride` model (T107) and resolver (T108) — no new model, no second resolver.
+  - **Files**: `backend/modules/platform_admin/services/quota_admin_service.py`
+  - **Deps**: T107, T108, T037
+  - **Acceptance**: Requires `platform.quotas.override`; mandatory reason, actor, optional expiry; grant and revoke audited; expiry handled at read time exactly like entitlement overrides.
+
+- [ ] T150 [US-10] Create `UsageRecord` model + repository
+  - **Files**: `backend/modules/platform_admin/models/usage_record.py`, `repositories/usage_repository.py`
+  - **Deps**: T032
+  - **Acceptance**: Per data-model.md (`company_id`, `metric_key`, `quantity`, `period_start/end`, `source`, `recorded_at`); PostgreSQL only — **no event-streaming infrastructure**.
+
+- [ ] T151 [FR-9A-060] Implement periodic usage computation
+  - **Files**: `backend/modules/platform_admin/services/usage_service.py`
+  - **Deps**: T150
+  - **Acceptance**: Batch computation per company/metric/period (not per-request increments, so no row-locking design is needed); idempotent per period; manually triggerable.
+
+- [ ] T152 [FR-9A-062] Implement the "measurement unavailable" state
+  - **Purpose**: A missing period must never render as `0` (spec Edge Case #15).
+  - **Files**: `backend/modules/platform_admin/services/quota_service.py`
+  - **Deps**: T151, T108
+  - **Acceptance**: Absence of a current-period `UsageRecord` is an explicitly-checked `unavailable` state in the existing resolver, never an implicit zero fallback.
+
+- [ ] T153 [P] Test: usage unavailability is distinguishable from genuine zero
+  - **Files**: `backend/tests/integration/services/platform_admin/test_usage.py`
+  - **Deps**: T152
+  - **Acceptance**: No-row → `unavailable`; a real zero-quantity row → `ok` with `0`.
+
+- [ ] T154 [US-12] [BR-9A-026] Create `AiCreditLedgerEntry` model + repository
+  - **Files**: `backend/modules/platform_admin/models/ai_credit_ledger.py`, `repositories/ai_credit_repository.py`
+  - **Deps**: T032
+  - **Acceptance**: Signed `delta`; nullable `actor_platform_administrator_id` (NULL = future automatic debit, populated = manual adjustment); `provider`/`model` free-text — **no vendor named anywhere in the model**.
+
+- [ ] T155 [US-12] [BR-9A-027] Implement manual AI credit adjustment
+  - **Files**: `backend/modules/platform_admin/services/ai_credit_service.py`
+  - **Deps**: T154, T037
+  - **Acceptance**: Requires `platform.ai_credits.adjust`, a mandatory reason, and produces a full audit record linked by `platform_audit_event_id`. Balance is `SUM(delta)`. **No AI provider is integrated.**
+
+- [ ] T156 [P] [FR-9A-235] Test: AI views show "not yet active", never a zero-value table
+  - **Files**: `backend/tests/integration/api/v1/platform_admin/test_ai_credits.py`
+  - **Deps**: T155
+  - **Acceptance**: With an empty ledger the API returns an explicit not-yet-active state; no placeholder zero rows are ever written.
+
+- [ ] T157 Implement override/quota/usage/AI routes
+  - **Files**: `backend/modules/platform_admin/router.py`
+  - **Deps**: T146, T149, T151, T155, T064
+  - **Acceptance**: Exactly the paths in `contracts/platform-admin-v1.yaml` with their declared permissions — no extra CRUD invented.
+
+---
+
+## Phase 12: Support Access — **Gate F**
+
+**Objective**: Time-bounded, reason-required, **inspection-only** cross-tenant access (spec §18, resolved OQ-2). No impersonation.
+**Prerequisites**: Gate C (lifecycle), Gate E (audit).
+
+### Tasks
+
+- [ ] T158 [US-9] Create `SupportAccessGrant` model + repository
+  - **Files**: `backend/modules/platform_admin/models/support_access_grant.py`, `repositories/support_access_repository.py`
+  - **Deps**: T032
+  - **Acceptance**: Per data-model.md; mandatory `reason`; mandatory `expires_at` (**no indefinite grant**); `status` `active|expired|terminated`.
+
+- [ ] T159 [US-9] [FR-9A-190..193] Implement grant initiation
+  - **Files**: `backend/modules/platform_admin/services/support_access_service.py`
+  - **Deps**: T158, T037
+  - **Acceptance**: Requires `platform.support_access.initiate`; exactly one target tenant per grant; mandatory reason; explicit expiry; start audited.
+
+- [ ] T160 [US-9] [FR-9A-196/197] Implement termination and lazy expiry
+  - **Files**: `backend/modules/platform_admin/services/support_access_service.py`
+  - **Deps**: T159
+  - **Acceptance**: Expiry checked at request time (`expires_at < now()` → 403, status flipped lazily); explicit termination by the initiator or a sufficiently-privileged admin; end timestamp audited.
+
+- [ ] T161 [US-9] [FR-9A-195] Implement per-action audit within an active grant
+  - **Files**: `backend/modules/platform_admin/services/support_access_service.py`
+  - **Deps**: T160, T036
+  - **Acceptance**: Every read during a grant writes a `PlatformAuditEvent` with `support_access_grant_id` populated — in addition to the grant's own start/end rows (BR-9A-020, no parallel audit table).
+
+- [ ] T162 [US-9] Implement the support-access routes
+  - **Files**: `backend/modules/platform_admin/router.py`
+  - **Deps**: T159–T161, T064
+  - **Acceptance**: `POST /platform/tenants/{companyId}/support-access`, `DELETE /platform/support-access/{grantId}`, `GET /platform/support-access` per contract. The router imports **no** business-record repository from any of the five modules.
+
+- [ ] T163 **[Gate F]** [BR-9A-021] Security test: support access cannot reach tenant business records
+  - **Purpose**: The resolved-OQ-2 boundary — read **or** write, inside **or** outside a grant.
+  - **Files**: `backend/tests/security/modules/platform_admin/test_support_access_boundary.py`
+  - **Deps**: T162
+  - **Acceptance**: With an active grant on a tenant holding real invoices/sales orders/journal entries/stock movements/CRM records, no support-access route exposes any of them; a static check asserts the support-access module imports no business-record repository.
+
+- [ ] T164 [P] Test: grant expiry and termination end access
+  - **Files**: `backend/tests/security/modules/platform_admin/test_support_access_boundary.py`
+  - **Deps**: T162
+  - **Acceptance**: Post-expiry and post-termination requests are rejected; both are recorded in the audit trail.
+
+- [ ] T165 [P] Test: support access requires its own permission and a reason
+  - **Files**: `backend/tests/security/modules/platform_admin/test_support_access_boundary.py`
+  - **Deps**: T162
+  - **Acceptance**: Missing permission → 403; missing/empty reason → rejected before the grant is created.
+
+- [ ] T166 **[Gate F]** Gate F sign-off
+  - **Deps**: T163–T165
+  - **Acceptance**: Support boundary proven; no impersonation exists anywhere in the implementation.
+
+---
+
+## Phase 13: Platform Operational APIs (Dashboard, Tenants, Audit, Health)
+
+**Objective**: The remaining contract endpoints (US-1, US-2, US-8, US-11).
+**Prerequisites**: Phases 6–12.
+
+### Tasks
+
+- [ ] T167 [US-2] [FR-9A-010] Implement the tenant directory endpoint
+  - **Files**: `backend/modules/platform_admin/services/tenant_directory_service.py`, `router.py`
+  - **Deps**: T064
+  - **Acceptance**: `GET /platform/tenants` requires `platform.tenants.read`; search/filter/sort/paginate across **all** `CompanyStatus` values; bounded queries only (no "load all").
+
+- [ ] T168 [US-2] [FR-9A-020/021] Implement the tenant 360° detail endpoint
+  - **Files**: `backend/modules/platform_admin/services/tenant_directory_service.py`, `router.py`
+  - **Deps**: T167, T120, T108
+  - **Acceptance**: Returns identity, status, onboarding info, plan, subscription, entitlements, usage-vs-limits, user count, lifecycle history, platform admin actions, audit events. **Exposes no tenant business transaction record** (FR-9A-021).
+
+- [ ] T169 [US-3] [FR-9A-016] Implement the lifecycle-history endpoint
+  - **Files**: `backend/modules/platform_admin/router.py`
+  - **Deps**: T168, T078
+  - **Acceptance**: `GET /platform/tenants/{companyId}/lifecycle-history` shows every transition with actor, timestamp and reason.
+
+- [ ] T170 [US-8] Implement the platform audit endpoint
+  - **Files**: `backend/modules/platform_admin/router.py`
+  - **Deps**: T078, T064
+  - **Acceptance**: `GET /platform/audit` requires `platform.audit.read`; supports the full FR-9A-200 filter set; paginated; append-only (no mutation route exists).
+
+- [ ] T171 [US-1] [FR-9A-001] Implement the dashboard aggregate service
+  - **Files**: `backend/modules/platform_admin/services/dashboard_service.py`
+  - **Deps**: T167, T108, T078
+  - **Acceptance**: Tenant counts by status (`GROUP BY`), recent registrations (indexed `LIMIT`), plan/subscription distribution, quota warnings, recent platform actions, health summary. No unbounded aggregation, no per-tenant N+1.
+
+- [ ] T172 [US-1] [FR-9A-003/004] Implement per-widget state and permission-gated omission
+  - **Purpose**: "Data unavailable ≠ zero" (spec §22).
+  - **Files**: `backend/modules/platform_admin/services/dashboard_service.py`, `router.py`
+  - **Deps**: T171
+  - **Acceptance**: Each widget independently reports `loading|populated|empty|unavailable`; a failed sub-query renders `unavailable`, **never `0`**; widgets the caller lacks permission for are **omitted** entirely, not shown empty or erroring.
+
+- [ ] T173 [US-1] [FR-9A-005] Gate the AI widget on real data
+  - **Files**: `backend/modules/platform_admin/services/dashboard_service.py`
+  - **Deps**: T172, T154
+  - **Acceptance**: The AI usage widget appears only once `ai_credit_ledger_entries` has at least one row; otherwise absent (not populated-empty).
+
+- [ ] T174 [US-11] [FR-9A-240/241] Implement the platform health endpoint
+  - **Files**: `backend/modules/platform_admin/services/health_service.py`, `router.py`
+  - **Deps**: T064
+  - **Acceptance**: Surfaces the existing `/health`, `/health/live`, `/health/ready` checks plus outbox pending/published counts, and **explicitly labels the relay as a logging-only stub** rather than implying real message-bus delivery.
+
+- [ ] T175 [P] [FR-9A-243] Test: an unavailable dependency renders as `unavailable` with its check name
+  - **Files**: `backend/tests/integration/api/v1/platform_admin/test_dashboard_health.py`
+  - **Deps**: T172, T174
+  - **Acceptance**: A degraded database check shows `database: degraded`, never a blanket "unknown" and never a fabricated `0`.
+
+- [ ] T176 [P] [FR-9A-120/121] Implement platform export endpoints
+  - **Files**: `backend/modules/platform_admin/services/export_service.py`, `router.py`
+  - **Deps**: T167, T170
+  - **Acceptance**: Tenant directory / subscription / usage / audit export scoped to what the caller's permissions already allow online; **never** includes tenant business transaction records.
+
+- [ ] T177 [P] Contract conformance test against `platform-admin-v1.yaml`
+  - **Purpose**: Every declared path exists with the declared method and permission; no undeclared CRUD was invented.
+  - **Files**: `backend/tests/integration/api/v1/platform_admin/test_contract_conformance.py`
+  - **Deps**: T167–T176, T114, T157, T162, T090, T068, T069
+  - **Acceptance**: All **28 contract paths / 33 operations** implemented — including the 6 Administrator/RBAC operations from T068/T069, which are now explicit dependencies. Each operation's declared `x-permission` matches the wired `require_platform_permission` code; every declared HTTP method exists; **no undeclared CRUD was invented** (an endpoint present in code but absent from the contract also fails the test). Any deviation fails.
+
+---
+
+## Phase 14: Platform Frontend Foundation
+
+**Objective**: Separate Platform auth state and a non-crossing HTTP client (ADR-11), plus the canonical tenant-context accessor (ADR-13).
+**Prerequisites**: Phase 13 (APIs must exist before pages consume them).
+
+### Tasks
+
+- [ ] T178 [ADR-11] Refactor `ApiClient` to accept an injected `AuthStrategy`
+  - **Purpose**: Structural prevention of token crossover; the singleton currently hardcodes tenant auth at module scope.
+  - **Files**: `frontend/src/lib/api/client.ts`
+  - **Deps**: T008
+  - **Acceptance**: `AuthStrategy { getToken, refresh, onAuthFailure }` injected via constructor; `buildHeaders()`, the 401 branch and `postMultipart()` all route through `this.auth`. Shared transport/URL/error/unwrap logic stays in the one class.
+
+- [ ] T179 Export `apiClient` with the tenant strategy — behaviour unchanged
+  - **Purpose**: Zero regression for every existing domain file.
+  - **Files**: `frontend/src/lib/api/client.ts`, `frontend/src/lib/auth/tenantAuthStrategy.ts`
+  - **Deps**: T178
+  - **Acceptance**: `accounting.ts`, `crm.ts`, `sales.ts`, etc. are **not modified**; existing behaviour byte-identical.
+
+- [ ] T180 Create the platform token storage and refresh lock
+  - **Files**: `frontend/src/lib/platform-auth/platformTokenStorage.ts`, `platformAuthClient.ts`
+  - **Deps**: T178
+  - **Acceptance**: Platform access token **in-memory only** (mirroring the tenant XSS-mitigation rationale); platform refresh token in its own storage key, never `erp_refresh_token`; `acquirePlatformRefreshLock()` is a **separate** single-flight promise from the tenant lock.
+
+- [ ] T181 Export `platformApiClient` with the platform strategy
+  - **Files**: `frontend/src/lib/api/platform.ts`
+  - **Deps**: T180, T179
+  - **Acceptance**: Own `platformBase()` path helper; imports only the platform strategy; used by every Platform page.
+
+- [ ] T182 [P] Test: zero token crossover in both directions
+  - **Files**: `frontend/src/lib/api/__tests__/token-separation.test.ts`
+  - **Deps**: T181
+  - **Acceptance**: Platform requests carry only the platform token; tenant requests only the tenant token; neither client can read the other's storage.
+
+- [ ] T183 [P] Test: a 401 invokes only its own domain's refresh flow
+  - **Files**: `frontend/src/lib/api/__tests__/token-separation.test.ts`
+  - **Deps**: T182
+  - **Acceptance**: Platform 401 → only `acquirePlatformRefreshLock`; tenant 401 → only `acquireRefreshLock`; a failed platform refresh does **not** clear tenant tokens nor emit the tenant `session-expired` event (and vice versa). Includes a concurrent-401 case proving the locks are independent.
+
+- [ ] T184 [ADR-13] Create the canonical tenant-context accessor
+  - **Purpose**: A contract over the existing persistence key — **not** a broad ERP refactor.
+  - **Files**: `frontend/src/lib/tenant-context/activeCompany.ts`
+  - **Deps**: none
+  - **Acceptance**: `getActiveCompanyId()/setActiveCompanyId()/clearActiveCompanyId()` backed by the unchanged `erp_active_company_id` key; 100% compatible with `CompanyContext.tsx`. **Existing modules are not migrated** (out of scope).
+
+- [ ] T185 Create `PlatformAuthContext`
+  - **Files**: `frontend/src/contexts/PlatformAuthContext.tsx`
+  - **Deps**: T181
+  - **Acceptance**: Own login/logout/refresh/session-expiry state; **never nested inside or sharing state with** `AuthContext`; handles deactivated-administrator responses.
+
+- [ ] T186 [BR-9A-035] Create `PlatformSelectedTenantContext`
+  - **Purpose**: Platform's tenant selection must never touch tenant context.
+  - **Files**: `frontend/src/contexts/PlatformSelectedTenantContext.tsx`
+  - **Deps**: T185
+  - **Acceptance**: In-memory only; **never reads or writes `erp_active_company_id`**; never grants any permission; cleared on platform logout.
+
+- [ ] T187 [P] Test: platform tenant selection does not disturb tenant context
+  - **Files**: `frontend/src/contexts/__tests__/context-isolation.test.tsx`
+  - **Deps**: T186, T184
+  - **Acceptance**: Selecting a tenant in the Platform context leaves `erp_active_company_id` unchanged; manipulating `erp_active_company_id` grants no platform capability.
+
+---
+
+## Phase 15: Platform Frontend Shell & Pages
+
+**Objective**: A dedicated `/platform-admin/...` area, structurally distinct from tenant admin.
+**Prerequisites**: Phase 14.
+
+### Tasks
+
+- [ ] T188 Create the **protected** `(platform-admin)` route group, layout and guard
+  - **Purpose**: Its own shell — **not** `AppLayout`, not the tenant `Sidebar` (whose "SuperAdmin" check is an acknowledged placeholder). Revision 3 fix — this layout guards **authenticated pages only**; the login page lives in a *sibling* route group (T190) so it can never be wrapped by this redirecting layout.
+  - **Files**: `frontend/src/app/(platform-admin)/platform-admin/layout.tsx`
+  - **Deps**: T185
+  - **Acceptance**: Wraps only the authenticated `/platform-admin/*` pages (`dashboard`, `tenants`, `plans`, …). Redirects to `/platform-admin/login` when there is no valid platform session; client-side guard matching the existing `(protected)/layout.tsx` convention (**no Next.js middleware introduced** — the repo has none). Structurally cannot wrap `/platform-admin/login`, because that route is defined in the `(platform-auth)` group (T190). Verified against T007's collision check.
+  - **Chosen structure** (mirrors the repository's existing `(auth)` vs `(protected)` split exactly — `frontend/src/app/(auth)/login` is already public while `(protected)/layout.tsx` redirects):
+    ```
+    frontend/src/app/
+      (platform-auth)/                      ← PUBLIC, no guard
+        platform-admin/login/page.tsx       → /platform-admin/login
+      (platform-admin)/                     ← PROTECTED
+        platform-admin/layout.tsx           ← guard + shell
+        platform-admin/dashboard/page.tsx   → /platform-admin/dashboard
+        platform-admin/tenants/…            → /platform-admin/tenants
+        …
+    ```
+    Route groups are stripped from the URL, so both groups contribute to the same `/platform-admin/*` URL space with **no collision** (the complete paths differ), and the guard applies to authenticated pages only.
+
+- [ ] T189 Create permission-aware Platform navigation
+  - **Files**: `frontend/src/components/platform-admin/PlatformSidebar.tsx`
+  - **Deps**: T188
+  - **Acceptance**: Renders only entries the administrator's resolved permission set allows — genuinely permission-driven, unlike the tenant sidebar's placeholder. UX only; the server remains authoritative.
+
+- [ ] T190 [P] Create the Platform login page in the **public** `(platform-auth)` group — `/platform-admin/login`
+  - **Purpose**: Revision 3 fix — previously planned inside `(platform-admin)/`, where the redirecting layout would have wrapped it and produced an infinite `login → guard → login` loop.
+  - **Files**: `frontend/src/app/(platform-auth)/platform-admin/login/page.tsx` (and a minimal `(platform-auth)/layout.tsx` **only if** the repo's `(auth)` group has one — otherwise none is added)
+  - **Deps**: T183
+  - **Acceptance**: **Structurally outside** the protected shell — it is a sibling route group, so `(platform-admin)/platform-admin/layout.tsx` provably cannot wrap it. Consumes `PlatformAuthContext` (T183) directly, not the guarded layout. Generic error text that never reveals whether an email exists as a tenant user; loading/error states. On success, redirects to `/platform-admin/dashboard`. **Depends on T183, not T188** — the login page must not depend on the guard it is exempt from.
+
+- [ ] T191 [P] [US-1] Create the Platform Dashboard page — `/platform-admin/dashboard`
+  - **Files**: `frontend/src/app/(platform-admin)/platform-admin/dashboard/page.tsx`
+  - **Deps**: T189, T172
+  - **Acceptance**: Requires `platform.dashboard.view`; each widget renders loading/populated/empty/**unavailable** distinctly; a failed metric never displays `0`; unauthorised widgets are omitted.
+
+- [ ] T192 [P] [US-2] Create the Tenants list page — `/platform-admin/tenants`
+  - **Files**: `frontend/src/app/(platform-admin)/platform-admin/tenants/page.tsx`
+  - **Deps**: T189, T167
+  - **Acceptance**: Requires `platform.tenants.read`; paginated search/filter/sort; explicit empty state (not an error).
+
+- [ ] T193 [P] [US-2] [US-3] Create the Tenant Detail page — `/platform-admin/tenants/[tenantId]`
+  - **Files**: `frontend/src/app/(platform-admin)/platform-admin/tenants/[tenantId]/page.tsx`
+  - **Deps**: T192, T168, T186, T090
+  - **Acceptance**: Uses `PlatformSelectedTenantContext` (never `erp_active_company_id`); shows administrative context only; suspend/reactivate actions require a typed reason and an explicit confirmation dialog; per-section `unavailable` state.
+
+- [ ] T194 [P] [US-4] Create the Plans page — `/platform-admin/plans`
+  - **Files**: `frontend/src/app/(platform-admin)/platform-admin/plans/page.tsx`
+  - **Deps**: T189, T114
+  - **Acceptance**: Requires `platform.plans.read`; management actions gated on `platform.plans.manage`; retire action confirmed.
+
+- [ ] T195 [P] [US-5] Create the Subscriptions page — `/platform-admin/subscriptions`
+  - **Files**: `frontend/src/app/(platform-admin)/platform-admin/subscriptions/page.tsx`
+  - **Deps**: T194, T113
+  - **Acceptance**: Surfaces the downgrade usage-conflict and requires explicit acknowledgement before applying.
+
+- [ ] T196 [P] [US-6] Create the Entitlements page — `/platform-admin/entitlements`
+  - **Files**: `frontend/src/app/(platform-admin)/platform-admin/entitlements/page.tsx`
+  - **Deps**: T189, T123, T146
+  - **Acceptance**: Shows effective entitlement per capability; override grant requires reason + optional expiry; permanent vs temporary visually distinguished.
+
+- [ ] T197 [P] [US-10] Create the Quotas page — `/platform-admin/quotas`
+  - **Files**: `frontend/src/app/(platform-admin)/platform-admin/quotas/page.tsx`
+  - **Deps**: T189, T149, T157
+  - **Acceptance**: Renders all five quota states distinctly; `unavailable` never shown as `0`; unlimited shown as unlimited, not a number.
+
+- [ ] T198 [P] [US-7] Create the Platform Administrators page — `/platform-admin/administrators`
+  - **Files**: `frontend/src/app/(platform-admin)/platform-admin/administrators/page.tsx`
+  - **Deps**: T189, T068, T179
+  - **Acceptance**: Consumes the **Administrator API routes (T068)** exclusively through `platformApiClient` (T179) — the page must never depend conceptually on a Python service. Requires `platform.admins.read` for listing; create/activate/deactivate actions gated on `platform.admins.manage`. Deactivate action is confirmed and warns that active sessions will be invalidated; surfaces the `LastPlatformOwnerError` 409 as a clear, specific message.
+
+- [ ] T199 [P] [US-7] Create the Platform Roles page — `/platform-admin/roles`
+  - **Files**: `frontend/src/app/(platform-admin)/platform-admin/roles/page.tsx`
+  - **Deps**: T198, T069, T179
+  - **Acceptance**: Consumes the **RBAC API routes (T069)** exclusively through `platformApiClient` (T179) — never a direct conceptual dependency on a Python service. Requires `platform.rbac.read` for listing; role create/update and role assignment gated on `platform.rbac.manage`. Surfaces the self-escalation 403 and last-Platform-Owner 409 as clear, specific errors rather than generic failures.
+
+- [ ] T200 [P] [US-8] Create the Audit page — `/platform-admin/audit`
+  - **Files**: `frontend/src/app/(platform-admin)/platform-admin/audit/page.tsx`
+  - **Deps**: T189, T170
+  - **Acceptance**: Full filter set; paginated; read-only (no edit/delete affordance anywhere).
+
+- [ ] T201 [P] [US-10] [US-12] Create the Usage page — `/platform-admin/usage`
+  - **Files**: `frontend/src/app/(platform-admin)/platform-admin/usage/page.tsx`
+  - **Deps**: T189, T151, T155
+  - **Acceptance**: Usage per metric/period; AI section shows the explicit "not yet active" state until the ledger has data; manual credit adjustment requires a reason.
+
+- [ ] T202 [P] [US-9] Create the Support Access page — `/platform-admin/support-access`
+  - **Files**: `frontend/src/app/(platform-admin)/platform-admin/support-access/page.tsx`
+  - **Deps**: T189, T162
+  - **Acceptance**: Grant requires tenant + reason + expiry; an active grant shows a **persistent, unmistakable privileged-mode indicator** (FR-9A-194); terminate action confirmed.
+
+- [ ] T203 [P] [US-11] Create the Health page — `/platform-admin/health`
+  - **Files**: `frontend/src/app/(platform-admin)/platform-admin/health/page.tsx`
+  - **Deps**: T189, T174
+  - **Acceptance**: Names the specific failing check; labels the outbox relay honestly as a stub.
+
+- [ ] T204 [P] Frontend tests: permission-aware nav and UI states
+  - **Files**: `frontend/src/app/(platform-admin)/__tests__/platform-shell.test.tsx`
+  - **Deps**: T188–T203
+  - **Acceptance**: Missing permission → nav entry hidden **and** the route still refused server-side; loading/empty/error/degraded states asserted per page; destructive actions require confirmation. (Route-guard/redirect behaviour is covered separately and explicitly by T205.)
+
+- [ ] T205 [P] Frontend route-guard tests: login is outside the protected shell, with no redirect loop
+  - **Purpose**: Revision 3 — proves the `(platform-auth)` / `(platform-admin)` split actually holds at runtime, and that tenant authentication can never satisfy Platform route protection.
+  - **Files**: `frontend/src/app/(platform-admin)/__tests__/platform-route-guard.test.tsx`
+  - **Deps**: T188, T190, T183
+  - **Acceptance**: Five explicit cases, all required:
+    - **A — unauthenticated login page**: visit `/platform-admin/login` with no platform session → the login page renders, and **no redirect occurs** (assert zero `router.replace` calls; a loop would fail this).
+    - **B — unauthenticated protected route**: visit `/platform-admin/dashboard` with no platform session → redirected to `/platform-admin/login`, exactly once.
+    - **C — authenticated Platform Admin**: with a valid platform session → `/platform-admin/dashboard` renders inside the protected Platform shell, no redirect.
+    - **D — tenant auth does not count**: with a valid **tenant** session but **no** platform session → `/platform-admin/dashboard` still redirects to `/platform-admin/login`. Proves tenant/Platform auth separation at the routing layer (complements the backend proofs in T055/T056).
+    - **E — logout**: Platform logout → platform session cleared → a protected route redirects to `/platform-admin/login` **and** the login page remains reachable and non-looping.
+  - **Isolation requirement**: none of these cases may clear tenant tokens, emit the tenant `session-expired` event, or touch `erp_active_company_id`.
+
+---
+
+## Phase 16: Security, Integration & Observability Hardening
+
+**Objective**: The exhaustive route-permission matrix (now that every router exists) plus the remaining security, observability and performance safeguards.
+**Prerequisites**: Phases 7–15 — **all Platform routers must exist before T206 runs**.
+
+### Tasks
+
+- [ ] T206 **[Gate B — final coverage]** Exhaustive permission matrix over **every** Platform route
+  - **Purpose**: Revision 2 split from the old Gate B task, which illegally depended on Phases 7–13 while blocking Phase 7. Gate B's early proof (T076) covers the Phase-5 surface; this task completes coverage once the full surface exists.
+  - **Files**: `backend/tests/security/modules/platform_admin/test_permission_matrix.py`
+  - **Deps**: T177, T090, T114, T157, T162, T170, T174, T176, T068, T069
+  - **Acceptance**: Parametrised over the **complete** table from `contracts/platform-admin-v1.yaml` — **all 30 permission-guarded operations** (33 total minus the 3 public `/auth/*` operations). For each, holding the required permission succeeds and holding **only** an adjacent permission fails. Every operation in T076's recorded Phase-5 scope is re-covered here, and the test asserts the matrix is **complete** (no contract operation missing, no guarded route absent from the matrix).
+
+- [ ] T207 [P] Security test: cross-tenant IDOR on every tenant-scoped platform route
+  - **Files**: `backend/tests/security/modules/platform_admin/test_idor.py`
+  - **Deps**: T177
+  - **Acceptance**: Substituting another company's id never yields data the caller's permissions don't already allow (FR-9A-212).
+
+- [ ] T208 [P] Security test: mass-assignment protection on every platform write schema
+  - **Files**: `backend/tests/security/modules/platform_admin/test_mass_assignment.py`
+  - **Deps**: T177
+  - **Acceptance**: Extra/unknown fields are rejected or ignored; no privileged field (e.g. `is_active`, role ids) is settable through an unintended endpoint.
+
+- [ ] T209 [P] Security test: lifecycle transition abuse
+  - **Files**: `backend/tests/security/modules/platform_admin/test_lifecycle_abuse.py`
+  - **Deps**: T102
+  - **Acceptance**: Every prohibited transition from spec §23.1 (`suspended→deleted`, `suspended→inactive` direct, `pending_setup→suspended`) is rejected with a **specific** error, not a generic 403.
+
+- [ ] T210 [P] Security test: quota enforcement cannot be bypassed
+  - **Files**: `backend/tests/security/modules/platform_admin/test_quota_enforcement.py`
+  - **Deps**: T149
+  - **Acceptance**: A `hard` quota blocks the action at its declared enforcement point; `soft`/`informational` flag without blocking, exactly as declared.
+
+- [ ] T211 [P] Implement structured operational logging for platform events
+  - **Files**: `backend/modules/platform_admin/services/*.py`
+  - **Deps**: T177
+  - **Acceptance**: Logs platform login, permission denial, suspension/reactivation, entitlement/quota failure, support-access lifecycle, audit-write failure, bootstrap result, degraded measurement — each with correlation/`request_id` and actor id. **Never** logs passwords, hashes, JWTs, refresh tokens, secrets, or tenant business-record contents. Operational logs remain distinct from `PlatformAuditEvent`.
+
+- [ ] T212 [P] Performance: verify pagination and index usage on the heavy list/aggregate paths
+  - **Files**: `backend/tests/performance/modules/platform_admin/test_platform_queries.py`
+  - **Deps**: T177
+  - **Acceptance**: Tenant list, audit filter, usage aggregation and dashboard queries are all paginated/bounded and use the T014/T016/T018 indexes; no N+1 in the tenant-detail or dashboard paths. **No numeric SLA is asserted** (resolved OQ-4) — these are regression guards, not benchmarks.
+
+- [ ] T213 [P] Verify request-scoped memoisation of the company-access and entitlement reads
+  - **Purpose**: Both new per-request checks hit the same rows; memoise per request (plan §31) without any cross-request cache.
+  - **Files**: `backend/modules/platform_admin/dependencies.py`
+  - **Deps**: T122, T083
+  - **Acceptance**: One `Company` read and one entitlement resolution per request even when several dependencies need them; **no** process-level cache introduced (no invalidation/consistency concern).
+
+---
+
+## Phase 17: Real-Stack Verification & Epic Closure — **Gate G**
+
+**Objective**: Prove the whole Epic on real PostgreSQL + Docker Compose + a real browser, and prove Epics 1–9 still work.
+**Prerequisites**: All previous phases, all gates A–F green.
+
+### Tasks
+
+- [ ] T214 Full real-PostgreSQL migration verification `056 → 061` with rollout applied
+  - **Files**: Docker Compose stack
+  - **Deps**: T029, T128
+  - **Acceptance**: Fresh database → `alembic upgrade head` (ends at `061`, no `062`) → seed capabilities → baseline plan → bulk-assign → verify no tenant lost access; then `downgrade 056` → `upgrade head` clean.
+
+- [ ] T215 Docker Compose live verification: bootstrap → platform login → RBAC
+  - **Files**: real stack (`erp-system-api-1`, `erp-system-db-1`, `erp-system-web-1`)
+  - **Deps**: T214, T067
+  - **Acceptance**: Follows `quickstart.md` §1/§1b/§2/§3 exactly, including the **negative** bootstrap checks (missing config → non-zero exit; repeat → safe no-op) and `platform_administrators` count `0` after migrations alone.
+
+- [ ] T216 Docker Compose live verification: suspension → invalidation → reactivation → refresh-bypass
+  - **Files**: real stack
+  - **Deps**: T215, T102
+  - **Acceptance**: `quickstart.md` §4 end-to-end with a **multi-tenant user**: A denied, B still works on the same token, old access token denied after reactivation, **old refresh token still denied**, genuine login restores, status returns to the pre-suspension value (verified for both `active` and `inactive` origins).
+
+- [ ] T217 Docker Compose live verification: entitlement downgrade bypass check
+  - **Files**: real stack
+  - **Deps**: T216, T137
+  - **Acceptance**: `quickstart.md` §6a–§6d on the real stack, including the direct-`curl` check proving the frontend is not the security boundary and that the stored toggle is never rewritten.
+
+- [ ] T218 Docker Compose live verification: overrides, quotas, usage, audit, support access
+  - **Files**: real stack
+  - **Deps**: T217, T166, T157
+  - **Acceptance**: `quickstart.md` §7 support boundary; override grant/expiry; quota states; audit filtering — all against real Postgres.
+
+- [ ] T219 Playwright: Platform Admin happy path
+  - **Purpose**: Follows this project's established live-browser methodology (Epics 7–9).
+  - **Files**: verification script under the session scratchpad
+  - **Deps**: T218, T204
+  - **Acceptance**: bootstrap owner → login → dashboard → tenant list → tenant detail → plan/subscription → entitlement action → audit shows the action. **Zero unexpected browser console errors.**
+
+- [ ] T220 Playwright: suspension flow in the browser
+  - **Files**: verification script
+  - **Deps**: T219
+  - **Acceptance**: tenant user logged in → platform admin suspends → tenant request denied → reactivate → old access token denied → old refresh used → new access token **still denied** → genuine login → access restored. Zero unexpected console errors.
+
+- [ ] T221 Playwright: multi-tenant and support flows
+  - **Files**: verification script
+  - **Deps**: T220
+  - **Acceptance**: user in A and B → suspend A → A denied, B fully functional; support grant → administrative context visible, business records unavailable → revoke → access ends. Zero unexpected console errors.
+
+- [ ] T222 [P] **[Gate G]** Regression: Auth, Companies, Users & Roles
+  - **Files**: existing `backend/tests/` suites
+  - **Deps**: T214
+  - **Acceptance**: Tenant login, refresh, company switching and existing RBAC all unaffected by T083/T084.
+
+- [ ] T223 [P] **[Gate G]** Regression: Inventory, Purchase, Sales
+  - **Files**: existing suites + live smoke
+  - **Deps**: T214
+  - **Acceptance**: Full suites green; feature toggles work for owner/admin; the new entitlement mount denies nothing for baseline-plan tenants.
+
+- [ ] T224 [P] **[Gate G]** Regression: Accounting and CRM
+  - **Files**: existing suites + live smoke
+  - **Deps**: T214
+  - **Acceptance**: Accounting's and CRM's existing gates behave identically to the Phase 1 baseline; the CRM happy path (lead → qualify → convert → customer/opportunity → activity) still passes end-to-end.
+
+- [ ] T225 **[Gate G]** Gate G sign-off and Epic closure audit
+  - **Deps**: T214–T224
+  - **Acceptance**: All gates A–G green; the Final Completeness Audit below fully ticked; every deviation or deferred item explicitly recorded — never silently closed.
+
+---
+
+## Task Summary
+
+| Phase | Tasks | `[P]` | Focus |
+|---|---|---|---|
+| 1 | T001–T009 (9) | 7 | Preflight / drift detection |
+| 2 | T010–T031 (22) | 5 | Migrations 057–061 + **Gate A** |
+| 3 | T032–T044 (13) | 3 | Domain + **audit foundation** + Platform identity |
+| 4 | T045–T059 (15) | 4 | Platform auth/session boundary + session-revoking deactivation |
+| 5 | T060–T077 (18) | 6 | Platform RBAC + **Administrator/RBAC API routes** + bootstrap + **Gate B** |
+| 6 | T078–T081 (4) | 1 | Audit query surface + **Gate E** |
+| 7 | T082–T102 (21) | 6 | Tenant lifecycle + access invalidation + 3-way atomicity + **Gate C** |
+| 8 | T103–T117 (15) | 6 | Plans / Subscriptions / Capabilities / **quota foundation** |
+| 9 | T118–T137 (20) | 5 | Entitlement resolver + rollout + enforcement + **Gate D** |
+| 10 | T138–T144 (7) | 5 | Feature-toggle hardening (3 modules) |
+| 11 | T145–T157 (13) | 3 | Overrides / quota admin / usage / AI readiness |
+| 12 | T158–T166 (9) | 2 | Support access + **Gate F** |
+| 13 | T167–T177 (11) | 3 | Platform operational APIs |
+| 14 | T178–T187 (10) | 3 | Frontend foundation (clients, contexts) |
+| 15 | T188–T205 (18) | 16 | Platform frontend shell + 14 pages + route-guard tests |
+| 16 | T206–T213 (8) | 7 | Exhaustive permission matrix + security / observability |
+| 17 | T214–T225 (12) | 3 | Real-stack verification + **Gate G** |
+| **Total** | **225** | **85** | **17 phases, 7 gates** |
+
+---
+
+## Dependency Graph (phase level)
+
+```
+Phase 1 (preflight)
+   └─> Phase 2 (migrations) ── Gate A
+          └─> Phase 3 (domain + AUDIT FOUNDATION + identity)
+                 └─> Phase 4 (auth/session + session-revoking deactivation)
+                        └─> Phase 5 (RBAC + bootstrap) ── Gate B  [early scope only]
+                               └─> Phase 6 (audit query) ── Gate E  [proof on Phase-5 mutation]
+                                      └─> Phase 7 (lifecycle + invalidation + 3-way atomicity) ── Gate C
+                                             ├─> Phase 8 (plans/subs/capabilities + QUOTA FOUNDATION)
+                                             │      └─> Phase 9 (resolver + rollout + enforcement) ── Gate D
+                                             │             ├─> Phase 10 (toggle hardening)
+                                             │             └─> Phase 11 (overrides/quota admin/usage/AI)
+                                             └─> Phase 12 (support access) ── Gate F
+                                                    └─> Phase 13 (operational APIs)
+                                                           └─> Phase 14 (frontend foundation)
+                                                                  └─> Phase 15 (frontend pages)
+                                                                         └─> Phase 16 (exhaustive matrix + security)
+                                                                                └─> Phase 17 (real stack) ── Gate G
+```
+
+**Hard ordering rules**
+- Migrations are strictly sequential — never `[P]` across `057`–`061`. **No `062` may be created** (asserted by T029 and T141).
+- Audit foundation (T035–T037) precedes every audited mutation.
+- `PlatformSessionRepository` (T047) precedes session-revoking deactivation (T054) and every session consumer.
+- Gate B (T077) depends only on Phase 1–5 work; its test (T076) covers the 9 operations that genuinely exist by then (auth + T068 + T069). The exhaustive 30-operation matrix is T206 in Phase 16.
+- Administrator/RBAC API routes (T068, T069) precede both Gate B's test and their Phase-15 frontend consumers.
+- `/platform-admin/login` lives in the **public `(platform-auth)` group** (T190) and must never be placed inside the protected `(platform-admin)` group, whose layout (T188) redirects — that arrangement would loop.
+- Gate E (T081) depends only on Phase 1–6 work; the tenant-suspension 3-way proof is T101 inside Phase 7 under Gate C.
+- Quota foundation (T107–T108) precedes both the downgrade check (T113) and the baseline plan (T125).
+- Entitlement **enforcement** (T129–T133) must not activate before rollout mapping is verified (T128).
+- Frontend pages must not start before their APIs exist (Phase 13 → 14 → 15).
+- Gate failures block the next phase entirely.
+
+---
+
+## Parallel Execution Examples
+
+```
+Phase 1:  T002, T003, T004, T005, T006, T007, T008 in parallel (all read-only, different files)
+Phase 2:  T024, T025, T026 in parallel (independent test cases, same target migration)
+Phase 5:  T070, T071, T072, T073, T074 in parallel (independent bootstrap test cases)
+Phase 9:  T130, T131, T132 in parallel (three independent router mounts after T129 sets the pattern)
+Phase 15: T191–T203 in parallel (13 independent page files, once T189 shell exists)
+          T204, T205 in parallel (shell-state tests vs route-guard tests — different files)
+Phase 16: T207–T213 in parallel (independent test/observability files, after T177)
+Phase 17: T222, T223, T224 in parallel (independent existing suites)
+```
+
+---
+
+## Requirement Traceability Matrix
+
+| Requirement | Implementation | Verification |
+|---|---|---|
+| US-1 platform overview | T171–T174, T191 | T175, T219 |
+| US-2 tenant search/inspect | T167, T168, T192, T193 | T177, T207, T219 |
+| US-3 tenant lifecycle | T088–T090, T193 | T091–T094, T209, T216, T220 |
+| US-4 manage plans | T103, T111, T114, T194 | T115, T177 |
+| US-5 subscriptions | T106, T112, T113, T195 | T116, T117, T217 |
+| US-6 entitlements/limits | T120, T145–T147, T196 | T121, T148, T134–T136 |
+| US-7 Platform Administrator management (API) | T040, T054, **T068** | T059, T076, T177, T206 |
+| US-7 Platform RBAC (services + API) | T060–T066, **T069** | T075, T076, T177, T206 |
+| US-7 Platform Admin/Roles frontend | T198 (admins), T199 (roles) — both via `platformApiClient` | T204, T205 |
+| BR-9A-011 session-revoking deactivation (API path) | T054, **T068** (`PATCH /administrators/{adminId}`) | T059 |
+| BR-9A-012 self-escalation (API path) | T065, **T069** (`POST /administrators/{adminId}/roles`) | T075 |
+| Platform login / route guard | T183, T188 (protected shell), T190 (public `(platform-auth)` group) | **T205** (tests A–E) |
+| Tenant vs Platform auth separation | T048, T052, T176–T179 | T055, T056, T180, T181, **T205 case D** |
+| US-8 audit review | T035–T037, T078, T170, T200 | T044, T079, T080, T101, T219 |
+| US-9 support access | T158–T162, T202 | T163–T165, T221 |
+| US-10 usage/quota | T107, T108, T149–T153, T197, T201 | T109, T153, T210, T212, T218 |
+| US-11 operational health | T174, T203 | T175 |
+| US-12 AI usage/credits | T154, T155, T201 | T156 |
+| FR-9A-017/018/222 auth freshness | T082–T084, T088, T089 | T095–T100, T216, T220 |
+| FR-9A-036 bootstrap | T067 | T070–T074, T215 |
+| FR-9A-165/166 downgrade conflict | T113 | T117, T217 |
+| FR-9A-183–186 toggle hardening | T138–T141 | T142–T144 |
+| FR-9A-204 audit fail-closed | T036, T037 | T079 (foundation), **T101 (full 3-way)** |
+| BR-9A-001/002/003 trust boundary | T038, T048, T052 | T043, T055, T056 |
+| BR-9A-011 session-revoking deactivation | T054 | T059 |
+| BR-9A-012 self-escalation | T065 | T075 |
+| BR-9A-021 support boundary | T162 | T163 |
+| BR-9A-031 bootstrap safety | T067 | T071–T074 |
+| BR-9A-032 suspension invalidation | T082, T088 | T095–T100 |
+| BR-9A-034/035/036 tenant context | T184, T186 | T187, T100 |
+| SC-1 suspend/reactivate audited | T088–T090 | T091–T094 |
+| SC-2 least-privilege bundle | T062, T064 | T076, T206 |
+| SC-3 deterministic entitlement | T120 | T121, T134–T136 |
+| SC-4 attributable privileged actions | T037 | T079, T101, T170 |
+| SC-5 no business records in detail view | T168 | T163, T177 |
+| SC-6 tenant session cannot reach platform | T052 | T055 (primary), T056, T205 case D |
+| SC-7 degraded dependency safety | T172, T174 | T175 |
+| SC-8 support requires reason + time bound | T159 | T165 |
+| SC-9 no second tenant-context source | T184, T186 | T187 |
+| ADR-12 migration preflight | T012, T013 | T024–T028 |
+
+---
+
+## Phase Gate Checklist
+
+- [ ] **Gate A** (T031, Phase 2) — migration safety on real PostgreSQL
+- [ ] **Gate B** (T077, Phase 5) — platform trust boundary + RBAC on the Phase-5 route surface
+- [ ] **Gate E** (T081, Phase 6) — audit atomicity on a real Phase-5 privileged mutation
+- [ ] **Gate C** (T102, Phase 7) — lifecycle, authentication freshness incl. refresh bypass, **and the 3-way state+audit+outbox atomicity proof (T101)**
+- [ ] **Gate D** (T137, Phase 9) — entitlement ceiling at point of use, all 5 modules
+- [ ] **Gate F** (T166, Phase 12) — support security boundary
+- [ ] **Gate G** (T225, Phase 17) — real-stack regression across Epics 1–9
+- [ ] **Gate B final coverage** (T206, Phase 16) — exhaustive route-permission matrix once all routers exist
+
+---
+
+## Final Completeness Audit
+
+- [ ] All 12 user stories have implementation + verification coverage
+- [ ] Migrations `057`–`061` exist; **no `062`**; bootstrap is not a migration; T029 and T141 both assert this
+- [ ] Migration `057` suspended-row preflight is explicit and tested (T012, T025, T026)
+- [ ] `PlatformAdministrator`, `PlatformSession`, `PlatformRefreshToken` tasks exist
+- [ ] BR-9A-011 session-revoking deactivation is implemented (T054) and proved at API level (T059)
+- [ ] Platform RBAC with permission-code enforcement exists; last-owner and self-escalation protected
+- [ ] Bootstrap tasks + all 5 negative cases exist
+- [ ] Audit foundation precedes every audited mutation; fail-closed proved twice (T079 foundation, T101 full 3-way)
+- [ ] Suspension and reactivation are separate tasks; reactivation restores the recorded status
+- [ ] Authentication freshness uses `Session.created_at`; **no runtime authorization uses token `iat`**
+- [ ] Old-refresh-token bypass test (T096) exists and is a Gate C blocker
+- [ ] Multi-tenant A/B test (T098) and multi-device test (T099) exist
+- [ ] Plans, Subscriptions, Capability registry, quota foundation and entitlement resolver tasks exist, each exactly once
+- [ ] Point-of-use enforcement covers Inventory, Purchase, Sales, Accounting, CRM
+- [ ] Feature-toggle hardening covers exactly Inventory, Sales, Purchase; Accounting/CRM not rewritten
+- [ ] Canonical tenant-context accessor and `PlatformSelectedTenantContext` tasks exist
+- [ ] Override, quota-admin, usage tasks exist; AI readiness remains provider-neutral
+- [ ] Support access has negative business-record tests
+- [ ] **Platform Administrator backend API routes exist** (T068 — `GET/POST /administrators`, `PATCH /administrators/{adminId}`)
+- [ ] **Platform RBAC backend API routes exist** (T069 — `GET/POST /roles`, `POST /administrators/{adminId}/roles`)
+- [ ] **Frontend Administrators page consumes the Platform API** via `platformApiClient` (T198 → T068, T179), never a Python service
+- [ ] **Frontend Roles page consumes the Platform API** via `platformApiClient` (T199 → T069, T179), never a Python service
+- [ ] **Gate B (T076) tests only real, existing Phase-5 routes** — the 9 operations from auth + T068 + T069
+- [ ] **T206 covers the complete final route table** — all 30 permission-guarded operations, completeness asserted
+- [ ] All **28 contract paths / 33 operations** have explicit implementation coverage (T177) and permission coverage (T206); no undeclared CRUD invented
+- [ ] **`/platform-admin/login` is structurally outside the protected layout** — defined in the `(platform-auth)` group (T190), mirroring the repo's existing `(auth)` vs `(protected)` split
+- [ ] **Unauthenticated login page has a no-redirect-loop test** (T205 case A)
+- [ ] **Protected-route redirect test exists** (T205 case B); authenticated render (case C); logout (case E)
+- [ ] **Tenant auth cannot satisfy Platform route protection** (T205 case D, plus backend T055/T056)
+- [ ] Tenant/Platform client separation has crossover tests (T182, T183)
+- [ ] Platform frontend has a shell + 14 page tasks; dashboard degraded states covered
+- [ ] PostgreSQL, Docker Compose and Playwright verification all exist
+- [ ] Existing ERP regression verification exists for all 8 completed modules
+- [ ] No out-of-scope task introduced (see below)
+- [ ] No unresolved architectural decision deferred into `/sp.implement`
+- [ ] **Dependency graph is acyclic; every gate depends only on tasks executable before it**
+
+---
+
+## Out of Scope (guardrail — no tasks generated)
+
+CRM business-logic redesign; Installments; Reports; payment gateway; SaaS invoicing; tax; any AI provider integration (OpenAI/Anthropic/Gemini/OpenClaw); unrestricted impersonation; tenant business-record support browsing; mobile apps; microservices; Kubernetes; Redis; broad auth-system rewrite; broad `CompanyContext` refactor; global logout redesign.
+
+**Recorded as notes, not tasks** (plan §41, spec Risks #3/#4):
+- `get_current_user()` never checks `Session.is_revoked`, so tenant logout does not invalidate an in-flight access token. Pre-existing; **not** required for Epic 9A correctness under ADR-6; deliberately untouched.
+- The dead `/admin/companies` surface (403-always guard + frontend calling `listCompanies()` instead of `listAdminCompanies()`). Epic 9A builds a new surface instead and cannot inherit the bug.
+- `SUPER_ADMIN` vs `super_admin` casing inconsistency in `purchase/router.py`.
+- `.specify/scripts/bash/{setup-plan,check-prerequisites}.sh` branch regex rejects `009a-`.
+
+---
+
+## Notes on Task Completion
+
+A task is complete only when its **behaviour** is verified — not when the file exists, the route responds once, the migration runs once, or the test file was created. Security-sensitive tasks require their negative tests to pass. Do not proceed past a failed gate.
