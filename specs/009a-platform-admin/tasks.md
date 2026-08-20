@@ -818,82 +818,99 @@
 
 ### Tasks
 
-- [ ] T103 [P] [US-4] Create `Plan` model
+- [X] T103 [P] [US-4] Create `Plan` model
   - **Files**: `backend/modules/platform_admin/models/plan.py`
   - **Deps**: T032
   - **Acceptance**: Per data-model.md; `status` VARCHAR+CHECK (`draft|published|retired`); `billing_cycle_metadata`/`pricing_metadata` inert JSONB (Assumption A5); **no hardcoded plan names** (FR-9A-151).
+  - **Result (2026-08-21)**: `Plan(BaseModel)` maps 1:1 onto migration 058's `plans` table (verified column-by-column against real PostgreSQL). No "Basic/Pro/Enterprise" anywhere in code — `code`/`name` are always caller-supplied.
 
-- [ ] T104 [P] Create `Capability` model + registry
+- [X] T104 [P] Create `Capability` model + registry
   - **Files**: `backend/modules/platform_admin/models/capability.py`
   - **Deps**: T032
   - **Acceptance**: `key` PK, `module`, `grain` (`module|feature`), `display_name`, `is_active`. Adding a future module needs one row, **no** schema change and **no** per-module boolean column on `Company`.
+  - **Result (2026-08-21)**: `Capability(Base)` [string PK, mirrors `PlatformPermission`'s convention]. Not wired to any route in this phase (no capability-registry CRUD task assigned to Phase 8) — read via `PlanRepository.get_capability_map()` only.
 
-- [ ] T105 Create `PlanCapability` model (the Plan Entitlement ceiling)
+- [X] T105 Create `PlanCapability` model (the Plan Entitlement ceiling)
   - **Files**: `backend/modules/platform_admin/models/plan_capability.py`
   - **Deps**: T103, T104
   - **Acceptance**: `(plan_id, capability_key)` unique; `allowed` boolean.
+  - **Result (2026-08-21)**: `PlanCapability(BaseModel)`, `plan_id` FK CASCADE, `capability_key` FK RESTRICT, unique(plan_id, capability_key) matching migration 058 exactly.
 
-- [ ] T106 [US-5] Create `Subscription` model
+- [X] T106 [US-5] Create `Subscription` model
   - **Files**: `backend/modules/platform_admin/models/subscription.py`
   - **Deps**: T103
   - **Acceptance**: Per data-model.md; `status` VARCHAR+CHECK limited to `active|ended` (**no `trial`** — resolved OQ-1); partial unique index enforces one active subscription per company.
+  - **Result (2026-08-21)**: `Subscription(BaseModel)` maps onto migration 058's `subscriptions` table. The `uq_subscriptions_company_active` partial unique index is proven DB-enforced (not application-only) by T116's real-PostgreSQL test.
 
-- [ ] T107 [US-10] Create the quota foundation models + repositories
+- [X] T107 [US-10] Create the quota foundation models + repositories
   - **Purpose**: `QuotaDefinition`, `PlanQuota`, `TenantQuotaOverride` — required by T113's downgrade check and T125's baseline plan. Tables already exist from migration `059`.
   - **Files**: `backend/modules/platform_admin/models/quota.py`, `repositories/quota_repository.py`
   - **Deps**: T103, T018
   - **Acceptance**: Generic key-based registry (`users`, `branches`, `transactions`, `storage`, `api_calls`, `ai_credits`); **no per-quota-type column**; `enforcement_style` (`hard|soft|informational`) declared explicitly per BR-9A-030. `PlanQuota.limit_value` nullable where **NULL means unlimited** (FR-9A-182) — never a large sentinel.
+  - **Result (2026-08-21)**: All three models map onto migration 059's tables (verified column-by-column against real PostgreSQL, `count=0` live queries confirmed the ORM mapping is genuinely correct, not just SQLite-compatible). `EntitlementOverride` (also in migration 059) is deliberately **not** mapped — explicit Phase 9 scope, documented in the module docstring.
 
-- [ ] T108 [US-10] [FR-9A-181] Implement the effective-quota resolver — the single authoritative resolution path
+- [X] T108 [US-10] [FR-9A-181] Implement the effective-quota resolver — the single authoritative resolution path
   - **Files**: `backend/modules/platform_admin/services/quota_service.py`
   - **Deps**: T107
   - **Acceptance**: Override → `PlanQuota` → unlimited; renders the five states `ok|approaching|reached|unlimited|unavailable`. This is the **only** quota resolver in the codebase; Phase 11 consumes it rather than re-implementing it.
+  - **Result (2026-08-21)**: `QuotaService.resolve()` implements override-first, then `PlanQuota`, then unlimited (`limit is None`); `current_usage=None` → `unavailable`, never silently zero. 15/15 T109 unit tests pass, including the override-precedence and enforcement-style-independence groups.
 
-- [ ] T109 [P] Test: quota states, unlimited semantics and enforcement styles
+- [X] T109 [P] Test: quota states, unlimited semantics and enforcement styles
   - **Files**: `backend/tests/unit/modules/platform_admin/test_quota_resolution.py`
   - **Deps**: T108
   - **Acceptance**: All five states; each enforcement style behaves as declared; entitlement and quota remain independent concepts; NULL limit resolves to unlimited, never to a number.
+  - **Result (2026-08-21)**: 15 passed (`TestNoLimitResolvesToUnlimited` x3, `TestOkApproachingReachedStates` x5, `TestUnavailableState` x1, `TestOverrideTakesPrecedenceOverPlanQuota` x3, `TestEnforcementStyleAndEntitlementIndependence` x3).
 
-- [ ] T110 Create Plan/Capability/Subscription repositories
+- [X] T110 Create Plan/Capability/Subscription repositories
   - **Files**: `backend/modules/platform_admin/repositories/{plan,capability,subscription}_repository.py`
   - **Deps**: T103–T106
   - **Acceptance**: Paginated list/filter; audited writes flush-only (ADR-5).
+  - **Result (2026-08-21)**: All three repositories `flush()`-only on every write path (no repository-level `commit()`), matching ADR-5; verified by inspection and by every T115-T117 test relying on the calling service's single commit. `PlanRepository.list_paginated()` supports an optional `status` filter.
 
-- [ ] T111 [US-4] Implement `PlanService` (create/update/publish/retire)
+- [X] T111 [US-4] Implement `PlanService` (create/update/publish/retire)
   - **Files**: `backend/modules/platform_admin/services/plan_service.py`
   - **Deps**: T110, T037
   - **Acceptance**: Retiring blocks **new** assignments only; existing subscriptions keep their entitlements unchanged (BR-9A-018). Every write audited.
+  - **Result (2026-08-21)**: `create()` always starts `draft`; `update()` never touches `status`; `publish()`/`retire()` enforce `draft→published→retired` via `PlanTransitionError` on an invalid transition. Every method: repo flush → `PlatformAuditService.record()` → single `db.commit()`. Proven by T115 (`test_retire_does_not_touch_existing_subscription`, `test_cannot_retire_a_draft_plan`, `test_cannot_publish_an_already_published_plan`).
 
-- [ ] T112 [US-5] Implement `SubscriptionService.assign_or_change()`
+- [X] T112 [US-5] Implement `SubscriptionService.assign_or_change()`
   - **Files**: `backend/modules/platform_admin/services/subscription_service.py`
   - **Deps**: T110, T037
   - **Acceptance**: Keeps `companies.subscription_id` in sync in the same transaction (denormalised pointer; the partial unique index remains authoritative, ADR-9). Every change audited with before/after plan + effective date + reason.
+  - **Result (2026-08-21)**: `assign_or_change()` ends the prior active Subscription (if any), creates the new one, and calls the new `CompanyRepository.set_subscription_id()` flush-only method — all inside the same service-level `db.commit()` alongside the audit row. A gap found during implementation (not in the original task list): the target Plan's `status` was never checked, so a `draft`/`retired` Plan could be silently assigned — fixed by adding a `plan.status != "published"` guard raising the new `PlanNotAssignableError` (see T115's Result note); this directly implements BR-9A-018/FR-9A-152's "no longer appears as an assignment option" requirement, which had no other enforcement point in the original task breakdown.
 
-- [ ] T113 [US-5] [FR-9A-165] [FR-9A-166] Implement downgrade usage-conflict acknowledgement
+- [X] T113 [US-5] [FR-9A-165] [FR-9A-166] Implement downgrade usage-conflict acknowledgement
   - **Purpose**: Revision 2 fix — previously depended on a non-existent "T132 quota resolver"; now correctly depends on T108, which exists earlier in this same phase.
   - **Files**: `backend/modules/platform_admin/services/subscription_service.py`
   - **Deps**: T112, T108
   - **Acceptance**: If current usage exceeds the target plan's limits, the change is **rejected** unless the request carries an explicit acknowledgement flag; once applied, the tenant is **flagged over-quota** rather than truncated. No tenant data is ever removed or truncated.
+  - **Result (2026-08-21)**: `_find_usage_conflicts()` measures only the `users` quota key live (via a `CompanyMember` COUNT — the one key with a genuine real-time source in this phase per spec.md's own US-5 worked example; all other keys have no live source until Phase 11's `UsageRecord` and correctly resolve to `unavailable`, never a false conflict). Rejection raises `SubscriptionUsageConflictError` (409) with zero partial state change (T117 proves the tenant's prior active Subscription is untouched on rejection). With `acknowledged=True` the change applies and no new column/flag was needed — `QuotaService.resolve()` naturally reports `reached` on the next check against the new plan (T117 proves this directly), and the 3 pre-existing `CompanyMember` rows are proven still present/`active` afterward (no truncation).
 
-- [ ] T114 Implement plan/subscription routes
+- [X] T114 Implement plan/subscription routes
   - **Files**: `backend/modules/platform_admin/router.py`
   - **Deps**: T111, T112, T113, T064
   - **Acceptance**: `GET/POST /platform/plans`, `PATCH /platform/plans/{planId}`, `GET/POST /platform/tenants/{companyId}/subscription` — permissions exactly as in `contracts/platform-admin-v1.yaml`.
+  - **Result (2026-08-21)**: New `plan_router` (mounted in `api/v1/router.py`) plus two new operations on the existing `tenant_router`. `PATCH /plans/{planId}` is the contract's single combined "Update/publish/retire" operation, dispatched by a request-body `action` field (`update`/`publish`/`retire`) — matches the contract's exactly-one-PATCH-operation shape rather than three separate endpoints. Verified via live OpenAPI schema introspection inside the running container: exactly 5 operations at exactly the 3 contract paths, `platform.plans.read`/`platform.plans.manage`/`platform.subscriptions.read`/`platform.subscriptions.manage` permission codes already existed in the Phase-2 seeded catalogue (`constants.py`) — no new permission code was invented.
 
-- [ ] T115 [P] Test: retired plan keeps existing subscriptions intact but is unassignable
+- [X] T115 [P] Test: retired plan keeps existing subscriptions intact but is unassignable
   - **Files**: `backend/tests/integration/services/platform_admin/test_plan_lifecycle.py`
   - **Deps**: T114
   - **Acceptance**: 12 subscribed tenants keep entitlements; the plan no longer appears as an assignment option (spec US-4 scenario 2).
+  - **Result (2026-08-21)**: 6/6 passed. Covers: retiring a Plan leaves its existing Subscription and capability map byte-for-byte unchanged; a **new** company attempting to subscribe to the now-retired Plan is rejected with `PlanNotAssignableError` (409) and ends up with zero active Subscriptions (no partial state); a retired Plan remains readable via `get_by_id`; `draft`→retire and double-publish both correctly raise `PlanTransitionError`; a `draft` Plan cannot be assigned either (only `published` is assignable).
 
-- [ ] T116 [P] Test: one-active-subscription-per-company invariant is DB-enforced
+- [X] T116 [P] Test: one-active-subscription-per-company invariant is DB-enforced
   - **Files**: `backend/tests/integration/repositories/platform_admin/test_subscription_constraints.py`
   - **Deps**: T114
   - **Acceptance**: A second active subscription raises at the database level (partial unique index), not merely in application code. Real PostgreSQL.
+  - **Result (2026-08-21)**: 1/1 passed against the real `db` Docker/PostgreSQL container (bypasses the SQLite `db_session` fixture entirely, mirroring T094's pattern) — a second `status='active'` row for the same `company_id` raises `IntegrityError` naming `uq_subscriptions_company_active` specifically (not just any constraint), while a second `status='ended'` row for the same company succeeds, proving the index is genuinely partial. All test rows verified cleaned up afterward (0 leftover rows for every created entity).
 
-- [ ] T117 [P] Test: subscription date validation and downgrade acknowledgement
+- [X] T117 [P] Test: subscription date validation and downgrade acknowledgement
   - **Files**: `backend/tests/integration/services/platform_admin/test_subscription.py`
   - **Deps**: T114
   - **Acceptance**: End date before effective date is rejected (spec Edge Case #16); an over-limit downgrade without acknowledgement is rejected, and with acknowledgement applies and flags over-quota without data loss.
+  - **Result (2026-08-21)**: 3/3 passed. `end_date < effective_date` raises `ValidationException` before any row is created (Edge Case #16). Downgrade conflict: 3 active `CompanyMember`s vs. a 2-user-limit target Plan is rejected without `acknowledged=True` with the tenant's original Subscription completely unchanged; with `acknowledged=True` the change applies, all 3 `CompanyMember` rows remain `active` (zero truncation), and `QuotaService.resolve()` against the new plan reports `state=reached` — the over-quota flag required no new persisted column.
+
+**Phase 8 Exit Condition**: T103-T117 all implemented and proven; no Gate assigned to this phase (Gate D belongs to Phase 9) — quota/plan/subscription foundation is ready as a Phase 9/11 dependency. **PASS** — see Phase 8 closure PHR for full evidence.
 
 ---
 

@@ -142,3 +142,50 @@ class TenantLifecycleTransitionError(ConflictException):
     ) -> None:
         super().__init__(message=message, details=details)
         self.code = "TENANT_LIFECYCLE_TRANSITION_ERROR"
+
+
+class PlanTransitionError(ConflictException):
+    """Raised when a Plan status transition is not permitted from its
+    current status (e.g. retiring a draft Plan, publishing an
+    already-published one, T111)."""
+
+    def __init__(
+        self,
+        message: str = "This Plan status transition is not permitted.",
+        details: dict[str, object] | None = None,
+    ) -> None:
+        super().__init__(message=message, details=details)
+        self.code = "PLAN_TRANSITION_ERROR"
+
+
+class PlanNotAssignableError(ConflictException):
+    """Raised when a Subscription is assigned/changed to a Plan that is
+    not currently ``published`` (BR-9A-018, FR-9A-152, T113). A
+    ``retired`` Plan keeps every tenant already subscribed to it
+    unchanged — this error blocks only the **new**-assignment path; it
+    is never raised for a Plan's already-existing Subscriptions."""
+
+    def __init__(
+        self,
+        message: str = "Only a published Plan may be assigned to a tenant.",
+        details: dict[str, object] | None = None,
+    ) -> None:
+        super().__init__(message=message, details=details)
+        self.code = "PLAN_NOT_ASSIGNABLE"
+
+
+class SubscriptionUsageConflictError(ConflictException):
+    """Raised when a subscription change would place a tenant's current
+    usage above the target Plan's limits, and the request did not carry
+    an explicit acknowledgement (FR-9A-165, T113)."""
+
+    def __init__(
+        self,
+        message: str = (
+            "This subscription change would place current usage above the "
+            "target plan's limits. Resubmit with acknowledged=true to proceed."
+        ),
+        details: dict[str, object] | None = None,
+    ) -> None:
+        super().__init__(message=message, details=details)
+        self.code = "SUBSCRIPTION_USAGE_CONFLICT"

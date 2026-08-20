@@ -17,14 +17,22 @@ Endpoints (Phase 7, T090):
     POST /platform/tenants/{companyId}/suspend    — platform.tenants.suspend
     POST /platform/tenants/{companyId}/reactivate — platform.tenants.reactivate
 
+Endpoints (Phase 8, T114):
+    GET   /platform/plans                          — platform.plans.read
+    POST  /platform/plans                           — platform.plans.manage
+    PATCH /platform/plans/{planId}                  — platform.plans.manage
+    GET   /platform/tenants/{companyId}/subscription  — platform.subscriptions.read
+    POST  /platform/tenants/{companyId}/subscription  — platform.subscriptions.manage
+
 Mounted at ``/api/v1/platform`` by ``api/v1/router.py`` (T053) — without
 ``get_current_company_member``, since Platform is never company-scoped.
 
 Router discipline: delegates to the service layer — no business logic in
 the router (plan.md §10 API Contract Lock). Contract traceability:
 operations 1-3 (public `/auth/*`, no `x-permission`), operations 20-25
-(Administrator/RBAC management), and the `/tenants/{companyId}/suspend`
-and `/reactivate` operations of ``platform-admin-v1.yaml``.
+(Administrator/RBAC management), the `/tenants/{companyId}/suspend` and
+`/reactivate` operations, and the `/plans*`/`/tenants/{companyId}/
+subscription` operations of ``platform-admin-v1.yaml``.
 """
 
 from __future__ import annotations
@@ -49,6 +57,7 @@ from modules.platform_admin.dependencies import (
     get_current_platform_admin,
     require_platform_permission,
 )
+from modules.platform_admin.repositories.plan_repository import PlanRepository
 from modules.platform_admin.repositories.platform_administrator_repository import (
     PlatformAdministratorRepository,
 )
@@ -60,6 +69,15 @@ from modules.platform_admin.repositories.platform_rbac_repository import (
 )
 from modules.platform_admin.repositories.platform_session_repository import (
     PlatformSessionRepository,
+)
+from modules.platform_admin.repositories.quota_repository import QuotaRepository
+from modules.platform_admin.repositories.subscription_repository import (
+    SubscriptionRepository,
+)
+from modules.platform_admin.schemas.plan import (
+    CreatePlanRequest,
+    PlanResponse,
+    UpdatePlanRequest,
 )
 from modules.platform_admin.schemas.platform_administrator import (
     CreatePlatformAdministratorRequest,
@@ -78,16 +96,24 @@ from modules.platform_admin.schemas.platform_rbac import (
     RoleAssignmentResponse,
     RoleResponse,
 )
+from modules.platform_admin.schemas.subscription import (
+    AssignSubscriptionRequest,
+    SubscriptionHistoryResponse,
+    SubscriptionResponse,
+)
 from modules.platform_admin.schemas.tenant_lifecycle import (
     TenantLifecycleActionRequest,
     TenantLifecycleResponse,
 )
+from modules.platform_admin.services.plan_service import PlanService
 from modules.platform_admin.services.platform_administrator_service import (
     PlatformAdministratorService,
 )
 from modules.platform_admin.services.platform_audit_service import PlatformAuditService
 from modules.platform_admin.services.platform_auth_service import PlatformAuthService
 from modules.platform_admin.services.platform_rbac_service import PlatformRbacService
+from modules.platform_admin.services.quota_service import QuotaService
+from modules.platform_admin.services.subscription_service import SubscriptionService
 from modules.platform_admin.services.tenant_lifecycle_service import (
     TenantLifecycleService,
 )
@@ -96,6 +122,7 @@ router = APIRouter(prefix="/auth", tags=["Platform Authentication"])
 admin_router = APIRouter(tags=["Platform Administrators"])
 rbac_router = APIRouter(tags=["Platform RBAC"])
 tenant_router = APIRouter(tags=["Platform Tenants"])
+plan_router = APIRouter(tags=["Platform Plans"])
 
 
 def _meta(request: Request) -> ResponseMeta:
@@ -521,5 +548,241 @@ async def reactivate_tenant(
     return StandardResponse(
         data=TenantLifecycleResponse.model_validate(company),
         message="Tenant reactivated.",
+        meta=_meta(request),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Plans & Subscriptions (T114)
+# ---------------------------------------------------------------------------
+
+
+def _plan_service(db: Session = Depends(get_db)) -> PlanService:
+    return PlanService(
+        db=db,
+        repo=PlanRepository(db),
+        audit=PlatformAuditService(db, PlatformAuditRepository(db)),
+    )
+
+
+def _subscription_service(db: Session = Depends(get_db)) -> SubscriptionService:
+    return SubscriptionService(
+        db=db,
+        repo=SubscriptionRepository(db),
+        company_repo=CompanyRepository(db),
+        quota_service=QuotaService(QuotaRepository(db)),
+        audit=PlatformAuditService(db, PlatformAuditRepository(db)),
+    )
+
+
+def _plan_response(plan, repo: PlanRepository) -> PlanResponse:
+    return PlanResponse(
+        id=plan.id,
+        code=plan.code,
+        name=plan.name,
+        status=plan.status,
+        description=plan.description,
+        is_commercially_available=plan.is_commercially_available,
+        billing_cycle_metadata=plan.billing_cycle_metadata,
+        pricing_metadata=plan.pricing_metadata,
+        capability_map=repo.get_capability_map(plan.id),
+        created_at=plan.created_at,
+        updated_at=plan.updated_at,
+    )
+
+
+@plan_router.get(
+    "/plans",
+    response_model=PaginatedResponse[PlanResponse],
+    summary="List plans",
+    dependencies=[Depends(require_platform_permission("platform.plans.read"))],
+)
+async def list_plans(
+    request: Request,
+    status_filter: str | None = Query(None, alias="status"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> PaginatedResponse[PlanResponse]:
+    repo = PlanRepository(db)
+    items, total = repo.list_paginated(
+        status=status_filter, offset=(page - 1) * page_size, limit=page_size
+    )
+    pages = math.ceil(total / page_size) if total > 0 else 0
+    return PaginatedResponse(
+        data=PaginatedData(
+            items=[_plan_response(p, repo) for p in items],
+            total=total,
+            page=page,
+            page_size=page_size,
+            pages=pages,
+        ),
+        message=f"{total} Plan(s) found.",
+        meta=_meta(request),
+    )
+
+
+@plan_router.post(
+    "/plans",
+    response_model=StandardResponse[PlanResponse],
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a plan (draft)",
+    dependencies=[Depends(require_platform_permission("platform.plans.manage"))],
+)
+async def create_plan(
+    request: Request,
+    payload: CreatePlanRequest,
+    current: PlatformPrincipal = Depends(get_current_platform_admin),
+    svc: PlanService = Depends(_plan_service),
+    db: Session = Depends(get_db),
+) -> StandardResponse[PlanResponse]:
+    plan = svc.create(
+        code=payload.code,
+        name=payload.name,
+        description=payload.description,
+        billing_cycle_metadata=payload.billing_cycle_metadata,
+        pricing_metadata=payload.pricing_metadata,
+        capability_map=payload.capability_map,
+        actor_platform_administrator_id=current.platform_administrator_id,
+        reason=payload.reason,
+    )
+    return StandardResponse(
+        data=_plan_response(plan, PlanRepository(db)),
+        message="Plan created.",
+        meta=_meta(request),
+    )
+
+
+@plan_router.patch(
+    "/plans/{planId}",
+    response_model=StandardResponse[PlanResponse],
+    summary="Update/publish/retire a plan",
+    dependencies=[Depends(require_platform_permission("platform.plans.manage"))],
+    responses={
+        404: {"description": "Plan not found"},
+        409: {"description": "Requested status transition is not permitted"},
+    },
+)
+async def update_plan(
+    request: Request,
+    payload: UpdatePlanRequest,
+    planId: UUID = Path(...),  # noqa: N803 — matches contract's path parameter name
+    current: PlatformPrincipal = Depends(get_current_platform_admin),
+    svc: PlanService = Depends(_plan_service),
+    db: Session = Depends(get_db),
+) -> StandardResponse[PlanResponse]:
+    repo = PlanRepository(db)
+    plan = repo.get_by_id(planId)
+    if plan is None:
+        raise NotFoundException(message="Plan not found.")
+
+    if payload.action == "publish":
+        plan = svc.publish(
+            plan,
+            actor_platform_administrator_id=current.platform_administrator_id,
+            reason=payload.reason,
+        )
+        message = "Plan published."
+    elif payload.action == "retire":
+        plan = svc.retire(
+            plan,
+            actor_platform_administrator_id=current.platform_administrator_id,
+            reason=payload.reason,
+        )
+        message = "Plan retired."
+    else:
+        plan = svc.update(
+            plan,
+            name=payload.name,
+            description=payload.description,
+            is_commercially_available=payload.is_commercially_available,
+            billing_cycle_metadata=payload.billing_cycle_metadata,
+            pricing_metadata=payload.pricing_metadata,
+            capability_map=payload.capability_map,
+            actor_platform_administrator_id=current.platform_administrator_id,
+            reason=payload.reason,
+        )
+        message = "Plan updated."
+
+    return StandardResponse(
+        data=_plan_response(plan, repo),
+        message=message,
+        meta=_meta(request),
+    )
+
+
+@tenant_router.get(
+    "/tenants/{companyId}/subscription",
+    response_model=StandardResponse[SubscriptionHistoryResponse],
+    summary="View a tenant's current subscription and history",
+    dependencies=[Depends(require_platform_permission("platform.subscriptions.read"))],
+    responses={404: {"description": "Company not found"}},
+)
+async def get_subscription(
+    request: Request,
+    companyId: UUID = Path(...),  # noqa: N803 — matches contract's path parameter name
+    db: Session = Depends(get_db),
+) -> StandardResponse[SubscriptionHistoryResponse]:
+    if CompanyRepository(db).get_by_id(companyId) is None:
+        raise NotFoundException(message="Company not found.")
+
+    repo = SubscriptionRepository(db)
+    history = repo.list_for_company(companyId)
+    current_subscription = next((s for s in history if s.status == "active"), None)
+    return StandardResponse(
+        data=SubscriptionHistoryResponse(
+            current=(
+                SubscriptionResponse.model_validate(current_subscription)
+                if current_subscription
+                else None
+            ),
+            history=[SubscriptionResponse.model_validate(s) for s in history],
+        ),
+        message=(
+            f"{len(history)} Subscription record(s) found."
+            if history
+            else "No Subscription history for this tenant."
+        ),
+        meta=_meta(request),
+    )
+
+
+@tenant_router.post(
+    "/tenants/{companyId}/subscription",
+    response_model=StandardResponse[SubscriptionResponse],
+    summary="Assign/change a tenant's plan (surfaces usage-conflict per FR-9A-165)",
+    dependencies=[
+        Depends(require_platform_permission("platform.subscriptions.manage"))
+    ],
+    responses={
+        404: {"description": "Company or Plan not found"},
+        409: {"description": "Usage-conflict requiring explicit acknowledgment"},
+    },
+)
+async def assign_subscription(
+    request: Request,
+    payload: AssignSubscriptionRequest,
+    companyId: UUID = Path(...),  # noqa: N803 — matches contract's path parameter name
+    current: PlatformPrincipal = Depends(get_current_platform_admin),
+    svc: SubscriptionService = Depends(_subscription_service),
+    db: Session = Depends(get_db),
+) -> StandardResponse[SubscriptionResponse]:
+    if CompanyRepository(db).get_by_id(companyId) is None:
+        raise NotFoundException(message="Company not found.")
+    if PlanRepository(db).get_by_id(payload.plan_id) is None:
+        raise NotFoundException(message="Plan not found.")
+
+    subscription = svc.assign_or_change(
+        company_id=companyId,
+        plan_id=payload.plan_id,
+        effective_date=payload.effective_date,
+        end_date=payload.end_date,
+        actor_platform_administrator_id=current.platform_administrator_id,
+        reason=payload.reason,
+        acknowledged=payload.acknowledged,
+    )
+    return StandardResponse(
+        data=SubscriptionResponse.model_validate(subscription),
+        message="Subscription assigned.",
         meta=_meta(request),
     )

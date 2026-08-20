@@ -118,6 +118,17 @@ class CompanyRepository:
         self.db.flush()
         return company
 
+    def set_subscription_id(self, company: Company, subscription_id) -> Company:
+        """Stage a sync of the denormalised `subscription_id` pointer to
+        the tenant's current `Subscription` (Epic 9A ADR-9,
+        `SubscriptionService`, T112). The `subscriptions` table's own
+        partial-unique-active index remains the authoritative source of
+        truth — this column is query convenience only. Caller commits.
+        """
+        company.subscription_id = subscription_id
+        self.db.flush()
+        return company
+
     # ── Read operations ───────────────────────────────────────────────────────
 
     def get_by_id(self, id: UUID) -> Company | None:

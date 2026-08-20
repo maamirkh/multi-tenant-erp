@@ -5,11 +5,17 @@ All models are imported here to ensure the test suite's
 
 Import order follows dependency order (parent before child tables) —
 ``PlatformAuditEvent``/``PlatformSession`` reference ``PlatformAdministrator``
-via FK, ``PlatformRefreshToken`` references ``PlatformSession``, and the
+via FK, ``PlatformRefreshToken`` references ``PlatformSession``, the
 RBAC join tables (``PlatformRolePermission``, ``PlatformAdminRoleAssignment``)
-reference ``PlatformPermission``/``PlatformRole``/``PlatformAdministrator``.
+reference ``PlatformPermission``/``PlatformRole``/``PlatformAdministrator``,
+and the Phase-8 SaaS control-plane models (``Capability``, ``Plan``,
+``PlanCapability``, ``Subscription``, ``QuotaDefinition``, ``PlanQuota``,
+``TenantQuotaOverride``) reference each other and ``PlatformAdministrator``.
 """
 
+from modules.platform_admin.models.capability import Capability
+from modules.platform_admin.models.plan import Plan
+from modules.platform_admin.models.plan_capability import PlanCapability
 from modules.platform_admin.models.platform_administrator import PlatformAdministrator
 from modules.platform_admin.models.platform_audit_event import PlatformAuditEvent
 from modules.platform_admin.models.platform_rbac import (
@@ -20,8 +26,18 @@ from modules.platform_admin.models.platform_rbac import (
 )
 from modules.platform_admin.models.platform_refresh_token import PlatformRefreshToken
 from modules.platform_admin.models.platform_session import PlatformSession
+from modules.platform_admin.models.quota import (
+    PlanQuota,
+    QuotaDefinition,
+    TenantQuotaOverride,
+)
+from modules.platform_admin.models.subscription import Subscription
 
 __all__ = [
+    "Capability",
+    "Plan",
+    "PlanCapability",
+    "PlanQuota",
     "PlatformAdminRoleAssignment",
     "PlatformAdministrator",
     "PlatformAuditEvent",
@@ -30,4 +46,7 @@ __all__ = [
     "PlatformRole",
     "PlatformRolePermission",
     "PlatformSession",
+    "QuotaDefinition",
+    "Subscription",
+    "TenantQuotaOverride",
 ]

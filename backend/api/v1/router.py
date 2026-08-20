@@ -46,6 +46,7 @@ from modules.crm.router import admin_router as crm_admin_router
 from modules.crm.router import router as crm_router
 from modules.inventory.router import router as inventory_router
 from modules.platform_admin.router import admin_router as platform_admin_admin_router
+from modules.platform_admin.router import plan_router as platform_admin_plan_router
 from modules.platform_admin.router import rbac_router as platform_admin_rbac_router
 from modules.platform_admin.router import router as platform_admin_router
 from modules.platform_admin.router import tenant_router as platform_admin_tenant_router
@@ -150,6 +151,11 @@ router.include_router(
 # Phase 7 (T090) — tenant suspend/reactivate routes.
 router.include_router(
     platform_admin_tenant_router,
+    prefix="/platform",
+)
+# Phase 8 (T114) — plan/subscription management routes.
+router.include_router(
+    platform_admin_plan_router,
     prefix="/platform",
 )
 
