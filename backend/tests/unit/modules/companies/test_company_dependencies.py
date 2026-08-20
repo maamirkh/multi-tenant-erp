@@ -53,11 +53,21 @@ def _make_company(
     status: str = CompanyStatus.active.value,
     owner_id=None,
 ):
-    """Return a mock Company ORM object."""
+    """Return a mock Company ORM object.
+
+    ``access_invalidated_at`` is explicitly ``None`` (never suspended) —
+    the production default for any company that predates Epic 9A or has
+    never been suspended (``assert_company_access_allowed``'s Layer 2 is
+    a no-op in that case). Left unset, a plain ``MagicMock`` attribute
+    access returns a truthy child mock instead of ``None``, which would
+    incorrectly trip Layer 2's freshness check for every test that isn't
+    actually exercising tenant lifecycle/suspension semantics.
+    """
     company = MagicMock()
     company.id = uuid4()
     company.owner_id = owner_id or uuid4()
     company.status = status
+    company.access_invalidated_at = None
     return company
 
 
@@ -66,6 +76,20 @@ def _make_service(company_obj):
     service = MagicMock()
     service._company_repo.get_by_id.return_value = company_obj
     return service
+
+
+def _make_db(company_obj):
+    """Return a mock DB session standing in for ``assert_company_access_allowed``'s
+    ``db.get(Company, company_id)`` lookup (Epic 9A T084).
+
+    Returns the SAME mocked company object the test's ``service`` fixture
+    already carries, so both lookups agree on status/
+    ``access_invalidated_at`` — mirroring how, in production, both calls
+    resolve to the same underlying row.
+    """
+    db = MagicMock()
+    db.get.return_value = company_obj
+    return db
 
 
 # ---------------------------------------------------------------------------
@@ -84,6 +108,7 @@ class TestGetCurrentCompany:
             company_id=company.id,
             current_user=current_user,
             service=service,
+            db=_make_db(company),
         )
 
         assert result is company
@@ -97,6 +122,7 @@ class TestGetCurrentCompany:
             company_id=company.id,
             current_user=current_user,
             service=service,
+            db=_make_db(company),
         )
 
         assert result is company
@@ -123,6 +149,7 @@ class TestGetCurrentCompany:
                 company_id=company.id,
                 current_user=current_user,
                 service=service,
+                db=_make_db(company),
             )
 
     def test_raises_404_when_company_is_deleted(self) -> None:
@@ -136,6 +163,7 @@ class TestGetCurrentCompany:
                 company_id=company.id,
                 current_user=current_user,
                 service=service,
+                db=_make_db(company),
             )
 
     def test_raises_403_when_user_is_not_member(self) -> None:
@@ -148,6 +176,7 @@ class TestGetCurrentCompany:
                 company_id=company.id,
                 current_user=current_user,
                 service=service,
+                db=_make_db(company),
             )
 
         assert exc_info.value.status_code == 403
