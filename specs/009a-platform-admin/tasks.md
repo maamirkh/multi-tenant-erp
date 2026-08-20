@@ -296,80 +296,93 @@
 
 ### Tasks
 
-- [ ] T032 Create the `platform_admin` module skeleton
+- [X] T032 Create the `platform_admin` module skeleton
   - **Purpose**: Match the most complete existing module shape (accounting/crm, plan.md §4).
   - **Files**: `backend/modules/platform_admin/{__init__,constants,exceptions}.py` + `{models,repositories,services,schemas,events}/__init__.py` + `dependencies.py`, `router.py`
   - **Deps**: T031
   - **Acceptance**: `import modules.platform_admin` succeeds; directory shape matches `modules/accounting/`.
+  - **Result (2026-08-20)**: DONE. All files present; `import modules.platform_admin` (+ every submodule) verified inside `erp-system-api-1`. Directory shape matches `modules/accounting/` minus `handlers/`, which T032's own Files list deliberately excludes. `router.py` is an empty, unmounted `APIRouter()` — no route exists yet, consistent with the Architecture Freeze's "do not pre-create future routes."
 
-- [ ] T033 Define `PLATFORM_PERMISSION_CODES` and candidate role bundles in `constants.py`
+- [X] T033 Define `PLATFORM_PERMISSION_CODES` and candidate role bundles in `constants.py`
   - **Purpose**: Single source of truth for the permission catalogue (spec §15.1, plan §8).
   - **Files**: `backend/modules/platform_admin/constants.py`
   - **Deps**: T032
   - **Acceptance**: All permission codes from spec §15.1 present as a frozenset; the 6 candidate role bundles from spec §15.2 defined as **data**, not enum members (configurable per FR-9A-140/Constitution §46).
+  - **Result (2026-08-20)**: DONE. 29 codes collected verbatim from every literal code in spec.md §15.1's table; cross-checked against all 21 `x-permission` values in `contracts/platform-admin-v1.yaml` — a strict subset, zero drift. 6 role bundles built as `tuple[dict, ...]` (plain data), each `permission_codes` set expanded explicitly from spec.md §15.2's prose (e.g. `platform.plans.*` → `plans.read`+`plans.manage`), with the expansion logic documented inline since these are non-mandatory candidates.
 
-- [ ] T034 Define Platform exception types
+- [X] T034 Define Platform exception types
   - **Purpose**: Consistent error envelope matching the project-wide `ApplicationException` convention.
   - **Files**: `backend/modules/platform_admin/exceptions.py`
   - **Deps**: T032
   - **Acceptance**: `PlatformSessionInvalidError` (401), `InsufficientPlatformPermissionError` (403), `CapabilityNotEntitledError` (403), `SupportAccessExpiredError` (403), `LastPlatformOwnerError` (409), `TenantLifecycleTransitionError` (409) — each with a stable `code`.
+  - **Result (2026-08-20)**: DONE. All 6 exceptions defined, each subclassing the matching `core.exceptions.base` typed exception (`UnauthorizedException`/`ForbiddenException`×3/`ConflictException`×2) with an explicit `self.code` override, exactly matching `modules/accounting/exceptions.py`'s convention.
 
-- [ ] T035 [US-8] [BR-9A-022] Create `PlatformAuditEvent` model
+- [X] T035 [US-8] [BR-9A-022] Create `PlatformAuditEvent` model
   - **Purpose**: Audit persistence must exist before any audited mutation is written (moved ahead of identity/RBAC in Revision 2).
   - **Files**: `backend/modules/platform_admin/models/platform_audit_event.py`
   - **Deps**: T032
   - **Acceptance**: Full column set per data-model.md incl. nullable `company_id`, `reason`, `before_state`/`after_state` JSONB, `context` (with `request_id`), and the nullable `support_access_grant_id` FK (populated from Phase 12 onward).
+  - **Result (2026-08-20)**: DONE. Full column set matches data-model.md and migration 057 exactly (verified column-by-column, including all 4 indexes). `support_access_grant_id` is a bare nullable UUID column with no `ForeignKey()` object — `support_access_grants` has no ORM model until Phase 12 — mirroring migration 057→061's own deferred-FK technique at the ORM layer. All UUID columns given explicit `Uuid(as_uuid=True)` types (self-review caught that relying on SQLAlchemy's implicit `type_annotation_map` inference for FK-typed columns is import-order-fragile — resolved to `NullType()` when this file was imported standalone without `companies.models` pre-loaded; explicit types make every column's type independent of import order).
 
-- [ ] T036 [BR-9A-023] Create `PlatformAuditRepository` — **flush only, never commit**
+- [X] T036 [BR-9A-023] Create `PlatformAuditRepository` — **flush only, never commit**
   - **Purpose**: The mechanical precondition for fail-closed atomicity (ADR-5, plan §3.5).
   - **Files**: `backend/modules/platform_admin/repositories/platform_audit_repository.py`
   - **Deps**: T035
   - **Acceptance**: `record()` does `db.add()` + `db.flush()` and **never** `db.commit()`; there is no update or delete method at all (append-only).
+  - **Result (2026-08-20)**: DONE. Mirrors `AccountingAuditLogRepository.create()` exactly. No update/delete method exists. Deliberately does not inherit `BaseRepository` (which mandates `company_id` filtering — wrong for a platform-scoped table). Proven fail-closed by T044.
 
-- [ ] T037 [ADR-5] Create the audited-mutation service helper
+- [X] T037 [ADR-5] Create the audited-mutation service helper
   - **Purpose**: One reusable pattern so every privileged service commits state + audit (+ outbox) together. Every audited task in Phases 3–12 depends on this.
   - **Files**: `backend/modules/platform_admin/services/platform_audit_service.py`
   - **Deps**: T036
   - **Acceptance**: Callers flush their state change, flush the audit row, then perform a **single** service-level `db.commit()`. Must not use `BaseRepository.create()/.update()`'s auto-commit for audited paths.
+  - **Result (2026-08-20)**: DONE. `PlatformAuditService.record()` mirrors `AuditLogService.record()` exactly — stages the audit row (flush-only) and returns it; does **not** commit. The calling domain service (T040) owns the single commit, matching plan.md §3.5's "service layer owns a single `db.commit()`" precedent precisely (not the audit service itself). Proven by T044's two tests (success + forced-failure rollback).
 
-- [ ] T038 [US-7] [FR-9A-030] Create `PlatformAdministrator` model
+- [X] T038 [US-7] [FR-9A-030] Create `PlatformAdministrator` model
   - **Purpose**: First-class platform principal, 1:1 with `User`, **never** `TenantBaseModel` (no `company_id`).
   - **Files**: `backend/modules/platform_admin/models/platform_administrator.py`
   - **Deps**: T032
   - **Acceptance**: Inherits `BaseModel`; `user_id` FK UNIQUE NOT NULL; `is_active`, `last_login_at`, `deactivated_at`, `deactivated_by` per data-model.md.
+  - **Result (2026-08-20)**: DONE. Inherits `BaseModel` only — no `company_id` anywhere. All 5 columns match data-model.md and migration 057 exactly. All UUID columns given explicit `Uuid(as_uuid=True)` types for the same import-order-independence reason as T035. FR-9A-030 (create independent of tenant membership) proven by T042.
 
-- [ ] T039 [US-7] Create `PlatformAdministratorRepository`
+- [X] T039 [US-7] Create `PlatformAdministratorRepository`
   - **Purpose**: Platform-scoped data access; must **not** use `BaseRepository` (which mandates `company_id` filtering).
   - **Files**: `backend/modules/platform_admin/repositories/platform_administrator_repository.py`
   - **Deps**: T038
   - **Acceptance**: `get_by_user_id`, `get_by_id`, `list_paginated`, `create`, `set_active`. Audited write paths use `flush()` only, never `commit()` (ADR-5).
+  - **Result (2026-08-20)**: DONE. All 5 methods present; does not inherit `BaseRepository`. `create()`/`set_active()` both `flush()` only — verified by T044's atomicity tests (no premature commit anywhere in the write path).
 
-- [ ] T040 [US-7] [FR-9A-031] Create `PlatformAdministratorService` — account lifecycle **without** session revocation
+- [X] T040 [US-7] [FR-9A-031] Create `PlatformAdministratorService` — account lifecycle **without** session revocation
   - **Purpose**: Domain foundation for create/activate/deactivate. Session revocation is deliberately **not** here — `PlatformSessionRepository` does not exist until Phase 4 (Revision 2 split).
   - **Files**: `backend/modules/platform_admin/services/platform_administrator_service.py`
   - **Deps**: T039, T037
   - **Acceptance**: Create/activate/deactivate change `is_active` and write an audit row in one transaction via T037's helper. Deactivation is **not yet complete** with respect to BR-9A-011 — T054 adds mandatory session revocation, and the service must expose a seam (e.g. an injected revoker) rather than being rewritten later.
+  - **Result (2026-08-20)**: DONE, with the documented Phase-3 gap. `create()`/`activate()`/`deactivate()` each flush their state change, call `PlatformAuditService.record()`, then a single `self.db.commit()` — proven atomic by T044. Exposes a `SessionRevoker` `Protocol` seam, injected via the constructor (`session_revoker: SessionRevoker | None = None`); with none injected (the Phase 3 state), `deactivate()` performs only the account-state change and its audit record. **FR-9A-031/BR-9A-011's "immediately invalidating active platform sessions" clause is intentionally NOT yet satisfied** — that is Phase 4's T054, which will inject a real revoker into this exact seam without rewriting this service.
 
-- [ ] T041 [P] [US-7] Create Platform administrator request/response schemas
+- [X] T041 [P] [US-7] Create Platform administrator request/response schemas
   - **Files**: `backend/modules/platform_admin/schemas/platform_administrator.py`
   - **Deps**: T032
   - **Acceptance**: Pydantic v2 with explicit field allow-lists (mass-assignment protection, plan §28); no password or token field ever echoed.
+  - **Result (2026-08-20)**: DONE. `CreatePlatformAdministratorRequest` carries only `user_id` (no `is_active`/role field — matches Phase 5's T068 constraint exactly). `UpdatePlatformAdministratorRequest` carries only `is_active`+`reason` (activate/deactivate only). `PlatformAdministratorResponse` has no password/token field.
 
-- [ ] T042 [P] [US-7] [BR-9A-010] Test: a Platform Administrator with **zero** company memberships is a valid, complete principal
+- [X] T042 [P] [US-7] [BR-9A-010] Test: a Platform Administrator with **zero** company memberships is a valid, complete principal
   - **Files**: `backend/tests/integration/services/platform_admin/test_platform_administrator.py`
   - **Deps**: T040
   - **Acceptance**: Account created with no `CompanyMember` row anywhere; no membership check blocks its creation or role assignment. (API-level proof follows in T059.)
+  - **Result (2026-08-20, SQLite in-memory, `db_session` fixture)**: PASS — 2 tests. Assertions scoped to the created user's own id (not a table-wide count), since the shared test database persists rows across test functions within one pytest session — a pre-existing property of the project's `db_session` fixture discovered during this phase, not a defect introduced here (see Defects Discovered in the closure report).
 
-- [ ] T043 [P] [US-7] [BR-9A-001] Test: tenant `owner`/`admin` role grants **no** Platform authority
+- [X] T043 [P] [US-7] [BR-9A-001] Test: tenant `owner`/`admin` role grants **no** Platform authority
   - **Files**: `backend/tests/security/modules/platform_admin/test_identity_boundary.py`
   - **Deps**: T040
   - **Acceptance**: Creating a `CompanyMember` never creates a `PlatformAdministrator`; no tenant role value maps to a platform principal. (API-level proof follows in T055.)
+  - **Result (2026-08-20, SQLite in-memory)**: PASS — 2 tests (owner role rank 100, admin role rank 90). Both assert `PlatformAdministratorRepository.get_by_user_id()` returns `None` for the tenant user, scoped to that user's id.
 
-- [ ] T044 [ADR-5] Test: the audit foundation writes atomically on a trivial audited action
+- [X] T044 [ADR-5] Test: the audit foundation writes atomically on a trivial audited action
   - **Purpose**: plan.md §36 Phase A — "audit foundation proven with a trivial first audited action", before any complex mutation depends on it.
   - **Files**: `backend/tests/integration/services/platform_admin/test_audit_foundation.py`
   - **Deps**: T040, T037
   - **Acceptance**: A `PlatformAdministrator` deactivation writes exactly one `PlatformAuditEvent` with correct before/after, committed in the same transaction as the `is_active` change.
+  - **Result (2026-08-20, SQLite in-memory)**: PASS — 2 tests, going beyond the literal acceptance text per the master-implementation-prompt's §20 fail-closed standard ("a test that only checks an audit row eventually exists is insufficient"): (1) the literal acceptance — exactly one `platform_administrator.deactivate` event, correct before/after, `target_type`, `reason`; (2) a forced-failure test — `PlatformAuditService.record` patched to raise, proving the `is_active` state change does **not** survive (`db_session.rollback()` restores it to `True`) and zero deactivate-audit rows exist, since `db.commit()` is never reached.
 
 ---
 
