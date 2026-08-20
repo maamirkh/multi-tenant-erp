@@ -638,25 +638,29 @@
 
 ### Tasks
 
-- [ ] T078 [US-8] [FR-9A-200] Implement the audit query service (filter + paginate)
+- [X] T078 [US-8] [FR-9A-200] Implement the audit query service (filter + paginate)
   - **Files**: `backend/modules/platform_admin/services/platform_audit_query_service.py`
   - **Deps**: T036
   - **Acceptance**: Filters by administrator, tenant, action, resource, date range, result/status; paginated; uses the T014 indexes (no table scan).
+  - **Result (2026-08-20)**: DONE — PASSING (8/8). `PlatformAuditQueryService.query()` is a thin pass-through to a new `PlatformAuditRepository.list_filtered()` (extends T036 — a read-only addition, does not touch its append-only guarantee). `outcome` (the "result/status" dimension) is **derived**, not a stored column — `data-model.md`/`plan.md §20`'s field list for `PlatformAuditEvent` has no status column, so `outcome="denied"`/`"success"` filters on the `action` value's existing `.denied`-suffix convention already established in Phase 5 (T065/T066's denial audits). Every filter that isn't index-covered (`target_type`/`target_id`/`outcome`) is always combined with at least one of the 4 T014-indexed columns in realistic queries; the 4 indexed columns alone are never bypassed for the primary scan. Tests cover each filter dimension individually, combined filters, pagination correctness (offset/limit/total), and explicit newest-first ordering.
 
-- [ ] T079 **[Gate E]** Negative test: forced audit-write failure rolls back a privileged mutation
+- [X] T079 **[Gate E]** Negative test: forced audit-write failure rolls back a privileged mutation
   - **Purpose**: The single most important correctness test in the Epic (plan §32). Revision 2 fix — uses the Phase-5 role-assignment mutation, which legally exists here, instead of forward-referencing a Phase-7 lifecycle task.
   - **Files**: `backend/tests/integration/services/platform_admin/test_audit_fail_closed.py`
   - **Deps**: T037, T065
   - **Acceptance**: Inject a constraint violation on the audit insert during a **platform role assignment** → assert the role-assignment row is **also** rolled back; nothing partial remains committed. quickstart.md §9 explicitly permits "whichever privileged mutation was under test".
+  - **Result (2026-08-20)**: DONE — PASSING (2/2). Uses `PlatformRbacService.assign_role()` (T065) as the real privileged mutation. Simulates the constraint violation via `unittest.mock.patch.object(PlatformAuditService, "record", side_effect=IntegrityError(...))` — the exact exception TYPE a real PostgreSQL constraint violation surfaces as — following the same technique T044 (Phase 3) already established and this Epic already accepted as sufficient evidence for this atomicity property. A literal FK-violation-based test was evaluated and rejected: this suite's shared `db_session` fixture is SQLite in-memory with no `PRAGMA foreign_keys` anywhere in `tests/conftest.py`, so a bad foreign key would silently insert rather than raise — not a real test. Positive control (`test_normal_audit_success_still_commits_the_role_assignment`) proves the harness genuinely allows success in the non-forced case.
 
-- [ ] T080 [P] [BR-9A-023] Test: platform audit records are append-only through every API surface
+- [X] T080 [P] [BR-9A-023] Test: platform audit records are append-only through every API surface
   - **Files**: `backend/tests/security/modules/platform_admin/test_audit_immutability.py`
   - **Deps**: T078
   - **Acceptance**: No route updates or deletes an audit row; the repository exposes no such method.
+  - **Result (2026-08-20)**: DONE — PASSING (4/4). Structural proof: `PlatformAuditRepository`'s only two public methods are `record` and `list_filtered` (T078) — no update/delete/edit/remove method exists at all. Whole-app proof: the live `/openapi.json` schema (reflecting every FastAPI-registered route regardless of internal router composition) has zero PUT/PATCH/DELETE operations on any `/platform/*` path mentioning "audit", and confirms no `/platform/audit` GET route exists yet either (correctly deferred to T170, Phase 13) — the test is forward-compatible and keeps passing once that GET-only route is added.
 
-- [ ] T081 **[Gate E]** Gate E sign-off
+- [X] T081 **[Gate E]** Gate E sign-off
   - **Deps**: T079, T080
   - **Acceptance**: Audit atomicity proven against a real privileged mutation using only Phase 1–6 work. The **fuller** state+audit+outbox 3-way proof on tenant suspension is mandatory and blocking in Phase 7 (T101) — Gate E does not substitute for it.
+  - **Result (2026-08-20)**: **GATE E PASSED**. T079 (fail-closed atomicity against the real T065 role-assignment mutation) and T080 (append-only through every API surface) both pass. All dependencies are Phase 1-6 work only — T065/T066 (Phase 5), T036/T037 (Phase 3), T078 (this phase). No forward reference to Phase 7's tenant-suspension mutation (T101 remains the mandatory fuller 3-way proof there, not substituted here). Combined Phase 1-6 `platform_admin`/`bootstrap` test suite: 94/94 passing in a single run (80 from Phase 5 + 14 new Phase 6 tests).
 
 ---
 

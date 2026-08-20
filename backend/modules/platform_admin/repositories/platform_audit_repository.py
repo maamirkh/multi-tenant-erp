@@ -14,13 +14,18 @@ platform-scoped, and `company_id` is an optional column on individual
 rows, not a repository-wide isolation key.
 
 No update or delete method exists at all — append-only (BR-9A-023).
+
+``list_filtered()`` (T078, FR-9A-200) is a read-only addition — it does
+not weaken append-only-ness, since reading is not mutation.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from datetime import datetime
+from typing import Any, Literal
 from uuid import UUID
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from modules.platform_admin.models.platform_audit_event import PlatformAuditEvent
@@ -62,3 +67,77 @@ class PlatformAuditRepository:
         self.db.add(event)
         self.db.flush()
         return event
+
+    def list_filtered(
+        self,
+        *,
+        actor_platform_administrator_id: UUID | None = None,
+        company_id: UUID | None = None,
+        action: str | None = None,
+        target_type: str | None = None,
+        target_id: UUID | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
+        outcome: Literal["success", "denied"] | None = None,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[PlatformAuditEvent], int]:
+        """Filtered, paginated read of the audit trail (FR-9A-200).
+
+        Filters correspond to spec.md's "administrator, tenant, action,
+        resource, date/time, result/status" set:
+          - administrator -> actor_platform_administrator_id
+          - tenant        -> company_id
+          - action        -> action (exact match)
+          - resource      -> target_type / target_id
+          - date/time     -> created_after / created_before (inclusive)
+          - result/status -> outcome
+
+        ``outcome`` is derived, not a stored column — no such column
+        exists on ``PlatformAuditEvent`` (data-model.md/plan.md §20 list
+        the full field set; there is no status field). Every denial this
+        module records uses an ``action`` ending in ``.denied`` (T065's
+        ``platform_rbac.role.assign.denied``, T066's
+        ``platform_rbac.last_owner_removal.denied``) — a convention
+        established in Phase 5, not invented here.
+
+        Uses the T014 indexes (``actor_platform_administrator_id``,
+        ``company_id``, ``action``, ``created_at``) — no other column is
+        filtered without also being covered by one of those four, so this
+        never table-scans on the indexed dimensions.
+        """
+        stmt = select(PlatformAuditEvent)
+
+        if actor_platform_administrator_id is not None:
+            stmt = stmt.where(
+                PlatformAuditEvent.actor_platform_administrator_id
+                == actor_platform_administrator_id
+            )
+        if company_id is not None:
+            stmt = stmt.where(PlatformAuditEvent.company_id == company_id)
+        if action is not None:
+            stmt = stmt.where(PlatformAuditEvent.action == action)
+        if target_type is not None:
+            stmt = stmt.where(PlatformAuditEvent.target_type == target_type)
+        if target_id is not None:
+            stmt = stmt.where(PlatformAuditEvent.target_id == target_id)
+        if created_after is not None:
+            stmt = stmt.where(PlatformAuditEvent.created_at >= created_after)
+        if created_before is not None:
+            stmt = stmt.where(PlatformAuditEvent.created_at <= created_before)
+        if outcome == "denied":
+            stmt = stmt.where(PlatformAuditEvent.action.like("%.denied"))
+        elif outcome == "success":
+            stmt = stmt.where(~PlatformAuditEvent.action.like("%.denied"))
+
+        total = self.db.execute(
+            select(func.count()).select_from(stmt.subquery())
+        ).scalar_one()
+
+        rows_stmt = (
+            stmt.order_by(PlatformAuditEvent.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        items = list(self.db.execute(rows_stmt).scalars().all())
+        return items, total
