@@ -500,52 +500,60 @@
 
 ### Tasks
 
-- [ ] T060 [US-7] Create `PlatformPermission`, `PlatformRole`, `PlatformRolePermission`, `PlatformAdminRoleAssignment` models
+- [X] T060 [US-7] Create `PlatformPermission`, `PlatformRole`, `PlatformRolePermission`, `PlatformAdminRoleAssignment` models
   - **Files**: `backend/modules/platform_admin/models/platform_rbac.py`
   - **Deps**: T032
   - **Acceptance**: Per data-model.md; permission uses code-as-PK (mirroring the tenant `Permission` convention); unique pairs on both join tables.
+  - **Result (2026-08-20)**: DONE. All 4 models added, column-by-column verified against migration 057's already-committed `op.create_table(...)` definitions via docker exec introspection — zero drift. `PlatformPermission` uses `code` as PK (no separate `id`); the other 3 inherit `BaseModel`. All FK columns explicitly `Uuid(as_uuid=True)`-typed.
 
-- [ ] T061 [US-7] Create the RBAC repositories
+- [X] T061 [US-7] Create the RBAC repositories
   - **Files**: `backend/modules/platform_admin/repositories/platform_rbac_repository.py`
   - **Deps**: T060
   - **Acceptance**: Role CRUD, permission listing, assignment add/remove, and an effective-permission query (union across the admin's roles).
+  - **Result (2026-08-20)**: DONE. `PlatformRbacRepository` with permission/role/bundle/assignment CRUD, `has_role`, `count_active_administrators_with_role`, `get_effective_permissions`. All writes flush-only (ADR-5).
 
-- [ ] T062 [US-7] Implement permission seeding for codes and candidate role bundles
+- [X] T062 [US-7] Implement permission seeding for codes and candidate role bundles
   - **Purpose**: Roles/permissions are configuration data, addable without code change (FR-9A-140).
   - **Files**: `backend/modules/platform_admin/services/platform_rbac_seed_service.py`
   - **Deps**: T061, T033
   - **Acceptance**: Idempotent; seeds every code in `PLATFORM_PERMISSION_CODES` and the 6 candidate bundles; re-running changes nothing. **Not a migration.**
+  - **Result (2026-08-20)**: DONE. `PlatformRbacSeedService.seed_permissions()`/`seed_role_bundles()`/`seed_all()`; check-then-create for permissions, and a `current != target` compare-before-write guard for role bundles so a rerun with no catalogue change performs zero join-table writes — verified via docker exec (29 codes, 6 bundles, reruns are genuine no-ops).
 
-- [ ] T063 [FR-9A-142] Implement the effective-permission resolver
+- [X] T063 [FR-9A-142] Implement the effective-permission resolver
   - **Files**: `backend/modules/platform_admin/services/platform_rbac_service.py`
   - **Deps**: T061
   - **Acceptance**: Union of all assigned roles' permissions, resolved **per request** (never cached in the token, FR-9A-221).
+  - **Result (2026-08-20)**: DONE. `PlatformRbacService.get_effective_permissions()`/`has_permission()` delegate straight to the repository query — no caching layer anywhere.
 
-- [ ] T064 [BR-9A-008] Implement `require_platform_permission(code)` dependency
+- [X] T064 [BR-9A-008] Implement `require_platform_permission(code)` dependency
   - **Purpose**: The single server-side enforcement primitive every sensitive Platform route uses.
   - **Files**: `backend/modules/platform_admin/dependencies.py`
   - **Deps**: T063, T052
   - **Acceptance**: Holding one permission never implies another; raises `InsufficientPlatformPermissionError`; the denial is logged as a security-relevant event (plan §30).
+  - **Result (2026-08-20)**: DONE. Dependency factory verified by T076's 33-case parametrized matrix (adjacent-permission denial across all 6 guarded operations) and T074's adjacent-permission test.
 
-- [ ] T065 [US-7] [BR-9A-012] Implement role assignment/removal with self-escalation prevention
+- [X] T065 [US-7] [BR-9A-012] Implement role assignment/removal with self-escalation prevention
   - **Purpose**: Also serves as the canonical **audited privileged mutation** available for the Gate E foundation proof (T079).
   - **Files**: `backend/modules/platform_admin/services/platform_rbac_service.py`
   - **Deps**: T063, T037
   - **Acceptance**: Requires `platform.rbac.manage`; assigning `platform_owner` additionally requires the actor to already hold it; every change is audited via T037's helper in a single transaction.
+  - **Result (2026-08-20)**: DONE. `assign_role()`/`remove_role_assignment()` implemented; self-escalation denial is now ALSO audited (`platform_rbac.role.assign.denied`) before raising — added during T075 to satisfy "both attempts are audited," which the original success-only audit call did not cover.
 
-- [ ] T066 Implement last-Platform-Owner protection
+- [X] T066 Implement last-Platform-Owner protection
   - **Purpose**: Prevent locking the platform out of itself (plan §8, §26).
   - **Files**: `backend/modules/platform_admin/services/platform_rbac_service.py`
   - **Deps**: T065, T054
   - **Acceptance**: Removing the final active `platform_owner` assignment — or deactivating the last owner account — raises `LastPlatformOwnerError`. Service-level check (not expressible as a single-row CHECK).
+  - **Result (2026-08-20)**: DONE. `assert_not_last_owner_removal()` now also audits the denial (`platform_rbac.last_owner_removal.denied`, actor/reason threaded through from both call-sites — `remove_role_assignment()` and the PATCH-deactivate router handler) before raising, for the same T075 reason as T065.
 
-- [ ] T067 [FR-9A-036] [ADR-8] Implement the out-of-band bootstrap command
+- [X] T067 [FR-9A-036] [ADR-8] Implement the out-of-band bootstrap command
   - **Purpose**: Break the bootstrap circularity without coupling credentials to Alembic versioning.
   - **Files**: `backend/modules/platform_admin/bootstrap.py` (with `if __name__ == "__main__":`)
   - **Deps**: T062, T040, T065
   - **Acceptance**: Reads `PLATFORM_OWNER_BOOTSTRAP_EMAIL` + `PLATFORM_OWNER_BOOTSTRAP_PASSWORD_HASH` (**pre-hashed**, never plaintext in source). Exit `0` on create **or** on "already provisioned"; **non-zero** on missing or invalid config. Never overwrites an existing owner. No HTTP route. **No Alembic migration.** No Click/Typer framework introduced.
+  - **Result (2026-08-20)**: DONE. `bootstrap_platform_owner(db)` + `main()`; Argon2 hash-format validation via `PasswordHasher().verify(hash, "dummy")` distinguishing `InvalidHash` from `VerifyMismatchError`; deferred imports so the module stays importable standalone. 7/7 tests (T070-T073) passing.
 
-- [ ] T068 [US-7] [FR-9A-030..034] Implement the **Platform Administrator management routes**
+- [X] T068 [US-7] [FR-9A-030..034] Implement the **Platform Administrator management routes**
   - **Purpose**: The HTTP surface the contract declares and the Phase-15 Administrators page consumes. Revision 3 fix — these routes were implied by services and frontend tasks but never had explicit implementation tasks.
   - **Files**: `backend/modules/platform_admin/router.py`, `backend/modules/platform_admin/schemas/platform_administrator.py`
   - **Deps**: T064, T054, T041, T053, T066
@@ -554,8 +562,9 @@
     - `POST /api/v1/platform/administrators` → `platform.admins.manage`; request = create schema with an explicit field allow-list (no `is_active`/role mass-assignment); delegates to `PlatformAdministratorService` (T040); **fail-closed audited** per ADR-5 (state + audit in one commit); 409 if a `PlatformAdministrator` already exists for that `user_id`.
     - `PATCH /api/v1/platform/administrators/{adminId}` → `platform.admins.manage`; activate/deactivate only; **deactivation MUST call the completed session-revoking path (T054)**, never the Phase-3 domain-only behaviour, so all active `PlatformSession` rows are revoked in the same transaction; returns `LastPlatformOwnerError` (409) when deactivating the final owner (T066).
   - **Router discipline**: routers delegate to the service layer — **no business logic in the router**. Errors use the project-wide `StandardResponse` envelope. Contract traceability: operations 20–22 of `platform-admin-v1.yaml`.
+  - **Result (2026-08-20)**: DONE. `admin_router` mounted at `/platform` alongside the existing `/platform/auth` router. `PlatformAdministratorService.create()` extended (self-review finding) with an explicit `User`-existence check (404) before the duplicate-administrator check (409), since the FK/unique-constraint would otherwise surface as a raw `IntegrityError`. PATCH deactivate wires the real `PlatformSessionRepository` as `SessionRevoker` and calls `PlatformRbacService.assert_not_last_owner_removal()` before deactivating. 5 route-level tests (duplicate 409, deactivate-revokes-sessions, last-owner 409, unknown-user 404) + 33 T076 matrix cases, all passing.
 
-- [ ] T069 [US-7] [BR-9A-012] Implement the **Platform RBAC management routes**
+- [X] T069 [US-7] [BR-9A-012] Implement the **Platform RBAC management routes**
   - **Purpose**: The role/assignment HTTP surface the contract declares and the Phase-15 Roles page consumes.
   - **Files**: `backend/modules/platform_admin/router.py`, `backend/modules/platform_admin/schemas/platform_rbac.py`
   - **Deps**: T064, T065, T066, T053
@@ -565,39 +574,46 @@
     - `POST /api/v1/platform/administrators/{adminId}/roles` → `platform.rbac.manage`; assigns a role; delegates to `PlatformRbacService` (T065) so **self-escalation prevention** and **last-Platform-Owner protection** (T066) both apply; returns 403 on self-escalation and 409 on last-owner violation; **fail-closed audited**.
   - **Not implemented** (deliberately — the contract does not declare them, and inventing CRUD is forbidden): no `GET /permissions` catalogue route, no `DELETE` role-assignment route. If either is genuinely needed later it requires a contract change first.
   - **Router discipline**: delegates to the service layer; no business logic in the router. Contract traceability: operations 23–25 of `platform-admin-v1.yaml`.
+  - **Result (2026-08-20)**: DONE. `rbac_router` mounted at `/platform`. Added `PlatformRbacService.create_or_update_role()` (not itself a T060-T066 task — needed by this route) validating `permission_codes` against `PLATFORM_PERMISSION_CODES` (`UnknownPlatformPermissionError`, 422) and a `PlatformRbacRepository.update_role()` method for the update path. `assign_role` route validates both `adminId` and `role_id` exist (404) before delegating — a self-review finding, since the FK constraints would otherwise surface as raw `IntegrityError`. No `GET /permissions`/`DELETE` route added. 8 route-level tests + 33 T076 matrix cases, all passing.
 
-- [ ] T070 [P] Test: first successful bootstrap creates User + PlatformAdministrator + owner role assignment
+- [X] T070 [P] Test: first successful bootstrap creates User + PlatformAdministrator + owner role assignment
   - **Files**: `backend/tests/integration/services/platform_admin/test_bootstrap.py`
   - **Deps**: T067
   - **Acceptance**: All three rows created in one transaction; exit `0`; administrator id printed.
+  - **Result (2026-08-20)**: DONE — PASSING. Isolates itself as the zero-owner baseline first (`_isolate_as_zero_owners`), since other Phase-5 test files sharing the leaky `db_session` fixture (Phase 3/4/5 documented property) may otherwise leave a `platform_owner` assignment from an earlier-collected file.
 
-- [ ] T071 [P] Test: bootstrap with **missing** configuration exits non-zero and writes nothing
+- [X] T071 [P] Test: bootstrap with **missing** configuration exits non-zero and writes nothing
   - **Purpose**: The Correction-4 guarantee — a missing config must never look like success.
   - **Files**: `backend/tests/integration/services/platform_admin/test_bootstrap.py`
   - **Deps**: T067
   - **Acceptance**: Non-zero exit; message names the missing variables; zero rows written; re-running after fixing config succeeds.
+  - **Result (2026-08-20)**: DONE — PASSING. Uses before/after count deltas rather than absolute-zero assertions (leakage-robust).
 
-- [ ] T072 [P] Test: repeated bootstrap with an owner present is a safe no-op
+- [X] T072 [P] Test: repeated bootstrap with an owner present is a safe no-op
   - **Files**: `backend/tests/integration/services/platform_admin/test_bootstrap.py`
   - **Deps**: T067
   - **Acceptance**: Exit `0`, "already provisioned" message, **no** second owner, existing owner's credentials unchanged.
+  - **Result (2026-08-20)**: DONE — PASSING.
 
-- [ ] T073 [P] Test: bootstrap with invalid configuration exits non-zero
+- [X] T073 [P] Test: bootstrap with invalid configuration exits non-zero
   - **Files**: `backend/tests/integration/services/platform_admin/test_bootstrap.py`
   - **Deps**: T067
   - **Acceptance**: Malformed email or unusable password hash → specific validation error, non-zero exit, nothing written.
+  - **Result (2026-08-20)**: DONE — PASSING. 7/7 tests in this file pass together in the full suite.
 
-- [ ] T074 [P] [BR-9A-001] Test: tenant signup cannot create Platform authority
+- [X] T074 [P] [BR-9A-001] Test: tenant signup cannot create Platform authority
   - **Files**: `backend/tests/security/modules/platform_admin/test_bootstrap_abuse.py`
   - **Deps**: T067
   - **Acceptance**: No code path in `backend/modules/auth/` touches `platform_administrators`; no HTTP route can create one without `platform.admins.manage`.
+  - **Result (2026-08-20)**: DONE — PASSING (6/6). Structural proof: greps every `.py` file under `backend/modules/` for `PlatformAdministrator(`/`PlatformAdministratorRepository(` outside `platform_admin` itself (zero hits), and `backend/modules/auth/` specifically for any mention of `platform_administrator` (zero hits). Behavioural proof: `POST /administrators` rejected unauthenticated (401), tenant-token (401), no-role (403), and adjacent-permission (`platform.admins.read` via `security_audit_admin`, 403) — zero rows written in every case. Along the way, fixed a real pre-existing bug this test surfaced: `PlatformRbacSeedService`'s `logger.info(..., extra={"created": ...})` collided with `logging.LogRecord`'s reserved `created` attribute, crashing whenever seeding logged at INFO level (renamed to `created_count`).
 
-- [ ] T075 [P] Test: self-escalation and last-owner removal are both rejected
+- [X] T075 [P] Test: self-escalation and last-owner removal are both rejected
   - **Files**: `backend/tests/security/modules/platform_admin/test_rbac_escalation.py`
   - **Deps**: T066
   - **Acceptance**: Both raise; no state change; both attempts are audited.
+  - **Result (2026-08-20)**: DONE — PASSING (4/4), service-layer only (no dependency on T068/T069 routes, per this task's Phase-1-5-service-only scope). This test discovered that neither denial path was actually audited before this phase's own T065/T066 implementation — see those tasks' Result notes for the fix. Both "negative-of-the-negative" cases (an actual owner CAN grant the role; owner-role removal succeeds when a second owner exists) are also covered, proving the guards are precise, not blanket bans.
 
-- [ ] T076 **[Gate B]** Permission-enforcement test over the routes that exist at end of Phase 5
+- [X] T076 **[Gate B]** Permission-enforcement test over the routes that exist at end of Phase 5
   - **Purpose**: Proves RBAC enforcement genuinely works, scoped to the currently-existing surface. Revision 2 split — the exhaustive all-routes matrix is T206, after every router exists.
   - **Files**: `backend/tests/security/modules/platform_admin/test_permission_enforcement_phase5.py`
   - **Deps**: T064, T053, T068, T069
@@ -605,10 +621,12 @@
     - **3 public authentication operations** (`POST /auth/login`, `/auth/refresh`, `/auth/logout` — no `x-permission` in the contract): verify correct public/auth semantics — login issues a `platform_access`/`platform_refresh` pair only for an **active** `PlatformAdministrator`, and returns a generic invalid-credentials response otherwise; refresh rotates and rejects a revoked session or deactivated administrator; logout revokes the session. Verify the tenant/Platform authentication isolation boundary: a **tenant** token is never accepted as a platform session, and a `platform_access` token is never accepted by `get_current_user()`. **No Platform RBAC permission is required or asserted for these three.**
     - **6 permission-guarded Administrator/RBAC operations** (3 from T068, 3 from T069): holding the required Platform permission succeeds; holding **only** an adjacent/unrelated permission fails; unauthenticated requests are rejected; tenant-token attempts are rejected.
   - The in-scope operation list — and its split into 3 public + 6 guarded — is asserted explicitly in the test, so T206 can later prove completeness against the full 33-operation contract (30 guarded + 3 public). **No route outside this Phase-5 surface is referenced.**
+  - **Result (2026-08-20)**: DONE — PASSING (33/33). `IN_SCOPE_OPERATIONS` structure literally asserts the 3+6=9 split and the 4 distinct permission codes involved. Each of the 6 guarded operations parametrized across 4 test functions (unauthenticated, tenant-token, adjacent-permission via a bespoke single-permission role, required-permission success) = 24 cases; the 9 public-auth/boundary tests bring the total to 33.
 
-- [ ] T077 **[Gate B]** Gate B sign-off
+- [X] T077 **[Gate B]** Gate B sign-off
   - **Deps**: T055–T059, T074, T075, T076
   - **Acceptance**: Tenant tokens cannot reach Platform APIs; Platform tokens cannot act as tenant sessions; Platform auth/session is independent; RBAC enforcement works; bootstrap authority is protected; self-escalation and last-owner removal are rejected. **All dependencies are Phase 1–5 only — no forward reference.** Do not start Phase 6 until this passes.
+  - **Result (2026-08-20)**: **GATE B PASSED**. All named dependencies (T055-T059 from Phase 4, T074-T076 from this phase) pass. Combined Phase 1-5 `platform_admin`/`bootstrap` test suite: 77/77 passing in a single combined run; the 3 additional T068/T069 404-path tests added during self-review (unknown-user 404 on create, unknown-admin/unknown-role 404 on role-assign) independently verified passing (8/8 in their file) after being added — 80 Phase 5 tests total, all passing. Scoped shared-file regression (auth, companies, JWT/token security — the modules `api/v1/router.py`/`dependencies.py`/`exceptions.py` changes could plausibly affect): 382/382 passing. No forward reference to Phase 6+ in any of this phase's dependencies.
 
 ---
 

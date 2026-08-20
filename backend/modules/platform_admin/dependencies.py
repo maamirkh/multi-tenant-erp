@@ -20,6 +20,8 @@ pattern used throughout the backend (plan.md §4).
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -29,14 +31,22 @@ from sqlalchemy.orm import Session
 from core.config.settings import Settings, get_settings
 from core.database.session import get_db
 from core.exceptions.base import UnauthorizedException
-from modules.platform_admin.exceptions import PlatformSessionInvalidError
+from modules.platform_admin.exceptions import (
+    InsufficientPlatformPermissionError,
+    PlatformSessionInvalidError,
+)
 from modules.platform_admin.repositories.platform_administrator_repository import (
     PlatformAdministratorRepository,
+)
+from modules.platform_admin.repositories.platform_rbac_repository import (
+    PlatformRbacRepository,
 )
 from modules.platform_admin.repositories.platform_session_repository import (
     PlatformSessionRepository,
 )
 from modules.platform_admin.services.platform_jwt_service import PlatformJwtService
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -110,3 +120,41 @@ def get_current_platform_admin(
         session_id=session.id,
         user_id=administrator.user_id,
     )
+
+
+def require_platform_permission(code: str) -> Callable[..., PlatformPrincipal]:
+    """Dependency factory: the single server-side enforcement primitive
+    every sensitive Platform route uses (BR-9A-008). Holding one
+    permission never implies another — this checks exactly *code*,
+    resolved fresh from the database (T063, FR-9A-221), never from a
+    token claim.
+
+    Usage::
+
+        @router.get("/administrators", dependencies=[
+            Depends(require_platform_permission("platform.admins.read"))
+        ])
+    """
+
+    def _dependency(
+        principal: PlatformPrincipal = Depends(get_current_platform_admin),
+        db: Session = Depends(get_db),
+    ) -> PlatformPrincipal:
+        repo = PlatformRbacRepository(db)
+        effective = repo.get_effective_permissions(principal.platform_administrator_id)
+        if code not in effective:
+            logger.warning(
+                "Platform permission denied",
+                extra={
+                    "platform_administrator_id": str(
+                        principal.platform_administrator_id
+                    ),
+                    "required_permission": code,
+                },
+            )
+            raise InsufficientPlatformPermissionError(
+                message=f"Missing required Platform permission: {code}."
+            )
+        return principal
+
+    return _dependency

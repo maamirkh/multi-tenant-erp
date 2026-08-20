@@ -5,28 +5,59 @@ Endpoints (Phase 4):
     POST /platform/auth/refresh  — public
     POST /platform/auth/logout   — requires a valid Platform session
 
+Endpoints (Phase 5, T068/T069):
+    GET   /platform/administrators               — platform.admins.read
+    POST  /platform/administrators                — platform.admins.manage
+    PATCH /platform/administrators/{adminId}       — platform.admins.manage
+    GET   /platform/roles                          — platform.rbac.read
+    POST  /platform/roles                          — platform.rbac.manage
+    POST  /platform/administrators/{adminId}/roles — platform.rbac.manage
+
 Mounted at ``/api/v1/platform`` by ``api/v1/router.py`` (T053) — without
 ``get_current_company_member``, since Platform is never company-scoped.
 
 Router discipline: delegates to the service layer — no business logic in
 the router (plan.md §10 API Contract Lock). Contract traceability:
-operations 1-3 of ``platform-admin-v1.yaml`` (the 3 public `/auth/*`
-operations — no `x-permission`).
+operations 1-3 (public `/auth/*`, no `x-permission`) and operations 20-25
+(Administrator/RBAC management) of ``platform-admin-v1.yaml``.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request, status
+import math
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Path, Query, Request, status
 from sqlalchemy.orm import Session
 
 from core.config.settings import Settings, get_settings
 from core.database.session import get_db
+from core.exceptions.base import NotFoundException
 from core.logging.setup import REQUEST_ID_CONTEXT
+from core.schemas.pagination import PaginatedData, PaginatedResponse
 from core.schemas.response import ResponseMeta, StandardResponse
 from core.utils.datetime import utcnow
 from modules.platform_admin.dependencies import (
     PlatformPrincipal,
     get_current_platform_admin,
+    require_platform_permission,
+)
+from modules.platform_admin.repositories.platform_administrator_repository import (
+    PlatformAdministratorRepository,
+)
+from modules.platform_admin.repositories.platform_audit_repository import (
+    PlatformAuditRepository,
+)
+from modules.platform_admin.repositories.platform_rbac_repository import (
+    PlatformRbacRepository,
+)
+from modules.platform_admin.repositories.platform_session_repository import (
+    PlatformSessionRepository,
+)
+from modules.platform_admin.schemas.platform_administrator import (
+    CreatePlatformAdministratorRequest,
+    PlatformAdministratorResponse,
+    UpdatePlatformAdministratorRequest,
 )
 from modules.platform_admin.schemas.platform_auth import (
     PlatformLoginRequest,
@@ -34,9 +65,22 @@ from modules.platform_admin.schemas.platform_auth import (
     PlatformRefreshTokenRequest,
     PlatformRefreshTokenResponse,
 )
+from modules.platform_admin.schemas.platform_rbac import (
+    AssignRoleRequest,
+    CreateOrUpdateRoleRequest,
+    RoleAssignmentResponse,
+    RoleResponse,
+)
+from modules.platform_admin.services.platform_administrator_service import (
+    PlatformAdministratorService,
+)
+from modules.platform_admin.services.platform_audit_service import PlatformAuditService
 from modules.platform_admin.services.platform_auth_service import PlatformAuthService
+from modules.platform_admin.services.platform_rbac_service import PlatformRbacService
 
 router = APIRouter(prefix="/auth", tags=["Platform Authentication"])
+admin_router = APIRouter(tags=["Platform Administrators"])
+rbac_router = APIRouter(tags=["Platform RBAC"])
 
 
 def _meta(request: Request) -> ResponseMeta:
@@ -138,3 +182,257 @@ async def logout(
     the Platform contract deliberately does not mirror here.
     """
     svc.logout(session_id=current.session_id, request=request)
+
+
+# ---------------------------------------------------------------------------
+# Platform Administrator management (T068) — operations 20-22
+# ---------------------------------------------------------------------------
+
+
+def _administrator_service(
+    db: Session = Depends(get_db),
+) -> PlatformAdministratorService:
+    audit = PlatformAuditService(db, PlatformAuditRepository(db))
+    return PlatformAdministratorService(
+        db=db,
+        repo=PlatformAdministratorRepository(db),
+        audit=audit,
+        # T054's completed session-revoking deactivation: PlatformSessionRepository
+        # already implements the SessionRevoker protocol structurally
+        # (revoke_all_for_administrator(platform_administrator_id)).
+        session_revoker=PlatformSessionRepository(db),
+    )
+
+
+@admin_router.get(
+    "/administrators",
+    response_model=PaginatedResponse[PlatformAdministratorResponse],
+    summary="List Platform Administrator accounts",
+    dependencies=[Depends(require_platform_permission("platform.admins.read"))],
+)
+async def list_administrators(
+    request: Request,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> PaginatedResponse[PlatformAdministratorResponse]:
+    repo = PlatformAdministratorRepository(db)
+    items, total = repo.list_paginated(offset=(page - 1) * page_size, limit=page_size)
+    pages = math.ceil(total / page_size) if total > 0 else 0
+    return PaginatedResponse(
+        data=PaginatedData(
+            items=[PlatformAdministratorResponse.model_validate(a) for a in items],
+            total=total,
+            page=page,
+            page_size=page_size,
+            pages=pages,
+        ),
+        message=f"{total} Platform Administrator(s) found.",
+        meta=_meta(request),
+    )
+
+
+@admin_router.post(
+    "/administrators",
+    response_model=StandardResponse[PlatformAdministratorResponse],
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a Platform Administrator account",
+    dependencies=[Depends(require_platform_permission("platform.admins.manage"))],
+    responses={
+        404: {"description": "User not found"},
+        409: {"description": "A Platform Administrator already exists for this user"},
+    },
+)
+async def create_administrator(
+    request: Request,
+    payload: CreatePlatformAdministratorRequest,
+    current: PlatformPrincipal = Depends(get_current_platform_admin),
+    svc: PlatformAdministratorService = Depends(_administrator_service),
+) -> StandardResponse[PlatformAdministratorResponse]:
+    administrator = svc.create(
+        user_id=payload.user_id,
+        actor_platform_administrator_id=current.platform_administrator_id,
+    )
+    return StandardResponse(
+        data=PlatformAdministratorResponse.model_validate(administrator),
+        message="Platform Administrator created.",
+        meta=_meta(request),
+    )
+
+
+@admin_router.patch(
+    "/administrators/{adminId}",
+    response_model=StandardResponse[PlatformAdministratorResponse],
+    summary="Activate/deactivate a Platform Administrator",
+    description="Deactivation immediately revokes all active Platform sessions.",
+    dependencies=[Depends(require_platform_permission("platform.admins.manage"))],
+    responses={
+        409: {"description": "Cannot deactivate the last active Platform Owner"}
+    },
+)
+async def update_administrator(
+    request: Request,
+    payload: UpdatePlatformAdministratorRequest,
+    adminId: UUID = Path(...),  # noqa: N803 — matches contract's path parameter name
+    current: PlatformPrincipal = Depends(get_current_platform_admin),
+    svc: PlatformAdministratorService = Depends(_administrator_service),
+    db: Session = Depends(get_db),
+) -> StandardResponse[PlatformAdministratorResponse]:
+    repo = PlatformAdministratorRepository(db)
+    administrator = repo.get_by_id(adminId)
+    if administrator is None:
+        raise NotFoundException(message="Platform Administrator not found.")
+
+    if payload.is_active:
+        administrator = svc.activate(
+            administrator,
+            actor_platform_administrator_id=current.platform_administrator_id,
+            reason=payload.reason,
+        )
+        message = "Platform Administrator activated."
+    else:
+        rbac_service = PlatformRbacService(
+            db=db,
+            repo=PlatformRbacRepository(db),
+            admin_repo=repo,
+            audit=PlatformAuditService(db, PlatformAuditRepository(db)),
+        )
+        rbac_service.assert_not_last_owner_removal(
+            administrator.id,
+            actor_platform_administrator_id=current.platform_administrator_id,
+            reason=payload.reason,
+        )
+        administrator = svc.deactivate(
+            administrator,
+            actor_platform_administrator_id=current.platform_administrator_id,
+            reason=payload.reason,
+        )
+        message = "Platform Administrator deactivated; active sessions revoked."
+
+    return StandardResponse(
+        data=PlatformAdministratorResponse.model_validate(administrator),
+        message=message,
+        meta=_meta(request),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Platform RBAC management (T069) — operations 23-25
+# ---------------------------------------------------------------------------
+
+
+def _rbac_service(db: Session = Depends(get_db)) -> PlatformRbacService:
+    audit = PlatformAuditService(db, PlatformAuditRepository(db))
+    return PlatformRbacService(
+        db=db,
+        repo=PlatformRbacRepository(db),
+        admin_repo=PlatformAdministratorRepository(db),
+        audit=audit,
+    )
+
+
+def _role_response(role, repo: PlatformRbacRepository) -> RoleResponse:
+    codes = sorted(repo.get_role_permission_codes(role.id))
+    return RoleResponse(
+        id=role.id,
+        code=role.code,
+        name=role.name,
+        description=role.description,
+        permission_codes=codes,
+        created_at=role.created_at,
+        updated_at=role.updated_at,
+    )
+
+
+@rbac_router.get(
+    "/roles",
+    response_model=PaginatedResponse[RoleResponse],
+    summary="List Platform Roles and their permission bundles",
+    dependencies=[Depends(require_platform_permission("platform.rbac.read"))],
+)
+async def list_roles(
+    request: Request,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> PaginatedResponse[RoleResponse]:
+    repo = PlatformRbacRepository(db)
+    roles, total = repo.list_roles(offset=(page - 1) * page_size, limit=page_size)
+    pages = math.ceil(total / page_size) if total > 0 else 0
+    return PaginatedResponse(
+        data=PaginatedData(
+            items=[_role_response(r, repo) for r in roles],
+            total=total,
+            page=page,
+            page_size=page_size,
+            pages=pages,
+        ),
+        message=f"{total} Platform Role(s) found.",
+        meta=_meta(request),
+    )
+
+
+@rbac_router.post(
+    "/roles",
+    response_model=StandardResponse[RoleResponse],
+    summary="Create/update a Platform Role's permission bundle",
+    dependencies=[Depends(require_platform_permission("platform.rbac.manage"))],
+    responses={422: {"description": "One or more permission codes are not recognised"}},
+)
+async def create_or_update_role(
+    request: Request,
+    payload: CreateOrUpdateRoleRequest,
+    current: PlatformPrincipal = Depends(get_current_platform_admin),
+    svc: PlatformRbacService = Depends(_rbac_service),
+    db: Session = Depends(get_db),
+) -> StandardResponse[RoleResponse]:
+    role = svc.create_or_update_role(
+        code=payload.code,
+        name=payload.name,
+        description=payload.description,
+        permission_codes=set(payload.permission_codes),
+        actor_platform_administrator_id=current.platform_administrator_id,
+        reason=payload.reason,
+    )
+    return StandardResponse(
+        data=_role_response(role, PlatformRbacRepository(db)),
+        message="Platform Role saved.",
+        meta=_meta(request),
+    )
+
+
+@rbac_router.post(
+    "/administrators/{adminId}/roles",
+    response_model=StandardResponse[RoleAssignmentResponse],
+    summary="Assign a Platform Role to an administrator",
+    dependencies=[Depends(require_platform_permission("platform.rbac.manage"))],
+    responses={
+        403: {"description": "Self-escalation rejected"},
+        404: {"description": "Administrator or Role not found"},
+        409: {"description": "Last-Platform-Owner-removal rejected"},
+    },
+)
+async def assign_role(
+    request: Request,
+    payload: AssignRoleRequest,
+    adminId: UUID = Path(...),  # noqa: N803 — matches contract's path parameter name
+    current: PlatformPrincipal = Depends(get_current_platform_admin),
+    svc: PlatformRbacService = Depends(_rbac_service),
+    db: Session = Depends(get_db),
+) -> StandardResponse[RoleAssignmentResponse]:
+    if PlatformAdministratorRepository(db).get_by_id(adminId) is None:
+        raise NotFoundException(message="Platform Administrator not found.")
+    if PlatformRbacRepository(db).get_role_by_id(payload.role_id) is None:
+        raise NotFoundException(message="Platform Role not found.")
+
+    assignment = svc.assign_role(
+        platform_administrator_id=adminId,
+        role_id=payload.role_id,
+        actor_platform_administrator_id=current.platform_administrator_id,
+        reason=payload.reason,
+    )
+    return StandardResponse(
+        data=RoleAssignmentResponse.model_validate(assignment),
+        message="Platform Role assigned.",
+        meta=_meta(request),
+    )

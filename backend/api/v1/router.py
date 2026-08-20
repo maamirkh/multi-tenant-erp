@@ -45,6 +45,8 @@ from modules.crm.dependencies import require_crm_enabled
 from modules.crm.router import admin_router as crm_admin_router
 from modules.crm.router import router as crm_router
 from modules.inventory.router import router as inventory_router
+from modules.platform_admin.router import admin_router as platform_admin_admin_router
+from modules.platform_admin.router import rbac_router as platform_admin_rbac_router
 from modules.platform_admin.router import router as platform_admin_router
 from modules.purchase.router import router as purchase_router
 from modules.sales.router import router as sales_router
@@ -131,6 +133,17 @@ router.include_router(
 # auth boundary above.
 router.include_router(
     platform_admin_router,
+    prefix="/platform",
+)
+# Phase 5 (T068/T069) — Administrator/RBAC management routes. Same "no
+# get_current_company_member" rationale as above; each route enforces its
+# own require_platform_permission(...) dependency.
+router.include_router(
+    platform_admin_admin_router,
+    prefix="/platform",
+)
+router.include_router(
+    platform_admin_rbac_router,
     prefix="/platform",
 )
 

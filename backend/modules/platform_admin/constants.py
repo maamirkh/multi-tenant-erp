@@ -18,54 +18,146 @@ from __future__ import annotations
 # are a strict subset of this 29-code catalogue; the remaining 8 (tenant
 # export/bulk_suspend, configuration.*, notifications.*, export.generate)
 # are future-ready per spec.md §15.1 but not yet exposed by an HTTP route.
-PLATFORM_PERMISSION_CODES: frozenset[str] = frozenset(
+#
+# Extended in Phase 5 (T062) with `label`/`area` per code — the seed
+# service needs this metadata to populate `platform_permissions` rows
+# (NOT NULL `label`/`area`, migration 057); `PLATFORM_PERMISSION_CODES`
+# below is derived FROM this catalogue, not maintained separately, so the
+# two structures cannot drift apart.
+PLATFORM_PERMISSION_CATALOGUE: tuple[dict[str, str], ...] = (
     {
-        # Dashboard
-        "platform.dashboard.view",
-        # Tenant inspection
-        "platform.tenants.read",
-        "platform.tenants.export",
-        # Tenant lifecycle
-        "platform.tenants.suspend",
-        "platform.tenants.reactivate",
-        "platform.tenants.bulk_suspend",
-        # Plans
-        "platform.plans.read",
-        "platform.plans.manage",
-        # Subscriptions
-        "platform.subscriptions.read",
-        "platform.subscriptions.manage",
-        # Entitlements
-        "platform.entitlements.read",
-        "platform.entitlements.override",
-        # Quotas
-        "platform.quotas.read",
-        "platform.quotas.override",
-        # Platform Administrators
-        "platform.admins.read",
-        "platform.admins.manage",
-        # Platform RBAC
-        "platform.rbac.read",
-        "platform.rbac.manage",
-        # Support access
-        "platform.support_access.initiate",
-        "platform.support_access.read",
-        # Audit logs
-        "platform.audit.read",
-        # Operational monitoring
-        "platform.monitoring.read",
-        # Platform configuration
-        "platform.configuration.read",
-        "platform.configuration.manage",
-        # Notifications
-        "platform.notifications.read",
-        "platform.notifications.manage",
-        # AI usage/cost
-        "platform.ai_usage.read",
-        "platform.ai_credits.adjust",
-        # Export/reporting
-        "platform.export.generate",
-    }
+        "code": "platform.dashboard.view",
+        "label": "View Platform Dashboard",
+        "area": "Dashboard",
+    },
+    {
+        "code": "platform.tenants.read",
+        "label": "View Tenants",
+        "area": "Tenant inspection",
+    },
+    {
+        "code": "platform.tenants.export",
+        "label": "Export Tenant Data",
+        "area": "Tenant inspection",
+    },
+    {
+        "code": "platform.tenants.suspend",
+        "label": "Suspend Tenant",
+        "area": "Tenant lifecycle",
+    },
+    {
+        "code": "platform.tenants.reactivate",
+        "label": "Reactivate Tenant",
+        "area": "Tenant lifecycle",
+    },
+    {
+        "code": "platform.tenants.bulk_suspend",
+        "label": "Bulk Suspend Tenants",
+        "area": "Tenant lifecycle",
+    },
+    {"code": "platform.plans.read", "label": "View Plans", "area": "Plans"},
+    {"code": "platform.plans.manage", "label": "Manage Plans", "area": "Plans"},
+    {
+        "code": "platform.subscriptions.read",
+        "label": "View Subscriptions",
+        "area": "Subscriptions",
+    },
+    {
+        "code": "platform.subscriptions.manage",
+        "label": "Manage Subscriptions",
+        "area": "Subscriptions",
+    },
+    {
+        "code": "platform.entitlements.read",
+        "label": "View Entitlements",
+        "area": "Entitlements",
+    },
+    {
+        "code": "platform.entitlements.override",
+        "label": "Override Entitlements",
+        "area": "Entitlements",
+    },
+    {"code": "platform.quotas.read", "label": "View Quotas", "area": "Quotas"},
+    {"code": "platform.quotas.override", "label": "Override Quotas", "area": "Quotas"},
+    {
+        "code": "platform.admins.read",
+        "label": "View Platform Administrators",
+        "area": "Platform Administrators",
+    },
+    {
+        "code": "platform.admins.manage",
+        "label": "Manage Platform Administrators",
+        "area": "Platform Administrators",
+    },
+    {
+        "code": "platform.rbac.read",
+        "label": "View Platform Roles",
+        "area": "Platform RBAC",
+    },
+    {
+        "code": "platform.rbac.manage",
+        "label": "Manage Platform Roles",
+        "area": "Platform RBAC",
+    },
+    {
+        "code": "platform.support_access.initiate",
+        "label": "Initiate Support Access",
+        "area": "Support access",
+    },
+    {
+        "code": "platform.support_access.read",
+        "label": "View Support Access History",
+        "area": "Support access",
+    },
+    {
+        "code": "platform.audit.read",
+        "label": "View Platform Audit Log",
+        "area": "Audit logs",
+    },
+    {
+        "code": "platform.monitoring.read",
+        "label": "View Operational Health",
+        "area": "Operational monitoring",
+    },
+    {
+        "code": "platform.configuration.read",
+        "label": "View Platform Configuration",
+        "area": "Platform configuration",
+    },
+    {
+        "code": "platform.configuration.manage",
+        "label": "Manage Platform Configuration",
+        "area": "Platform configuration",
+    },
+    {
+        "code": "platform.notifications.read",
+        "label": "View Platform Notifications",
+        "area": "Notifications",
+    },
+    {
+        "code": "platform.notifications.manage",
+        "label": "Manage Platform Notifications",
+        "area": "Notifications",
+    },
+    {
+        "code": "platform.ai_usage.read",
+        "label": "View AI Usage",
+        "area": "AI usage/cost",
+    },
+    {
+        "code": "platform.ai_credits.adjust",
+        "label": "Adjust AI Credits",
+        "area": "AI usage/cost",
+    },
+    {
+        "code": "platform.export.generate",
+        "label": "Generate Platform Export",
+        "area": "Export/reporting",
+    },
+)
+
+PLATFORM_PERMISSION_CODES: frozenset[str] = frozenset(
+    entry["code"] for entry in PLATFORM_PERMISSION_CATALOGUE
 )
 
 

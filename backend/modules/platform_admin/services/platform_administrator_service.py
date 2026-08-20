@@ -25,6 +25,9 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from core.exceptions.base import NotFoundException
+from modules.auth.models.user import User
+from modules.platform_admin.exceptions import PlatformAdministratorAlreadyExistsError
 from modules.platform_admin.models.platform_administrator import PlatformAdministrator
 from modules.platform_admin.repositories.platform_administrator_repository import (
     PlatformAdministratorRepository,
@@ -62,7 +65,25 @@ class PlatformAdministratorService:
         reason: str | None = None,
     ) -> PlatformAdministrator:
         """Create a Platform Administrator account, independent of any
-        tenant membership (FR-9A-030). Audited atomically."""
+        tenant membership (FR-9A-030). Audited atomically.
+
+        Raises:
+            NotFoundException: No ``User`` exists for *user_id* — checked
+                explicitly here rather than relying on the DB FK
+                constraint's raw ``IntegrityError`` to surface as a clean
+                404 (T068).
+            PlatformAdministratorAlreadyExistsError: A ``PlatformAdministrator``
+                already exists for *user_id* (T068) — checked explicitly
+                here rather than relying on the DB unique constraint's
+                raw ``IntegrityError`` to surface as a clean 409.
+        """
+        if self.db.get(User, user_id) is None:
+            raise NotFoundException(message="User not found.")
+        if self._repo.get_by_user_id(user_id) is not None:
+            raise PlatformAdministratorAlreadyExistsError(
+                message=("A Platform Administrator already exists for this user."),
+                details={"user_id": str(user_id)},
+            )
         administrator = PlatformAdministrator(user_id=user_id, is_active=True)
         self._repo.create(administrator)
         self._audit.record(

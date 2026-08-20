@@ -15,6 +15,7 @@ from core.exceptions.base import (
     ConflictException,
     ForbiddenException,
     UnauthorizedException,
+    ValidationException,
 )
 
 
@@ -67,6 +68,52 @@ class SupportAccessExpiredError(ForbiddenException):
     ) -> None:
         super().__init__(message=message, details=details)
         self.code = "SUPPORT_ACCESS_EXPIRED"
+
+
+class SelfEscalationError(ForbiddenException):
+    """Raised when an actor attempts to grant the ``platform_owner`` role
+    without already holding it themselves (BR-9A-012) — a role can never
+    grant a role of equal-or-higher privilege the actor doesn't already
+    have. Added in Phase 5 (T065); extends this module's exception
+    catalogue the same way T033's permission catalogue was extended in
+    Phase 5 for the RBAC seed service."""
+
+    def __init__(
+        self,
+        message: str = "Cannot grant a role you do not already hold.",
+        details: dict[str, object] | None = None,
+    ) -> None:
+        super().__init__(message=message, details=details)
+        self.code = "SELF_ESCALATION_REJECTED"
+
+
+class PlatformAdministratorAlreadyExistsError(ConflictException):
+    """Raised when creating a Platform Administrator for a ``user_id`` that
+    already has one (T068 — the DB carries a matching unique constraint;
+    this gives a clean 409 instead of a raw ``IntegrityError``)."""
+
+    def __init__(
+        self,
+        message: str = "A Platform Administrator already exists for this user.",
+        details: dict[str, object] | None = None,
+    ) -> None:
+        super().__init__(message=message, details=details)
+        self.code = "PLATFORM_ADMINISTRATOR_ALREADY_EXISTS"
+
+
+class UnknownPlatformPermissionError(ValidationException):
+    """Raised when a role's permission bundle references a code that does
+    not exist in ``PLATFORM_PERMISSION_CODES`` (T033/T069) — permissions
+    are configuration data, but a role can never be granted a code that
+    isn't in the seeded catalogue."""
+
+    def __init__(
+        self,
+        message: str = "One or more permission codes are not recognised.",
+        details: dict[str, object] | None = None,
+    ) -> None:
+        super().__init__(message=message, details=details)
+        self.code = "UNKNOWN_PLATFORM_PERMISSION"
 
 
 class LastPlatformOwnerError(ConflictException):
