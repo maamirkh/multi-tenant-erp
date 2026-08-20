@@ -22,6 +22,7 @@ Feature routers included:
     /api/v1/companies/{company_id}/sales/*       — Sales module endpoints (Epic 007)
     /api/v1/companies/{company_id}/accounting/*  — Accounting module endpoints (Epic 008)
     /api/v1/companies/{company_id}/crm/*         — CRM module endpoints (Epic 009)
+    /api/v1/platform/auth/*                      — Platform Administration auth (Epic 9A)
 """
 
 import logging
@@ -44,6 +45,7 @@ from modules.crm.dependencies import require_crm_enabled
 from modules.crm.router import admin_router as crm_admin_router
 from modules.crm.router import router as crm_router
 from modules.inventory.router import router as inventory_router
+from modules.platform_admin.router import router as platform_admin_router
 from modules.purchase.router import router as purchase_router
 from modules.sales.router import router as sales_router
 from modules.users_roles.dependencies import get_current_company_member
@@ -121,6 +123,15 @@ router.include_router(
     crm_admin_router,
     prefix="/companies/{company_id}/crm",
     dependencies=[Depends(get_current_company_member)],
+)
+# Platform Administration (Epic 9A) — mounted WITHOUT get_current_company_member:
+# Platform is never company-scoped (BR-9A-010). Its own routes enforce
+# Platform authentication/RBAC internally (get_current_platform_admin,
+# require_platform_permission), structurally separate from the tenant
+# auth boundary above.
+router.include_router(
+    platform_admin_router,
+    prefix="/platform",
 )
 
 

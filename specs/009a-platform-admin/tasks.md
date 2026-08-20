@@ -394,86 +394,101 @@
 
 ### Tasks
 
-- [ ] T045 [FR-9A-036] Create `PlatformSession` model
+- [X] T045 [FR-9A-036] Create `PlatformSession` model
   - **Files**: `backend/modules/platform_admin/models/platform_session.py`
   - **Deps**: T032
   - **Acceptance**: Mirrors `sessions`' shape (`platform_administrator_id`, `is_revoked`, `revoked_at`, `ip_address`, `user_agent`, `expires_at`); a **separate table**, never reusing tenant `sessions` (BR-9A-003).
+  - **Result (2026-08-20)**: DONE. Matches migration 057's `platform_sessions` exactly. `ip_address` uses `INET` — data-model.md's explicit choice for this table, unlike tenant `sessions.ip_address`'s `String(45)`.
 
-- [ ] T046 Create `PlatformRefreshToken` model
+- [X] T046 Create `PlatformRefreshToken` model
   - **Files**: `backend/modules/platform_admin/models/platform_refresh_token.py`
   - **Deps**: T045
   - **Acceptance**: SHA-256 `token_hash` (raw token never persisted), FK to `platform_sessions`, rotate-on-use fields, `is_revoked`/`revoked_at`.
+  - **Result (2026-08-20)**: DONE. Matches migration 057's `platform_refresh_tokens` exactly (no `unique=True` on `token_hash` at the ORM level, matching the already-committed migration precisely — no model/migration drift).
 
-- [ ] T047 Create `PlatformSessionRepository` (incl. bulk revoke-by-administrator)
+- [X] T047 Create `PlatformSessionRepository` (incl. bulk revoke-by-administrator)
   - **Purpose**: Ordered before every consumer (Revision 2 fix — previously created after the service that needed it).
   - **Files**: `backend/modules/platform_admin/repositories/platform_session_repository.py`
   - **Deps**: T045
   - **Acceptance**: `create`, `get_by_id`, `revoke`, `revoke_all_for_administrator`. Audited paths flush-only.
+  - **Result (2026-08-20)**: DONE. All 5 methods present (plus `get_active_by_administrator`); every write path `flush()`-only, matching every other Platform repository (ADR-5). `revoke_all_for_administrator(platform_administrator_id: UUID) -> None` structurally satisfies T040's `SessionRevoker` `Protocol` — no adapter class needed; the repository is passed directly as `session_revoker` (proved by T054/T059).
 
-- [ ] T048 Implement Platform JWT issuance with a distinct `typ`
+- [X] T048 Implement Platform JWT issuance with a distinct `typ`
   - **Purpose**: The structural guarantee that a tenant token can never be a platform token (ADR-1).
   - **Files**: `backend/modules/platform_admin/services/platform_jwt_service.py`
   - **Deps**: T045
   - **Acceptance**: Access tokens carry `typ="platform_access"`, refresh `typ="platform_refresh"`; reuses the existing `PyJWT`/HS256 settings — **no new crypto, no new secret management**.
+  - **Result (2026-08-20)**: DONE. Both token kinds are signed JWTs (verified: the tenant system has **no** `typ="refresh"` anywhere — its refresh tokens are opaque `secrets.token_urlsafe()` strings, not JWTs; plan.md's parenthetical comparison to "tenant tokens use typ: access/refresh today" does not match repository reality. T048's own acceptance is unambiguous and self-contained regardless, and data-model.md's `token_hash` field accommodates a JWT-format raw credential exactly as it would an opaque one — documented here as a discovered planning-narrative inaccuracy, not a blocking contradiction). `sub` = `PlatformAdministrator.id` (not `User.id`) — the design choice that makes a Platform token structurally rejected by `get_current_user()` with zero change to that function (see T052/T056).
 
-- [ ] T049 Implement `POST /api/v1/platform/auth/login`
+- [X] T049 Implement `POST /api/v1/platform/auth/login`
   - **Purpose**: Authenticate against the same `User.password_hash`, then require an **active** `PlatformAdministrator` row.
   - **Files**: `backend/modules/platform_admin/services/platform_auth_service.py`, `router.py`
   - **Deps**: T048, T047, T040
   - **Acceptance**: Creates a `PlatformSession` + `PlatformRefreshToken`; a `User` without an active `PlatformAdministrator` gets a **generic** invalid-credentials response that does not reveal whether the email exists as a tenant user.
+  - **Result (2026-08-20)**: DONE. Unknown email, wrong password, and a real user with no active `PlatformAdministrator` all raise the identical `AuthenticationException`. Also created `PlatformRefreshTokenRepository` and `schemas/platform_auth.py` (no separate task named these; both are T049's own necessary implementation surface). Live-verified via real HTTP through `test_client`.
 
-- [ ] T050 Implement `POST /api/v1/platform/auth/refresh` (rotate-on-use)
+- [X] T050 Implement `POST /api/v1/platform/auth/refresh` (rotate-on-use)
   - **Files**: `backend/modules/platform_admin/services/platform_auth_service.py`, `router.py`
   - **Deps**: T049
   - **Acceptance**: Rotates the platform refresh token, reuses the same `PlatformSession`, rejects a revoked session or a deactivated administrator.
+  - **Result (2026-08-20)**: DONE. 4 dedicated tests: rotation + new-token-works, replay-of-rotated-token rejected, revoked-session rejected, tenant-typed token rejected.
 
-- [ ] T051 Implement `POST /api/v1/platform/auth/logout`
+- [X] T051 Implement `POST /api/v1/platform/auth/logout`
   - **Files**: `backend/modules/platform_admin/services/platform_auth_service.py`, `router.py`
   - **Deps**: T049
   - **Acceptance**: Revokes the `PlatformSession` and all its refresh tokens.
+  - **Result (2026-08-20)**: DONE. **Contract audit caught a real discrepancy**: `contracts/platform-admin-v1.yaml`'s `/auth/logout` declares `204 No Content`, not `200` + body (the tenant `/auth/logout` convention) — fixed to `status_code=204`, `response_model=None`, matching the existing `204` pattern used elsewhere in this codebase (e.g. `crm/router.py`'s `DELETE /leads/{id}`); the now-unused `PlatformLogoutResponse` schema was deleted rather than left dead.
 
-- [ ] T052 [FR-9A-220] Implement `get_current_platform_admin()` dependency **with revocation check**
+- [X] T052 [FR-9A-220] Implement `get_current_platform_admin()` dependency **with revocation check**
   - **Purpose**: Unlike the tenant path, platform sessions check `is_revoked` from day one (plan §10.4).
   - **Files**: `backend/modules/platform_admin/dependencies.py`
   - **Deps**: T048, T047
   - **Acceptance**: Rejects any token whose `typ` is not `platform_access`; rejects revoked `PlatformSession`; rejects inactive `PlatformAdministrator`. **Makes no change to `get_current_user()`.**
+  - **Result (2026-08-20)**: DONE. `get_current_user()` verified byte-for-byte untouched (`git diff` confirms zero changes to `core/auth/dependencies.py`). All 3 rejection conditions independently tested.
 
-- [ ] T053 Mount the platform router at `/api/v1/platform`
+- [X] T053 Mount the platform router at `/api/v1/platform`
   - **Files**: `backend/api/v1/router.py`
   - **Deps**: T052
   - **Acceptance**: Mounted **without** `get_current_company_member` (platform is never company-scoped); no path collision with existing mounts.
+  - **Result (2026-08-20)**: DONE. Verified via the live OpenAPI schema: exactly 3 paths (`/api/v1/platform/auth/{login,refresh,logout}`), 573 total paths app-wide, zero duplicates.
 
-- [ ] T054 [BR-9A-011] Complete session-revoking administrator deactivation
+- [X] T054 [BR-9A-011] Complete session-revoking administrator deactivation
   - **Purpose**: The second half of the Revision 2 split — deactivation must revoke all that admin's active platform sessions atomically. **This is where BR-9A-011 becomes fully satisfied.**
   - **Files**: `backend/modules/platform_admin/services/platform_administrator_service.py`
   - **Deps**: T047, T040
   - **Acceptance**: Deactivation revokes every `PlatformSession` for that administrator **in the same transaction** as the `is_active` change and its audit row (single commit via T037's helper). Session invalidation is not weakened or deferred — a deactivated admin's in-flight token stops working immediately (proved by T059).
+  - **Result (2026-08-20)**: DONE. No code change to this file was needed — Phase 3's `deactivate()` already called an injected `session_revoker` before the single commit; Phase 4 supplies the real `PlatformSessionRepository` that satisfies that seam. Proved twice: T059 (real revocation happens) and an added forced-audit-failure test (revocation does not survive a failed audit write either — full 3-way atomicity, going beyond T054's literal text per the fail-closed testing standard).
 
-- [ ] T055 [P] [BR-9A-002] Test: tenant access token → every Platform API → denied
+- [X] T055 [P] [BR-9A-002] Test: tenant access token → every Platform API → denied
   - **Files**: `backend/tests/security/modules/platform_admin/test_token_boundary.py`
   - **Deps**: T053
   - **Acceptance**: Every `/api/v1/platform/*` route existing at this point rejects a valid tenant token, regardless of the tenant user's role (including `owner`).
+  - **Result (2026-08-20)**: PASS. "Every Platform API existing at this point" scoped correctly to `/auth/logout` — the sole authenticated route; `/auth/login`/`/auth/refresh` are contractually public (`security: []`), so token rejection isn't a meaningful concept for them.
 
-- [ ] T056 [P] Test: platform access token is never accepted as a tenant session
+- [X] T056 [P] Test: platform access token is never accepted as a tenant session
   - **Files**: `backend/tests/security/modules/platform_admin/test_token_boundary.py`
   - **Deps**: T053
   - **Acceptance**: A `platform_access` token against `/api/v1/companies/{id}/...` is rejected by `get_current_user()` (wrong `typ`), and does not implicitly unlock any tenant endpoint (spec §11 scenario 4).
+  - **Result (2026-08-20)**: PASS, with a documented mechanism correction. `get_current_user()` has **zero** `typ` checking logic (verified: only `"typ": "access"` exists anywhere in tenant auth code) and is explicitly frozen (T052's own acceptance: "makes no change to `get_current_user()`"). Rejection is therefore structural, not a `typ` check: a Platform token's `sub` is a `PlatformAdministrator.id`, which does not correspond to any `users.id` row, so `UserRepository.get_by_id_or_none()` returns `None` and `get_current_user()` raises on its own, unmodified. Tested against both `/api/v1/auth/me` and `/api/v1/auth/logout`.
 
-- [ ] T057 [P] Test: revoked platform session is rejected
+- [X] T057 [P] Test: revoked platform session is rejected
   - **Files**: `backend/tests/security/modules/platform_admin/test_platform_session.py`
   - **Deps**: T052
   - **Acceptance**: Explicit logout → the still-unexpired access token is rejected on the next request.
+  - **Result (2026-08-20)**: PASS. Real end-to-end HTTP: login → logout (204) → same token reused → 401.
 
-- [ ] T058 [P] Test: unauthenticated request to every Platform API → denied
+- [X] T058 [P] Test: unauthenticated request to every Platform API → denied
   - **Files**: `backend/tests/security/modules/platform_admin/test_token_boundary.py`
   - **Deps**: T053
   - **Acceptance**: No `/api/v1/platform/*` route is reachable without a valid platform token.
+  - **Result (2026-08-20)**: PASS. No header and malformed-header cases both rejected against `/auth/logout`.
 
-- [ ] T059 [BR-9A-011] Test: deactivated Platform Administrator cannot access Platform APIs, immediately
+- [X] T059 [BR-9A-011] Test: deactivated Platform Administrator cannot access Platform APIs, immediately
   - **Purpose**: The API-level proof of T054; moved here from Phase 3 in Revision 2 because it requires Platform APIs to exist.
   - **Files**: `backend/tests/security/modules/platform_admin/test_identity_boundary.py`
   - **Deps**: T054, T053
   - **Acceptance**: Admin logs in → is deactivated → the **same, still-unexpired** access token is rejected on the very next request; the session rows are already revoked in the database.
+  - **Result (2026-08-20)**: PASS. Real HTTP login → deactivation via the real service with a real `PlatformSessionRepository` revoker → DB-level confirmation (`is_revoked=True` on every session row) → the still-unexpired token rejected on the very next request (401).
 
 ---
 
