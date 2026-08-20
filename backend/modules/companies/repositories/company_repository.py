@@ -83,11 +83,57 @@ class CompanyRepository:
         logger.info("Company restored", extra={"company_id": str(company.id)})
         return company
 
+    # ── Flush-only lifecycle writes (Epic 9A, ADR-5) ────────────────────────
+    #
+    # Deliberately do NOT commit, unlike every other write method above —
+    # TenantLifecycleService (platform_admin) owns a single service-level
+    # commit that combines this state change with its audit row and outbox
+    # record atomically (mirrors PlatformAdministratorRepository.set_active()
+    # and every other Platform-actor-initiated mutation in this Epic).
+
+    def suspend(
+        self,
+        company: Company,
+        *,
+        pre_suspension_status: str,
+        access_invalidated_at: datetime,
+    ) -> Company:
+        """Stage a suspension state change. Caller commits."""
+        company.status = CompanyStatus.suspended.value
+        company.pre_suspension_status = pre_suspension_status
+        company.access_invalidated_at = access_invalidated_at
+        self.db.flush()
+        return company
+
+    def reactivate(self, company: Company, *, restored_status: str) -> Company:
+        """Stage a reactivation state change. Caller commits.
+
+        ``access_invalidated_at`` is deliberately left untouched — it is
+        never cleared on reactivation (ADR-6/FR-9A-018), so pre-suspension
+        Sessions stay refused for this company even after the status is
+        restored; only a genuine new login can advance past the watermark.
+        """
+        company.status = restored_status
+        company.pre_suspension_status = None
+        self.db.flush()
+        return company
+
     # ── Read operations ───────────────────────────────────────────────────────
 
     def get_by_id(self, id: UUID) -> Company | None:
         """Return the Company with the given ``id``, or ``None``."""
         stmt = select(Company).where(Company.id == id)
+        return self.db.execute(stmt).scalars().one_or_none()
+
+    def get_for_update(self, id: UUID) -> Company | None:
+        """Return the Company row locked with ``SELECT ... FOR UPDATE``.
+
+        Used by ``TenantLifecycleService`` (Epic 9A, T088/T089) so that two
+        concurrent suspend/reactivate attempts against the same company
+        serialize instead of racing (plan.md §36). Not meaningfully
+        testable on SQLite — real PostgreSQL only (T094).
+        """
+        stmt = select(Company).where(Company.id == id).with_for_update()
         return self.db.execute(stmt).scalars().one_or_none()
 
     def get_by_id_active(self, id: UUID) -> Company | None:

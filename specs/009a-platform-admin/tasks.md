@@ -672,120 +672,141 @@
 
 ### Tasks
 
-- [ ] T082 [FR-9A-017] [ADR-6] Implement `assert_company_access_allowed(db, company_id, session_id)`
+- [X] T082 [FR-9A-017] [ADR-6] Implement `assert_company_access_allowed(db, company_id, session_id)`
   - **Purpose**: Layer 1 (company status) + Layer 2 (authentication-freshness watermark) in one shared helper.
   - **Files**: `backend/modules/platform_admin/services/company_access_service.py`
   - **Deps**: T031
   - **Acceptance**: Denies when `Company.status` is `suspended` (raising the existing `CompanySuspendedError`) or `deleted`; **and** denies when `Session.created_at <= Company.access_invalidated_at`. Loads `Session` by the `sid` already surfaced as `CurrentUser.session_id`. **Must not use the token's `iat`.**
+  - **Result (2026-08-20)**: DONE. Status-code mapping matches `get_current_company`'s pre-existing behaviour exactly (suspended→403 `CompanySuspendedError`, deleted→404 `CompanyNotFoundError`), so wiring it in is byte-identical for non-suspended companies. `pre_suspension_status`/`access_invalidated_at` columns added to the `Company` ORM model (migration 057 already had them in the DB; the ORM mapping was deliberately deferred to this phase) with their 2 CHECK constraints mirrored into `__table_args__`. 9/9 unit tests (T085) passing.
 
-- [ ] T083 Wire `assert_company_access_allowed` into `get_current_company_member`
+- [X] T083 Wire `assert_company_access_allowed` into `get_current_company_member`
   - **Purpose**: Closes the §3.3 gap — this is what makes suspension effective on all five business modules.
   - **Files**: `backend/modules/users_roles/dependencies.py`
   - **Deps**: T082
   - **Acceptance**: All five module mounts inherit the check with no per-module change. **`get_current_user()` is not modified** (no new claim, no new query, no new failure mode there).
+  - **Result (2026-08-20)**: DONE. Single call inserted at the top of `get_current_company_member`, before the membership lookup. `get_current_user()` untouched — verified via `git diff modules/auth/`. Proven live via T086/T095-T100/T098's real HTTP round trips through all five module mounts.
 
-- [ ] T084 Wire `assert_company_access_allowed` into `get_current_company`
+- [X] T084 Wire `assert_company_access_allowed` into `get_current_company`
   - **Purpose**: The companies module already checks status; it additionally gains the watermark check.
   - **Files**: `backend/modules/companies/dependencies.py`
   - **Deps**: T082
   - **Acceptance**: Behaviour for non-suspended companies is byte-identical to today (regression-checked in T087).
+  - **Result (2026-08-20)**: DONE. The manual `suspended`/`deleted` status checks were replaced with a single `assert_company_access_allowed(...)` call — same two exceptions, same status codes, plus the new watermark layer. Byte-identical behaviour for non-suspended companies confirmed by T087's full regression (972 passed, 4 pre-existing skips, 0 failed).
 
-- [ ] T085 [P] Unit tests for the freshness comparison
+- [X] T085 [P] Unit tests for the freshness comparison
   - **Files**: `backend/tests/unit/modules/platform_admin/test_company_access_rule.py`
   - **Deps**: T082
   - **Acceptance**: Covers `created_at <`, `=`, `>` watermark; NULL watermark denies nothing; `suspended`/`deleted`/`active` status paths.
+  - **Result (2026-08-20)**: DONE — PASSING (9/9). Covers all 3 watermark comparisons (including the exact-tie `<=` case), NULL-watermark rollout safety, active/inactive/suspended/deleted status paths, and nonexistent-company no-op.
 
-- [ ] T086 [P] Test: a NULL `access_invalidated_at` (every pre-existing company) denies nothing
+- [X] T086 [P] Test: a NULL `access_invalidated_at` (every pre-existing company) denies nothing
   - **Purpose**: Proves rollout safety — no existing tenant loses access when Phase 7 ships.
   - **Files**: `backend/tests/integration/api/v1/platform_admin/test_company_access.py`
   - **Deps**: T083, T084
   - **Acceptance**: All five modules behave exactly as before for every existing tenant.
+  - **Result (2026-08-20)**: DONE — PASSING (1/1). Real HTTP login + real company/membership with the default NULL watermark; hits a representative endpoint in all 5 business modules (inventory, purchase, sales, accounting `/health`; crm `/status`) — all 200.
 
-- [ ] T087 Regression: all five business modules still function for non-suspended tenants
+- [X] T087 Regression: all five business modules still function for non-suspended tenants
   - **Purpose**: T083 touches a dependency every company-scoped route uses.
   - **Files**: existing `backend/tests/integration/api/v1/{inventory,purchase,sales,accounting,crm}/`
   - **Deps**: T083, T084
   - **Acceptance**: Full existing suite green; any delta explained before proceeding.
+  - **Result (2026-08-20)**: DONE. Full existing `inventory`/`purchase`/`sales`/`accounting`/`crm` API test suites run against the T083/T084-modified dependency chain: **972 passed, 4 skipped, 0 failed** (45m57s). The 4 skips are pre-existing (not introduced by this phase). No delta from the pre-Phase-7 baseline.
 
-- [ ] T088 [US-3] [FR-9A-011] Implement `TenantLifecycleService.suspend()`
+- [X] T088 [US-3] [FR-9A-011] Implement `TenantLifecycleService.suspend()`
   - **Purpose**: The missing write path for `CompanyStatus.suspended` (spec §3 item 3).
   - **Files**: `backend/modules/platform_admin/services/tenant_lifecycle_service.py`
   - **Deps**: T037, T082
   - **Acceptance**: `SELECT ... FOR UPDATE` on the `Company` row → validate status is `active`/`inactive` → set `pre_suspension_status` → set `status='suspended'` → set `access_invalidated_at=now()` → enqueue `CompanySuspendedEvent` as an `OutboxRecord` → flush → audit row (before/after + mandatory reason) → **single commit**.
+  - **Result (2026-08-20)**: DONE. `CompanyRepository` extended with 3 new methods (`get_for_update`, flush-only `suspend()`/`reactivate()`) — deliberately NOT reusing `CompanyRepository.update()`, which auto-commits internally and would break ADR-5 atomicity (a pre-existing property of the tenant-side `CompanyService.deactivate_company()` etc., left untouched, out of Phase 7 scope). Reused the already-defined-but-never-instantiated `CompanySuspendedEvent`/`CompanySuspensionLiftedEvent` (`companies/events.py`). Proven by T091-T094, T101.
 
-- [ ] T089 [US-3] [FR-9A-012] Implement `TenantLifecycleService.reactivate()`
+- [X] T089 [US-3] [FR-9A-012] Implement `TenantLifecycleService.reactivate()`
   - **Purpose**: Restore the **recorded** pre-suspension status — never hardcoded `active` (ADR-12).
   - **Files**: `backend/modules/platform_admin/services/tenant_lifecycle_service.py`
   - **Deps**: T088
   - **Acceptance**: Locks the row → requires current status `suspended` → reads `pre_suspension_status` → sets `status` to it → sets `pre_suspension_status=NULL` → **retains** `access_invalidated_at` → enqueues `CompanySuspensionLiftedEvent` → audits before/after → single commit. Fails closed with an explicit error if the restore target is somehow NULL.
+  - **Result (2026-08-20)**: DONE. Reuses `TenantLifecycleTransitionError` (already defined in Phase 3, never previously raised anywhere — confirmed via full-tree grep before use). Defensive fallback for a NULL `pre_suspension_status` implemented even though the DB CHECK constraint makes it unreachable in practice. Proven by T091/T092 (active/inactive round-trips) and T093 (repeated-reactivation rejection).
 
-- [ ] T090 Implement the suspend/reactivate routes with mandatory reason + permission
+- [X] T090 Implement the suspend/reactivate routes with mandatory reason + permission
   - **Files**: `backend/modules/platform_admin/router.py`
   - **Deps**: T088, T089, T064
   - **Acceptance**: `POST /platform/tenants/{companyId}/suspend` requires `platform.tenants.suspend`; `/reactivate` requires `platform.tenants.reactivate` (separate permissions per spec US-3); both validate a non-empty `reason` server-side before any state change.
+  - **Result (2026-08-20)**: DONE. New `tenant_router` mounted at `/platform` in `api/v1/router.py`. `TenantLifecycleActionRequest.reason` has both a Pydantic `min_length=1` AND a `field_validator` rejecting whitespace-only strings — validated before the router calls into the service, so no state change is possible with a blank reason. Contract traceability: `/tenants/{companyId}/suspend` and `/reactivate` operations of `platform-admin-v1.yaml`.
 
-- [ ] T091 [P] Test: `active → suspended → active`
+- [X] T091 [P] Test: `active → suspended → active`
   - **Files**: `backend/tests/integration/services/platform_admin/test_tenant_lifecycle.py`
   - **Deps**: T090
   - **Acceptance**: Final status is `active`; `pre_suspension_status` is NULL afterwards; both transitions audited with correct before/after.
+  - **Result (2026-08-20)**: DONE — PASSING. Also verifies `access_invalidated_at` is set on suspend and deliberately still non-NULL after reactivation (ADR-6), and both `company.suspended`/`company.suspension_lifted` OutboxRecords exist.
 
-- [ ] T092 [P] Test: `inactive → suspended → inactive`
+- [X] T092 [P] Test: `inactive → suspended → inactive`
   - **Purpose**: The case a hardcoded `active` would silently corrupt.
   - **Files**: `backend/tests/integration/services/platform_admin/test_tenant_lifecycle.py`
   - **Deps**: T090
   - **Acceptance**: Final status is `inactive`, **not** `active`.
+  - **Result (2026-08-20)**: DONE — PASSING. Explicit assertion that the restored status is NOT `active`, proving the restore genuinely reads `pre_suspension_status` rather than hardcoding.
 
-- [ ] T093 [P] Test: repeated suspension and repeated reactivation are both rejected
+- [X] T093 [P] Test: repeated suspension and repeated reactivation are both rejected
   - **Files**: `backend/tests/integration/services/platform_admin/test_tenant_lifecycle.py`
   - **Deps**: T090
   - **Acceptance**: Specific "already suspended" / "not currently suspended" errors (spec Edge Cases #1/#2); no duplicate audit row.
+  - **Result (2026-08-20)**: DONE — PASSING (4/4 total in this file, combined with T091/T092). Both rejection paths verified to write zero additional audit rows.
 
-- [ ] T094 [P] Test: concurrent suspend attempts — exactly one commits
+- [X] T094 [P] Test: concurrent suspend attempts — exactly one commits
   - **Files**: `backend/tests/integration/services/platform_admin/test_tenant_lifecycle_concurrency.py`
   - **Deps**: T090
   - **Acceptance**: Two concurrent transactions against one company → one succeeds, the other gets the state-conflict error; exactly one audit row (spec §11 scenario 6). Real PostgreSQL (row locking is not meaningfully testable on SQLite).
+  - **Result (2026-08-20)**: DONE — PASSING. Connects directly to the real PostgreSQL dev database (`core.database.session.SessionLocal`, bypassing the SQLite `db_session` fixture entirely) via two threads, each with its own session; `CompanyRepository.get_for_update` briefly holds its lock open (0.4s) after acquiring it so the other thread's concurrent `SELECT ... FOR UPDATE` genuinely blocks on real row-level locking. Exactly one `success`/one `conflict` outcome, exactly one audit row, verified with a fresh third session. All test data (company, user, platform administrator) created and torn down against the real database — verified zero leftover rows via direct `psql` query after the test.
 
-- [ ] T095 **[Gate C]** Test A: old **access token** denied after suspend→reactivate
+- [X] T095 **[Gate C]** Test A: old **access token** denied after suspend→reactivate
   - **Files**: `backend/tests/security/modules/platform_admin/test_auth_freshness.py`
   - **Deps**: T090
   - **Acceptance**: Login → suspend → reactivate → replay the original access token → **denied** for that company.
+  - **Result (2026-08-20)**: DONE — PASSING.
 
-- [ ] T096 **[Gate C]** Test B: old **refresh token** cannot restore access — the refresh-bypass regression guard
+- [X] T096 **[Gate C]** Test B: old **refresh token** cannot restore access — the refresh-bypass regression guard
   - **Purpose**: This test must fail if anyone re-keys the check to the token's `iat` (ADR-6).
   - **Files**: `backend/tests/security/modules/platform_admin/test_auth_freshness.py`
   - **Deps**: T090
   - **Acceptance**: Login → suspend → reactivate → redeem the **pre-suspension refresh token** → a brand-new access token is minted → using it is **still denied**, because it is bound to the same pre-suspension `Session`.
+  - **Result (2026-08-20)**: DONE — PASSING. The refreshed token's fresh `iat` does not help — the check compares `Session.created_at`, unchanged by refresh.
 
-- [ ] T097 **[Gate C]** Test C: genuine new login restores access
+- [X] T097 **[Gate C]** Test C: genuine new login restores access
   - **Files**: `backend/tests/security/modules/platform_admin/test_auth_freshness.py`
   - **Deps**: T090
   - **Acceptance**: After reactivation, a real login creates a new `Session` with `created_at > access_invalidated_at` → access allowed if membership is otherwise valid.
+  - **Result (2026-08-20)**: DONE — PASSING. Required a 1.1s test-only delay before the second login: SQLite's `CURRENT_TIMESTAMP` (used for `Session.created_at`'s `server_default=func.now()` under the test fixture) has whole-second resolution, unlike `access_invalidated_at`'s Python-side microsecond `datetime.now(UTC)` — without the delay, a same-second tie lands on the `<=` rule's deny side. A real human always takes more than a second to log back in; this is a test-environment precision artifact, not a production behavior gap (documented in the test file).
 
-- [ ] T098 **[Gate C]** Test D: multi-tenant user — suspending A does not affect B
+- [X] T098 **[Gate C]** Test D: multi-tenant user — suspending A does not affect B
   - **Purpose**: The tenant-isolation guarantee that rejected blanket session revocation (ADR-6).
   - **Files**: `backend/tests/security/modules/platform_admin/test_cross_tenant_suspension.py`
   - **Deps**: T090
   - **Acceptance**: User X is an active member of A and B → suspend A → A denied, **B still succeeds on the same token/session**.
+  - **Result (2026-08-20)**: DONE — PASSING. Also confirms enforcement is not module-specific by checking both inventory and sales for company A.
 
-- [ ] T099 **[Gate C]** Test E: multi-device semantics
+- [X] T099 **[Gate C]** Test E: multi-device semantics
   - **Files**: `backend/tests/security/modules/platform_admin/test_auth_freshness.py`
   - **Deps**: T090
   - **Acceptance**: Two devices logged in pre-suspension → both denied for A after reactivation → Device 1 re-logs in and regains A → **Device 2 remains denied** until it re-authenticates → both keep B throughout (plan §10.3.1).
+  - **Result (2026-08-20)**: DONE — PASSING. Full matrix proven: both devices denied for A post-reactivation, both keep B throughout, only Device 1's fresh re-login restores A for Device 1, Device 2's original token remains denied for A while still valid for B.
 
-- [ ] T100 **[Gate C]** Test F: manipulation cannot fabricate freshness
+- [X] T100 **[Gate C]** Test F: manipulation cannot fabricate freshness
   - **Files**: `backend/tests/security/modules/platform_admin/test_auth_freshness.py`
   - **Deps**: T090
   - **Acceptance**: Tampering with `iat`, `sid`, `erp_active_company_id`, or the request company id never bypasses the check (signature protects `sid`; `Session.created_at` is server-generated and unwritable via any API).
+  - **Result (2026-08-20)**: DONE — PASSING (2 tests). Decoy `X-Erp-Active-Company-Id`/`X-Company-Id` headers proven to have zero effect on the (still-suspended) company A's denial — authorization derives solely from the verified JWT's `sid` and the URL path's `company_id`. Structural proof: no request schema in `modules/auth/` declares a `created_at` field, confirming `Session.created_at` is unwritable via any API. `iat`-tampering specifically is already covered by T096 (a refresh legitimately mints a fresh `iat`, and it still doesn't help).
 
-- [ ] T101 **[Gate C]** [ADR-5] Full 3-way atomicity: forced audit failure during tenant suspension
+- [X] T101 **[Gate C]** [ADR-5] Full 3-way atomicity: forced audit failure during tenant suspension
   - **Purpose**: The canonical fail-closed proof the plan intends — state change **+** audit **+** outbox in one transaction. Revision 2 moved this here (rather than forward-referencing from Phase 6), so it runs at the earliest point where suspension actually exists.
   - **Files**: `backend/tests/integration/services/platform_admin/test_audit_fail_closed.py`
   - **Deps**: T088, T037
   - **Acceptance**: Inject a constraint violation on the audit insert during a suspension → assert the `Company.status` change, the `pre_suspension_status` write, the `access_invalidated_at` watermark, **and** the `OutboxRecord` are **all** rolled back; nothing partial remains committed. Blocking — Gate C cannot pass without it.
+  - **Result (2026-08-20)**: DONE — PASSING. Added `TestGateCAuditFailClosedOnTenantSuspension` to the same file T079 (Phase 6) created, extending it rather than duplicating — all 4 tests in the file (2 from Phase 6 + 2 new) pass together, confirming no regression to the existing Gate E proof. All 4 pieces (status, `pre_suspension_status`, `access_invalidated_at`, `OutboxRecord`) verified rolled back on forced failure; positive control confirms all 4 genuinely commit together on success.
 
-- [ ] T102 **[Gate C]** Gate C sign-off
+- [X] T102 **[Gate C]** Gate C sign-off
   - **Deps**: T091–T101
   - **Acceptance**: Lifecycle, authentication-freshness (including the refresh bypass), cross-tenant isolation, multi-device behaviour, and full 3-way audit atomicity all proven.
+  - **Result (2026-08-20)**: **GATE C PASSED**. All named dependencies (T091-T101) pass. Combined Phase 1-7 `platform_admin`/`bootstrap` test suite: 118/118 passing in a single run (94 from Phase 1-6 + 24 new). T087's full 5-business-module regression (a Phase-7 task, not a T102 dependency, but required for genuine phase completion per the master prompt's Primary Objective): 972 passed, 4 pre-existing skips, 0 failed. No forward reference to Phase 8+ in any of this phase's dependencies.
 
 ---
 

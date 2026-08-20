@@ -35,9 +35,8 @@ from core.auth.interfaces import CurrentUser
 from core.config.settings import Settings, get_settings
 from core.database.session import get_db
 from core.events.outbox import EventOutboxRepository
-from modules.companies.exceptions import CompanyNotFoundError, CompanySuspendedError
+from modules.companies.exceptions import CompanyNotFoundError
 from modules.companies.models.company import Company
-from modules.companies.models.enums import CompanyStatus
 from modules.companies.repositories.company_address_repository import (
     CompanyAddressRepository,
 )
@@ -49,6 +48,9 @@ from modules.companies.services.company_audit_service import CompanyAuditService
 from modules.companies.services.company_logo_service import CompanyLogoService
 from modules.companies.services.company_service import CompanyService
 from modules.companies.services.company_settings_service import CompanySettingsService
+from modules.platform_admin.services.company_access_service import (
+    assert_company_access_allowed,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -120,15 +122,19 @@ def get_current_company(
     company_id: UUID,
     current_user: CurrentUser = Depends(require_authenticated),
     service: CompanyService = Depends(get_company_service),
+    db: Session = Depends(get_db),
 ) -> Company:
     """Resolve and authorise access to a company for the current request.
 
     Lookup order:
     1. Fetch raw company record (any status) via ``service._company_repo``.
     2. If not found → ``CompanyNotFoundError`` (HTTP 404).
-    3. If suspended → ``CompanySuspendedError`` (HTTP 403, code COMPANY_SUSPENDED).
-    4. If deleted → ``CompanyNotFoundError`` (HTTP 404).
-    5. Membership check (owner only until Epic 4 adds ``company_members``).
+    3. ``assert_company_access_allowed`` (Epic 9A, T084): if suspended →
+       ``CompanySuspendedError`` (HTTP 403); if deleted →
+       ``CompanyNotFoundError`` (HTTP 404) — byte-identical to the manual
+       checks this replaces; additionally denies a request authenticated
+       by a pre-suspension ``Session`` even after reactivation (ADR-6).
+    4. Membership check (owner only until Epic 4 adds ``company_members``).
 
     # TODO Epic-4: replace with company_members table lookup
     """
@@ -137,11 +143,7 @@ def get_current_company(
     if company is None:
         raise CompanyNotFoundError()
 
-    if company.status == CompanyStatus.suspended.value:
-        raise CompanySuspendedError()
-
-    if company.status == CompanyStatus.deleted.value:
-        raise CompanyNotFoundError()
+    assert_company_access_allowed(db, company_id, current_user.session_id)
 
     # TODO Epic-4: replace with company_members table lookup
     is_owner = company.owner_id == current_user.user_id

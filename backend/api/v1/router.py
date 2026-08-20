@@ -48,6 +48,7 @@ from modules.inventory.router import router as inventory_router
 from modules.platform_admin.router import admin_router as platform_admin_admin_router
 from modules.platform_admin.router import rbac_router as platform_admin_rbac_router
 from modules.platform_admin.router import router as platform_admin_router
+from modules.platform_admin.router import tenant_router as platform_admin_tenant_router
 from modules.purchase.router import router as purchase_router
 from modules.sales.router import router as sales_router
 from modules.users_roles.dependencies import get_current_company_member
@@ -144,6 +145,11 @@ router.include_router(
 )
 router.include_router(
     platform_admin_rbac_router,
+    prefix="/platform",
+)
+# Phase 7 (T090) — tenant suspend/reactivate routes.
+router.include_router(
+    platform_admin_tenant_router,
     prefix="/platform",
 )
 

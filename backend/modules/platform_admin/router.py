@@ -13,13 +13,18 @@ Endpoints (Phase 5, T068/T069):
     POST  /platform/roles                          — platform.rbac.manage
     POST  /platform/administrators/{adminId}/roles — platform.rbac.manage
 
+Endpoints (Phase 7, T090):
+    POST /platform/tenants/{companyId}/suspend    — platform.tenants.suspend
+    POST /platform/tenants/{companyId}/reactivate — platform.tenants.reactivate
+
 Mounted at ``/api/v1/platform`` by ``api/v1/router.py`` (T053) — without
 ``get_current_company_member``, since Platform is never company-scoped.
 
 Router discipline: delegates to the service layer — no business logic in
 the router (plan.md §10 API Contract Lock). Contract traceability:
-operations 1-3 (public `/auth/*`, no `x-permission`) and operations 20-25
-(Administrator/RBAC management) of ``platform-admin-v1.yaml``.
+operations 1-3 (public `/auth/*`, no `x-permission`), operations 20-25
+(Administrator/RBAC management), and the `/tenants/{companyId}/suspend`
+and `/reactivate` operations of ``platform-admin-v1.yaml``.
 """
 
 from __future__ import annotations
@@ -32,11 +37,13 @@ from sqlalchemy.orm import Session
 
 from core.config.settings import Settings, get_settings
 from core.database.session import get_db
+from core.events.outbox import EventOutboxRepository
 from core.exceptions.base import NotFoundException
 from core.logging.setup import REQUEST_ID_CONTEXT
 from core.schemas.pagination import PaginatedData, PaginatedResponse
 from core.schemas.response import ResponseMeta, StandardResponse
 from core.utils.datetime import utcnow
+from modules.companies.repositories.company_repository import CompanyRepository
 from modules.platform_admin.dependencies import (
     PlatformPrincipal,
     get_current_platform_admin,
@@ -71,16 +78,24 @@ from modules.platform_admin.schemas.platform_rbac import (
     RoleAssignmentResponse,
     RoleResponse,
 )
+from modules.platform_admin.schemas.tenant_lifecycle import (
+    TenantLifecycleActionRequest,
+    TenantLifecycleResponse,
+)
 from modules.platform_admin.services.platform_administrator_service import (
     PlatformAdministratorService,
 )
 from modules.platform_admin.services.platform_audit_service import PlatformAuditService
 from modules.platform_admin.services.platform_auth_service import PlatformAuthService
 from modules.platform_admin.services.platform_rbac_service import PlatformRbacService
+from modules.platform_admin.services.tenant_lifecycle_service import (
+    TenantLifecycleService,
+)
 
 router = APIRouter(prefix="/auth", tags=["Platform Authentication"])
 admin_router = APIRouter(tags=["Platform Administrators"])
 rbac_router = APIRouter(tags=["Platform RBAC"])
+tenant_router = APIRouter(tags=["Platform Tenants"])
 
 
 def _meta(request: Request) -> ResponseMeta:
@@ -434,5 +449,77 @@ async def assign_role(
     return StandardResponse(
         data=RoleAssignmentResponse.model_validate(assignment),
         message="Platform Role assigned.",
+        meta=_meta(request),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tenant lifecycle (T090)
+# ---------------------------------------------------------------------------
+
+
+def _tenant_lifecycle_service(db: Session = Depends(get_db)) -> TenantLifecycleService:
+    return TenantLifecycleService(
+        db=db,
+        company_repo=CompanyRepository(db),
+        outbox_repo=EventOutboxRepository(db),
+        audit=PlatformAuditService(db, PlatformAuditRepository(db)),
+    )
+
+
+@tenant_router.post(
+    "/tenants/{companyId}/suspend",
+    response_model=StandardResponse[TenantLifecycleResponse],
+    summary="Suspend a tenant (active/inactive -> suspended)",
+    dependencies=[Depends(require_platform_permission("platform.tenants.suspend"))],
+    responses={
+        404: {"description": "Company not found"},
+        409: {"description": "Tenant already suspended (Edge Case #1)"},
+    },
+)
+async def suspend_tenant(
+    request: Request,
+    payload: TenantLifecycleActionRequest,
+    companyId: UUID = Path(...),  # noqa: N803 — matches contract's path parameter name
+    current: PlatformPrincipal = Depends(get_current_platform_admin),
+    svc: TenantLifecycleService = Depends(_tenant_lifecycle_service),
+) -> StandardResponse[TenantLifecycleResponse]:
+    company = svc.suspend(
+        company_id=companyId,
+        actor_platform_administrator_id=current.platform_administrator_id,
+        reason=payload.reason,
+    )
+    return StandardResponse(
+        data=TenantLifecycleResponse.model_validate(company),
+        message="Tenant suspended.",
+        meta=_meta(request),
+    )
+
+
+@tenant_router.post(
+    "/tenants/{companyId}/reactivate",
+    response_model=StandardResponse[TenantLifecycleResponse],
+    summary="Reactivate a tenant (suspended -> its recorded pre-suspension status)",
+    dependencies=[Depends(require_platform_permission("platform.tenants.reactivate"))],
+    responses={
+        404: {"description": "Company not found"},
+        409: {"description": "Tenant not currently suspended (Edge Case #2)"},
+    },
+)
+async def reactivate_tenant(
+    request: Request,
+    payload: TenantLifecycleActionRequest,
+    companyId: UUID = Path(...),  # noqa: N803 — matches contract's path parameter name
+    current: PlatformPrincipal = Depends(get_current_platform_admin),
+    svc: TenantLifecycleService = Depends(_tenant_lifecycle_service),
+) -> StandardResponse[TenantLifecycleResponse]:
+    company = svc.reactivate(
+        company_id=companyId,
+        actor_platform_administrator_id=current.platform_administrator_id,
+        reason=payload.reason,
+    )
+    return StandardResponse(
+        data=TenantLifecycleResponse.model_validate(company),
+        message="Tenant reactivated.",
         meta=_meta(request),
     )

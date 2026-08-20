@@ -1,14 +1,19 @@
-"""[T079] [Gate E] The single most important correctness test in the
-Epic (plan.md §32): a forced constraint violation on the audit insert
-rolls back the privileged mutation it was meant to accompany.
+"""[T079, T101] [Gate E, Gate C] The single most important correctness
+test in the Epic (plan.md §32): a forced constraint violation on the
+audit insert rolls back the privileged mutation it was meant to
+accompany.
 
-Uses the Phase-5 role-assignment mutation (T065,
-``PlatformRbacService.assign_role()``) as the real privileged mutation
-under test — quickstart.md §9 explicitly permits "whichever privileged
-mutation was under test", and this is the correct choice per Revision 2's
-own note on T079: it legally exists in Phase 1-6 work, unlike the
-tenant-suspension mutation (Phase 7, T101), which would be a forward
-reference.
+T079 (Gate E, Phase 6) uses the Phase-5 role-assignment mutation (T065,
+``PlatformRbacService.assign_role()``) — quickstart.md §9 explicitly
+permits "whichever privileged mutation was under test", and this was the
+correct choice at Phase 6, before tenant suspension existed.
+
+T101 (Gate C, Phase 7) adds the **fuller** 3-way (now 4-way) proof
+against the real tenant-suspension mutation (T088,
+``TenantLifecycleService.suspend()``), once it legally exists: a forced
+audit-write failure must roll back the ``Company.status`` change, the
+``pre_suspension_status`` write, the ``access_invalidated_at`` watermark,
+**and** the ``OutboxRecord`` — all four, not just the state change.
 
 Simulates the constraint violation via ``unittest.mock.patch.object``
 raising a real ``sqlalchemy.exc.IntegrityError`` from
@@ -30,10 +35,15 @@ import uuid
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from core.events.outbox import EventOutboxRepository, OutboxRecord
 from modules.auth.models.user import User
+from modules.companies.models.company import Company
+from modules.companies.models.enums import CompanyStatus
+from modules.companies.repositories.company_repository import CompanyRepository
 from modules.platform_admin.models.platform_administrator import PlatformAdministrator
 from modules.platform_admin.models.platform_audit_event import PlatformAuditEvent
 from modules.platform_admin.repositories.platform_administrator_repository import (
@@ -50,6 +60,9 @@ from modules.platform_admin.services.platform_rbac_seed_service import (
     PlatformRbacSeedService,
 )
 from modules.platform_admin.services.platform_rbac_service import PlatformRbacService
+from modules.platform_admin.services.tenant_lifecycle_service import (
+    TenantLifecycleService,
+)
 
 
 def _make_administrator(db: Session, *, label: str) -> PlatformAdministrator:
@@ -165,3 +178,128 @@ class TestGateEAuditFailClosedOnRoleAssignment:
             .all()
         )
         assert len(events) == 1
+
+
+def _make_lifecycle_service(db: Session) -> TenantLifecycleService:
+    return TenantLifecycleService(
+        db=db,
+        company_repo=CompanyRepository(db),
+        outbox_repo=EventOutboxRepository(db),
+        audit=PlatformAuditService(db, PlatformAuditRepository(db)),
+    )
+
+
+def _make_company_for_suspension(db: Session, *, owner_id) -> Company:
+    suffix = uuid.uuid4().hex[:10]
+    company = Company(
+        legal_name=f"Audit Fail Closed Co {suffix}",
+        slug=f"audit-fail-closed-co-{suffix}",
+        owner_id=owner_id,
+        email=f"audit-fail-closed-co-{suffix}@example.test",
+        status=CompanyStatus.active.value,
+    )
+    db.add(company)
+    db.flush()
+    db.commit()
+    return company
+
+
+class TestGateCAuditFailClosedOnTenantSuspension:
+    """[T101] The fuller 4-way proof: state + pre_suspension_status +
+    access_invalidated_at + OutboxRecord all roll back together."""
+
+    def test_forced_audit_write_failure_rolls_back_suspension_and_outbox(
+        self, db_session: Session
+    ) -> None:
+        actor = _make_administrator(db_session, label="suspend-actor")
+        company = _make_company_for_suspension(db_session, owner_id=actor.user_id)
+        service = _make_lifecycle_service(db_session)
+
+        with patch.object(
+            PlatformAuditService,
+            "record",
+            side_effect=_simulated_constraint_violation(),
+        ):
+            with pytest.raises(IntegrityError):
+                service.suspend(
+                    company_id=company.id,
+                    actor_platform_administrator_id=actor.id,
+                    reason="Gate C forced-failure test",
+                )
+
+        # Nothing committed inside suspend() — simulate the real
+        # request-teardown rollback.
+        db_session.rollback()
+
+        reloaded = db_session.get(Company, company.id)
+        assert reloaded is not None
+        # 1. Company.status was never persisted as 'suspended'.
+        assert reloaded.status == CompanyStatus.active.value
+        # 2. pre_suspension_status was never persisted.
+        assert reloaded.pre_suspension_status is None
+        # 3. The access_invalidated_at watermark was never persisted.
+        assert reloaded.access_invalidated_at is None
+
+        # 4. No OutboxRecord for this company survived either.
+        outbox_events = (
+            db_session.execute(
+                select(OutboxRecord).where(OutboxRecord.aggregate_id == str(company.id))
+            )
+            .scalars()
+            .all()
+        )
+        assert outbox_events == []
+
+        # No audit row either.
+        audit_events = (
+            db_session.query(PlatformAuditEvent)
+            .filter(
+                PlatformAuditEvent.company_id == company.id,
+                PlatformAuditEvent.action == "tenant_lifecycle.suspend",
+            )
+            .all()
+        )
+        assert audit_events == []
+
+    def test_normal_suspension_success_still_commits_all_four(
+        self, db_session: Session
+    ) -> None:
+        """Positive control: without a forced failure, the exact same
+        mutation genuinely commits state + watermark + outbox + audit
+        together."""
+        actor = _make_administrator(db_session, label="suspend-actor-ok")
+        company = _make_company_for_suspension(db_session, owner_id=actor.user_id)
+        service = _make_lifecycle_service(db_session)
+
+        service.suspend(
+            company_id=company.id,
+            actor_platform_administrator_id=actor.id,
+            reason="Gate C success-path control",
+        )
+
+        reloaded = db_session.get(Company, company.id)
+        assert reloaded.status == CompanyStatus.suspended.value
+        assert reloaded.pre_suspension_status == CompanyStatus.active.value
+        assert reloaded.access_invalidated_at is not None
+
+        outbox_events = (
+            db_session.execute(
+                select(OutboxRecord).where(
+                    OutboxRecord.aggregate_id == str(company.id),
+                    OutboxRecord.event_type == "company.suspended",
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(outbox_events) == 1
+
+        audit_events = (
+            db_session.query(PlatformAuditEvent)
+            .filter(
+                PlatformAuditEvent.company_id == company.id,
+                PlatformAuditEvent.action == "tenant_lifecycle.suspend",
+            )
+            .all()
+        )
+        assert len(audit_events) == 1
