@@ -192,6 +192,26 @@ class PlatformRbacRepository:
         )
         return self.db.execute(stmt).scalar_one()
 
+    def get_active_administrator_ids_with_role(self, role_code: str) -> list[UUID]:
+        """List active `PlatformAdministrator` ids holding *role_code*
+        (Epic 9A, `RolloutService`, T126 — locates the bootstrap Platform
+        Owner as the audit actor for the one-time rollout data steps)."""
+        stmt = (
+            select(PlatformAdminRoleAssignment.platform_administrator_id)
+            .join(PlatformRole, PlatformRole.id == PlatformAdminRoleAssignment.role_id)
+            .join(
+                PlatformAdministrator,
+                PlatformAdministrator.id
+                == PlatformAdminRoleAssignment.platform_administrator_id,
+            )
+            .where(
+                PlatformRole.code == role_code,
+                PlatformAdministrator.is_active == True,  # noqa: E712
+            )
+            .distinct()
+        )
+        return list(self.db.execute(stmt).scalars().all())
+
     # ------------------------------------------------------------------
     # Effective permissions (FR-9A-142) — resolved per request, never cached
     # ------------------------------------------------------------------

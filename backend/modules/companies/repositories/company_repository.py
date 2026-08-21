@@ -194,6 +194,20 @@ class CompanyRepository:
         )
         return list(self.db.execute(stmt).scalars().all())
 
+    def list_without_subscription(self) -> list[Company]:
+        """Return all non-deleted companies with no `subscription_id` yet
+        (Epic 9A, `RolloutService`, T126). Bulk-assigning only these makes
+        the rollout step naturally idempotent and re-runnable: a company
+        already assigned in a prior run is never revisited.
+        """
+        stmt = (
+            select(Company)
+            .where(Company.subscription_id.is_(None))
+            .where(Company.status != CompanyStatus.deleted.value)
+            .order_by(Company.created_at)
+        )
+        return list(self.db.execute(stmt).scalars().all())
+
     def list_all(
         self,
         filters: dict[str, Any],

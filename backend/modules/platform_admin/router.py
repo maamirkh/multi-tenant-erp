@@ -57,6 +57,9 @@ from modules.platform_admin.dependencies import (
     get_current_platform_admin,
     require_platform_permission,
 )
+from modules.platform_admin.repositories.capability_repository import (
+    CapabilityRepository,
+)
 from modules.platform_admin.repositories.plan_repository import PlanRepository
 from modules.platform_admin.repositories.platform_administrator_repository import (
     PlatformAdministratorRepository,
@@ -73,6 +76,10 @@ from modules.platform_admin.repositories.platform_session_repository import (
 from modules.platform_admin.repositories.quota_repository import QuotaRepository
 from modules.platform_admin.repositories.subscription_repository import (
     SubscriptionRepository,
+)
+from modules.platform_admin.schemas.entitlement import (
+    CapabilityEntitlementResponse,
+    TenantEntitlementsResponse,
 )
 from modules.platform_admin.schemas.plan import (
     CreatePlanRequest,
@@ -104,6 +111,9 @@ from modules.platform_admin.schemas.subscription import (
 from modules.platform_admin.schemas.tenant_lifecycle import (
     TenantLifecycleActionRequest,
     TenantLifecycleResponse,
+)
+from modules.platform_admin.services.entitlement_service import (
+    PlatformEntitlementService,
 )
 from modules.platform_admin.services.plan_service import PlanService
 from modules.platform_admin.services.platform_administrator_service import (
@@ -784,5 +794,53 @@ async def assign_subscription(
     return StandardResponse(
         data=SubscriptionResponse.model_validate(subscription),
         message="Subscription assigned.",
+        meta=_meta(request),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Entitlements (T123) — UX-only read; the mount-level
+# require_capability_entitled dependency (T122) is the security boundary.
+# ---------------------------------------------------------------------------
+
+
+@tenant_router.get(
+    "/tenants/{companyId}/entitlements",
+    response_model=StandardResponse[TenantEntitlementsResponse],
+    summary="Effective entitlements for a tenant (Plan x Toggle x Override)",
+    dependencies=[Depends(require_platform_permission("platform.entitlements.read"))],
+    responses={404: {"description": "Company not found"}},
+)
+async def get_tenant_entitlements(
+    request: Request,
+    companyId: UUID = Path(...),  # noqa: N803 — matches contract's path parameter name
+    db: Session = Depends(get_db),
+) -> StandardResponse[TenantEntitlementsResponse]:
+    if CompanyRepository(db).get_by_id(companyId) is None:
+        raise NotFoundException(message="Company not found.")
+
+    service = PlatformEntitlementService(
+        db=db,
+        plan_repo=PlanRepository(db),
+        subscription_repo=SubscriptionRepository(db),
+    )
+    capabilities = CapabilityRepository(db).list_all(is_active=True)
+    entitlements = []
+    for capability in capabilities:
+        result = service.resolve_effective_entitlement(
+            company_id=companyId, capability_key=capability.key
+        )
+        entitlements.append(
+            CapabilityEntitlementResponse(
+                capability_key=capability.key,
+                available=result.available,
+                reason=result.reason,
+            )
+        )
+    return StandardResponse(
+        data=TenantEntitlementsResponse(
+            company_id=str(companyId), entitlements=entitlements
+        ),
+        message=f"{len(entitlements)} capability entitlement(s) resolved.",
         meta=_meta(request),
     )

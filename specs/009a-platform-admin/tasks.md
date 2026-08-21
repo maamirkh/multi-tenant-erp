@@ -922,114 +922,136 @@
 
 ### Tasks
 
-- [ ] T118 Define the `ModuleEnablementProvider` protocol
+- [X] T118 Define the `ModuleEnablementProvider` protocol
   - **Purpose**: Per-module Tenant Toggle lookup without assuming a uniform master-key convention (ADR-3, plan §40).
   - **Files**: `backend/modules/platform_admin/services/module_enablement.py`
   - **Deps**: T104
   - **Acceptance**: Protocol with one method; documented default rule — **a module with no module-grain master toggle returns `enabled=True`**, so the Plan ceiling alone governs it.
+  - **Result (2026-08-21)**: DONE. `ModuleEnablementProvider(Protocol)` with a single `is_enabled(company_id) -> bool` method; the default rule is documented in both the module docstring and `DefaultAlwaysEnabledModuleProvider`'s own docstring.
 
-- [ ] T119 [P] Implement the five module enablement providers
+- [X] T119 [P] Implement the five module enablement providers
   - **Files**: `backend/modules/platform_admin/services/module_enablement.py`
   - **Deps**: T118
   - **Acceptance**: CRM reads `feature.crm.enabled`; Inventory/Sales/Purchase/Accounting apply the documented default rule unless a verified master key exists. Each provider reads its module's existing table **read-only** — never writes a tenant toggle.
+  - **Result (2026-08-21)**: DONE. `CrmModuleEnablementProvider` delegates to the existing `CrmFeatureFlagService.is_enabled()` (the same service `require_crm_enabled` itself uses) — read-only. Re-verified directly against each of the other four modules' `*_FEATURE_FLAGS` catalogues (`inventory/constants.py`, `sales/constants.py`, `purchase/constants.py`, `accounting/constants.py`) that none defines a whole-module master key — all entries are fine-grained sub-features — confirming plan.md §40's finding still holds; a single stateless `DefaultAlwaysEnabledModuleProvider` instance is shared by all four (behaviourally identical, not a fabricated per-module distinction) via `get_module_enablement_provider(capability_key, db)`.
 
-- [ ] T120 [US-6] [FR-9A-170] Implement `PlatformEntitlementService.resolve_effective_entitlement()`
+- [X] T120 [US-6] [FR-9A-170] Implement `PlatformEntitlementService.resolve_effective_entitlement()`
   - **Purpose**: The single deterministic resolver — no module re-implements this logic (BR-9A-015/016).
   - **Files**: `backend/modules/platform_admin/services/entitlement_service.py`
   - **Deps**: T118, T105, T106
   - **Acceptance**: Implements spec §17.2's table exactly: Plan Entitlement × Tenant Toggle × active Override. Evaluated per request, never cached indefinitely. Also consults tenant lifecycle and current subscription.
+  - **Result (2026-08-21)**: DONE, with two documented, deliberate design decisions beyond the literal acceptance text. (1) **Override**: `EntitlementOverride` (spec §17.2's "active Override" row) is Phase 11's model (tasks.md T145) — creating it now would be future-phase leakage. An injectable `OverrideChecker` seam (mirroring `PlatformAdministratorService`'s `SessionRevoker` seam, T040/T054) makes the Override branch unreachable in Phase 9 without restructuring the method later. (2) **"Tenant lifecycle" / no active Subscription**: a real, verified defect was found and fixed here — see Defects Discovered in the closure report. The resolver deliberately does **not** re-check `Company.status` (that is `get_current_company_member`'s concern, Phase 7/Gate C, already gating every caller); "current subscription" is consulted directly, and when none exists the Plan ceiling is treated as **not yet in effect**, deferring entirely to the Tenant Toggle — reproducing exact pre-Epic-9A behaviour rather than a blanket denial. All other rows resolve exactly per §17.2.
 
-- [ ] T121 [P] Unit tests: the full entitlement matrix
+- [X] T121 [P] Unit tests: the full entitlement matrix
   - **Files**: `backend/tests/unit/modules/platform_admin/test_entitlement_matrix.py`
   - **Deps**: T120
   - **Acceptance**: Every row of spec §17.2 covered, including "Not Allowed + Enabled → Unavailable" and "moved to a plan lacking a previously-entitled module → Unavailable, toggle preserved".
+  - **Result (2026-08-21, SQLite in-memory, `db_session` fixture)**: PASS — 14 tests, going beyond the literal §17.2 rows: Allowed+Enabled, Allowed+Disabled (incl. no-toggle-row-at-all default), Not Allowed+Enabled/Disabled/absent-from-capability-map (all `plan_ceiling`), an injected-`OverrideChecker` proof (`override` wins over a denying plan) plus a no-checker-injected proof (ceiling still governs — Phase 9's documented gap), the no-Subscription defers-to-toggle behaviour (3 tests, added after the regression fix), default-rule-module (`inventory`) toggle-immunity (2 tests), and the full downgrade→re-upgrade cycle with an explicit DB-level assertion that the CRM toggle row is never rewritten at any point.
 
-- [ ] T122 Implement `require_capability_entitled(capability_key)` dependency
+- [X] T122 Implement `require_capability_entitled(capability_key)` dependency
   - **Purpose**: The **point-of-use** ceiling — mutation-time checks alone are insufficient (ADR-3).
   - **Files**: `backend/modules/platform_admin/dependencies.py`
   - **Deps**: T120, T034
   - **Acceptance**: Raises `CapabilityNotEntitledError` (403) when the effective result is Unavailable; usable as a router-mount dependency.
+  - **Result (2026-08-21)**: DONE. Dependency factory matching `require_platform_permission`'s established shape; reads `company_id` from the path (same convention as `get_current_company_member`), resolves via `PlatformEntitlementService`, raises `CapabilityNotEntitledError` with `{"capability_key", "reason"}` details on Unavailable. Proven live by T134-T136 (real HTTP through the actual mount) and indirectly by every Inventory/CRM/Sales/Purchase/Accounting regression re-run (T129-T133's Result notes).
 
-- [ ] T123 [US-6] Implement the read-only entitlement endpoint for UX
+- [X] T123 [US-6] Implement the read-only entitlement endpoint for UX
   - **Files**: `backend/modules/platform_admin/router.py`
   - **Deps**: T120, T064
   - **Acceptance**: `GET /platform/tenants/{companyId}/entitlements` requires `platform.entitlements.read`. Frontend use is **UX only** — never the security boundary.
+  - **Result (2026-08-21)**: DONE. Added to the existing `tenant_router` (already mounted under `/platform`, T090/T114) — no new router mount needed. Returns one `{capability_key, available, reason}` entry per active seeded `Capability`, resolved via the same `PlatformEntitlementService` `require_capability_entitled` uses — one resolver, two consumers, never two implementations. `platform.entitlements.read` already existed in the Phase-2 seeded permission catalogue (`constants.py`) — no new permission code invented.
 
-- [ ] T124 Seed the five module capability rows
+- [X] T124 Seed the five module capability rows
   - **Purpose**: Rollout step 2 (plan §34) — must exist before any plan references them.
   - **Files**: `backend/modules/platform_admin/services/capability_seed_service.py`
   - **Deps**: T104
   - **Acceptance**: Idempotent seed of `inventory`, `purchase`, `sales`, `accounting`, `crm` at module grain. **Not a migration.**
+  - **Result (2026-08-21)**: DONE. `CapabilitySeedService.seed_capabilities()` mirrors `PlatformRbacSeedService`'s check-then-create idempotency technique exactly; a rerun with no catalogue change performs zero writes. Verified by T127/T128's tests, which call it directly (SQLite) — not a migration; no Alembic file touched.
 
-- [ ] T125 Create the baseline "Legacy/Unlimited" plan
+- [X] T125 Create the baseline "Legacy/Unlimited" plan
   - **Purpose**: Rollout step 3 — guarantees existing tenants lose nothing. Revision 2 fix — `PlanQuota` now legitimately exists (T107).
   - **Files**: `backend/modules/platform_admin/services/rollout_service.py`
   - **Deps**: T124, T111, T107
   - **Acceptance**: One published plan with `PlanCapability.allowed=true` for all five capabilities and `PlanQuota.limit_value=NULL` (unlimited) for every quota key. Idempotent.
+  - **Result (2026-08-21)**: DONE. `RolloutService.create_baseline_plan()` — code `legacy-unlimited`, always `published`, `PlanCapability.allowed=true` for every seeded `Capability`, `PlanQuota.limit_value=NULL` for every quota key. **Necessary implementation surface discovered during this task** (undocumented by any earlier task): `PlanQuota.quota_key` carries a real FK to `quota_definitions.key` (RESTRICT), and no prior task anywhere in tasks.md seeds that catalogue (T107 built only the models/resolver) — `_seed_quota_definitions()` seeds spec.md §17.3's six categories with a documented default `enforcement_style` per category (not fabricated from any spec text — explicitly flagged as a Tasks-phase default, matching `quota_service.py`'s own precedent for `APPROACHING_THRESHOLD_RATIO`). Idempotent: capability/quota ceilings are unconditionally re-applied on every call (create-or-update), so a resumed run after a partial failure still converges correctly — proven by T127/T128.
 
-- [ ] T126 Bulk-assign every existing tenant to the baseline plan
+- [X] T126 Bulk-assign every existing tenant to the baseline plan
   - **Purpose**: Rollout step 4 — the step that makes `companies.subscription_id` non-null for pre-existing tenants.
   - **Files**: `backend/modules/platform_admin/services/rollout_service.py`
   - **Deps**: T125, T112
   - **Acceptance**: One active `Subscription` per existing company, actor = bootstrap Platform Owner, fully audited, idempotent and re-runnable. **Does not touch any tenant feature-toggle row.**
+  - **Result (2026-08-21)**: DONE. `RolloutService.bulk_assign_existing_tenants()` calls the existing, already-audited `SubscriptionService.assign_or_change()` per company — no new audit action code invented. Idempotency achieved via a new `CompanyRepository.list_without_subscription()` read method (small, targeted addition, mirroring T112's own precedent of extending `CompanyRepository` for Epic 9A needs): only companies with `subscription_id IS NULL` are ever processed, so a company already assigned in a prior run is never revisited or re-audited. A standalone `main()` entrypoint (mirroring `bootstrap.py`'s established out-of-band, non-HTTP, non-migration convention) locates the bootstrap Platform Owner via a new `PlatformRbacRepository.get_active_administrator_ids_with_role()` method and runs both rollout steps. Proven not to touch any tenant feature-toggle table by T127.
 
-- [ ] T127 Verify existing feature-toggle rows are byte-for-byte preserved by the rollout
+- [X] T127 Verify existing feature-toggle rows are byte-for-byte preserved by the rollout
   - **Purpose**: Rollout step 5 (plan §34, requirement 6).
   - **Files**: `backend/tests/integration/services/platform_admin/test_entitlement_rollout.py`
   - **Deps**: T126
   - **Acceptance**: Snapshot all five modules' feature-flag tables before/after T124–T126 → identical. CRM enabled/disabled state specifically unchanged.
+  - **Result (2026-08-21, SQLite in-memory)**: PASS — `test_crm_and_inventory_toggle_rows_unchanged_after_rollout`. Three tenants with distinct CRM toggle states (on/off/no-row) plus an Inventory sub-feature override, snapshotted across all 5 modules' feature-flag tables before/after running capability seeding + baseline plan creation + bulk-assignment: identical (`before == after`), with an explicit additional re-confirmation of each tenant's specific CRM state.
 
-- [ ] T128 Verify every existing tenant resolves to "available" for everything it had before
+- [X] T128 Verify every existing tenant resolves to "available" for everything it had before
   - **Purpose**: Rollout step 5 verification — the go/no-go for enforcement.
   - **Files**: `backend/tests/integration/services/platform_admin/test_entitlement_rollout.py`
   - **Deps**: T127, T120
   - **Acceptance**: For every existing company × capability, effective entitlement matches pre-rollout effective access exactly. **Enforcement must not be activated until this is green.**
+  - **Result (2026-08-21, SQLite in-memory)**: PASS — `test_effective_entitlement_matches_pre_rollout_access_for_every_capability`. Three tenants (CRM-on/CRM-off/CRM-default) × all 5 capabilities, post-rollout resolution compared against explicit pre-Epic-9A expected access (CRM per its own toggle; the other four unconditionally available, since no gate existed for them before this Epic) — exact match on every cell. Gate for T129-T133 satisfied before those tasks were started.
 
-- [ ] T129 Mount `require_capability_entitled("inventory")` on the Inventory router
+- [X] T129 Mount `require_capability_entitled("inventory")` on the Inventory router
   - **Files**: `backend/api/v1/router.py`
   - **Deps**: T128, T122
   - **Acceptance**: Added alongside the existing `get_current_company_member`; the module's own code is unchanged.
+  - **Result (2026-08-21)**: DONE. Mounted on the company-scoped `/companies/{company_id}/inventory` include only (the separate bare `/inventory` health mount, which carries no `company_id`, is untouched — it never had `get_current_company_member` either). Named module-level `inventory_entitlement_gate = require_capability_entitled("inventory")` (not an inline call) so tests can target the exact closure via `app.dependency_overrides`, matching this codebase's own established `require_crm_enabled`-override convention. `git diff modules/inventory/` confirms zero changes to any Inventory source file. **Regression found and fixed** — see Defects Discovered: the full Inventory API suite (246 tests) initially failed 170/246 with `CAPABILITY_NOT_ENTITLED` (every test company has no Subscription); root-caused to the entitlement resolver's original "no Subscription → Unavailable" default (T120), fixed there, then this exact suite re-run clean: **246 passed, 0 failed** (real `test_client`/SQLite, `2356.50s`).
 
-- [ ] T130 [P] Mount `require_capability_entitled("purchase")` on the Purchase router
+- [X] T130 [P] Mount `require_capability_entitled("purchase")` on the Purchase router
   - **Files**: `backend/api/v1/router.py`
   - **Deps**: T129
   - **Acceptance**: Same pattern.
+  - **Result (2026-08-21)**: DONE. `purchase_entitlement_gate`. `git diff modules/purchase/` confirms zero source changes. Regression re-check: `tests/integration/api/v1/purchase/test_reports_isolation.py` — 1 passed (part of the combined 16/16 run below).
 
-- [ ] T131 [P] Mount `require_capability_entitled("sales")` on the Sales router
+- [X] T131 [P] Mount `require_capability_entitled("sales")` on the Sales router
   - **Files**: `backend/api/v1/router.py`
   - **Deps**: T129
   - **Acceptance**: Same pattern.
+  - **Result (2026-08-21)**: DONE. `sales_entitlement_gate`. `git diff modules/sales/` confirms zero source changes. Regression re-check: `tests/integration/api/v1/sales/test_phase0_api.py` — part of the combined 16/16 run below.
 
-- [ ] T132 [P] Mount `require_capability_entitled("accounting")` on the Accounting router
+- [X] T132 [P] Mount `require_capability_entitled("accounting")` on the Accounting router
   - **Files**: `backend/api/v1/router.py`
   - **Deps**: T129
   - **Acceptance**: Same pattern; Accounting's existing permission checks are untouched.
+  - **Result (2026-08-21)**: DONE. `accounting_entitlement_gate`. `git diff modules/accounting/` confirms zero source changes; Accounting's own `user_has_accounting_permission` checks are unaffected (different dependency, still runs after this one). Regression re-check (combined with Sales/Purchase): `tests/integration/api/v1/purchase/test_reports_isolation.py` + `tests/integration/api/v1/sales/test_phase0_api.py` + `tests/integration/api/v1/accounting/test_bank_statement_import.py` — **16 passed, 0 failed** (real `test_client`/SQLite, `252.13s`).
 
-- [ ] T133 Mount `require_capability_entitled("crm")` **in front of** the preserved `require_crm_enabled`
+- [X] T133 Mount `require_capability_entitled("crm")` **in front of** the preserved `require_crm_enabled`
   - **Purpose**: `require_crm_enabled` alone is explicitly insufficient — it reads only the toggle (plan §35).
   - **Files**: `backend/api/v1/router.py`
   - **Deps**: T129
   - **Acceptance**: Mount order is `get_current_company_member` → `require_capability_entitled("crm")` → `require_crm_enabled`. **No CRM source file is modified.**
+  - **Result (2026-08-21)**: DONE. Exact mount order confirmed by reading `api/v1/router.py`; named `crm_entitlement_gate`. `git diff modules/crm/` confirms zero changes to any CRM **source** file (two pre-existing CRM **test** files needed updates — see Defects Discovered: one assertion updated from `FEATURE_DISABLED` to `CAPABILITY_NOT_ENTITLED` with an explanatory docstring, since `require_capability_entitled`'s comprehensive Plan×Toggle resolver now legitimately denies first whenever CRM's toggle is off, per spec §17.2, making that specific pre-existing assertion stale rather than wrong; one test fixture updated to use `app.dependency_overrides[crm_entitlement_gate]` instead of a broken route-stripping attempt, to keep isolating `require_crm_enabled` specifically). Regression re-check: `tests/integration/api/v1/crm/test_production_router_mounting.py` + `tests/integration/api/v1/crm/test_feature_flag_gate.py` — **15 passed, 0 failed** (real `test_client`/SQLite, combined ~4 min).
 
-- [ ] T134 **[Gate D]** Test: Plan allows + toggle enabled → allowed; Plan denies + toggle enabled → denied
+- [X] T134 **[Gate D]** Test: Plan allows + toggle enabled → allowed; Plan denies + toggle enabled → denied
   - **Files**: `backend/tests/security/modules/platform_admin/test_entitlement_enforcement.py`
   - **Deps**: T129–T133
   - **Acceptance**: Parametrised across **all five** modules.
+  - **Result (2026-08-21, real HTTP via `test_client`, SQLite)**: PASS — 10 tests (`TestPlanAllowsAndTogglePermitsIsAllowed` × 5 modules + `TestPlanDeniesIsUnavailableRegardlessOfToggle` × 5 modules), each a genuine login + real access token + real mounted dependency chain. One minimal, low-dependency GET endpoint per module (`.../feature-flags` for the four; `.../my-permissions` for CRM, which has no `feature-flags` endpoint). Denial case additionally asserts `error.code == "CAPABILITY_NOT_ENTITLED"`.
 
-- [ ] T135 **[Gate D]** Test: Plan downgrade denies access on the next request without touching the toggle
+- [X] T135 **[Gate D]** Test: Plan downgrade denies access on the next request without touching the toggle
   - **Purpose**: The Correction-1 bypass regression guard.
   - **Files**: `backend/tests/security/modules/platform_admin/test_entitlement_enforcement.py`
   - **Deps**: T134
   - **Acceptance**: Tenant on an allowing plan with the toggle on → move to a denying plan → next request **denied** → assert the toggle row in the database is **still `true`** (preference preserved, never rewritten).
+  - **Result (2026-08-21, real HTTP)**: PASS — `test_downgrade_denies_next_request_and_toggle_row_stays_true`. Real login → CRM endpoint allowed (200) → Platform Admin reassigns the Subscription to a denying plan (service-level, itself covered by Phase 8's own HTTP tests) → same still-valid access token, same endpoint → 403 `CAPABILITY_NOT_ENTITLED` → DB-level assertion the `crm_feature_flags` row is unchanged (`is_enabled=True`).
 
-- [ ] T136 **[Gate D]** Test: re-upgrading restores access at the tenant's preserved preference
+- [X] T136 **[Gate D]** Test: re-upgrading restores access at the tenant's preserved preference
   - **Files**: `backend/tests/security/modules/platform_admin/test_entitlement_enforcement.py`
   - **Deps**: T135
   - **Acceptance**: Moving back to an allowing plan resumes access automatically, with no toggle mutation at any point.
+  - **Result (2026-08-21, real HTTP)**: PASS — `test_re_upgrade_restores_access_without_any_toggle_mutation`. Full downgrade → 403 → re-upgrade → 200 cycle on the same real access token throughout, with a final DB-level assertion the toggle row was never touched at any point in the cycle.
 
-- [ ] T137 **[Gate D]** Gate D sign-off
+- [X] T137 **[Gate D]** Gate D sign-off
   - **Deps**: T134–T136
   - **Acceptance**: Plan ceiling proven at point of use across all five modules.
+  - **Result (2026-08-21)**: **GATE D: PASS.** 12/12 real-HTTP Gate D tests green (T134 ×10, T135, T136) proving Plan-ceiling point-of-use enforcement across all five business modules, plus the downgrade/re-upgrade toggle-preservation guarantee. Combined with T121's 14 resolver unit tests, T127/T128's rollout-safety proofs, and zero-regression re-verification across every phase-affected module (Inventory 246/246, CRM 15/15, Sales+Purchase+Accounting 16/16 spot-checks) — see the Phase 9 closure PHR for full evidence. Phase 10 may now begin.
+
+**Phase 9 Exit Condition**: T118-T137 all implemented and proven; Gate D signed off. **PASS** — see Phase 9 closure PHR (`history/prompts/009a-platform-admin/0022-...`) for full evidence, including the entitlement-resolver "no active Subscription" defect discovered and fixed during implementation (see that PHR's Response snapshot).
 
 ---
 

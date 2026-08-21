@@ -45,6 +45,7 @@ from modules.crm.dependencies import require_crm_enabled
 from modules.crm.router import admin_router as crm_admin_router
 from modules.crm.router import router as crm_router
 from modules.inventory.router import router as inventory_router
+from modules.platform_admin.dependencies import require_capability_entitled
 from modules.platform_admin.router import admin_router as platform_admin_admin_router
 from modules.platform_admin.router import plan_router as platform_admin_plan_router
 from modules.platform_admin.router import rbac_router as platform_admin_rbac_router
@@ -95,30 +96,72 @@ router.include_router(
     inventory_router,
     prefix="/inventory",
 )
+# Point-of-use Plan Entitlement enforcement (Epic 9A Phase 9, T129-T133,
+# plan.md §13.1 Correction 1): require_capability_entitled(...) is the
+# *primary* runtime enforcement point, added alongside each module's
+# existing get_current_company_member mount — no module's own source is
+# modified. Only activated after the rollout's go/no-go verification
+# (T127/T128) confirmed every existing tenant already resolves to
+# "available" for everything it had before (plan.md §34 step 6/7).
+#
+# Named module-level instances (rather than inline `require_capability_
+# entitled("x")` calls) so tests can target the exact closure object via
+# `app.dependency_overrides[...]` — the same technique this codebase's
+# own `tests/integration/api/v1/crm/conftest.py` already relies on for
+# `require_crm_enabled`.
+inventory_entitlement_gate = require_capability_entitled("inventory")
+purchase_entitlement_gate = require_capability_entitled("purchase")
+sales_entitlement_gate = require_capability_entitled("sales")
+accounting_entitlement_gate = require_capability_entitled("accounting")
+crm_entitlement_gate = require_capability_entitled("crm")
+
 router.include_router(
     inventory_router,
     prefix="/companies/{company_id}/inventory",
-    dependencies=[Depends(get_current_company_member)],
+    dependencies=[
+        Depends(get_current_company_member),
+        Depends(inventory_entitlement_gate),
+    ],
 )
 router.include_router(
     purchase_router,
     prefix="/companies/{company_id}/purchase",
-    dependencies=[Depends(get_current_company_member)],
+    dependencies=[
+        Depends(get_current_company_member),
+        Depends(purchase_entitlement_gate),
+    ],
 )
 router.include_router(
     sales_router,
     prefix="/companies/{company_id}/sales",
-    dependencies=[Depends(get_current_company_member)],
+    dependencies=[
+        Depends(get_current_company_member),
+        Depends(sales_entitlement_gate),
+    ],
 )
 router.include_router(
     accounting_router,
     prefix="/companies/{company_id}/accounting",
-    dependencies=[Depends(get_current_company_member)],
+    dependencies=[
+        Depends(get_current_company_member),
+        Depends(accounting_entitlement_gate),
+    ],
 )
+# CRM: require_crm_enabled alone is explicitly insufficient (plan.md
+# §13.1/§35 Correction 1) — it reads only crm_feature_flags and cannot
+# see the Plan ceiling. require_capability_entitled("crm") is mounted
+# *in front of* it, unmodified, so effective access is genuinely
+# Plan x Toggle: the Plan ceiling denies first; the existing toggle gate
+# continues to honour the tenant's own choice within what the Plan
+# allows. No CRM source file is modified.
 router.include_router(
     crm_router,
     prefix="/companies/{company_id}/crm",
-    dependencies=[Depends(get_current_company_member), Depends(require_crm_enabled)],
+    dependencies=[
+        Depends(get_current_company_member),
+        Depends(crm_entitlement_gate),
+        Depends(require_crm_enabled),
+    ],
 )
 # CRM module administration (status/enable/disable) is mounted separately,
 # without require_crm_enabled: a company must be able to enable CRM through

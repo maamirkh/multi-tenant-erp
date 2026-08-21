@@ -32,9 +32,11 @@ from core.config.settings import Settings, get_settings
 from core.database.session import get_db
 from core.exceptions.base import UnauthorizedException
 from modules.platform_admin.exceptions import (
+    CapabilityNotEntitledError,
     InsufficientPlatformPermissionError,
     PlatformSessionInvalidError,
 )
+from modules.platform_admin.repositories.plan_repository import PlanRepository
 from modules.platform_admin.repositories.platform_administrator_repository import (
     PlatformAdministratorRepository,
 )
@@ -43,6 +45,12 @@ from modules.platform_admin.repositories.platform_rbac_repository import (
 )
 from modules.platform_admin.repositories.platform_session_repository import (
     PlatformSessionRepository,
+)
+from modules.platform_admin.repositories.subscription_repository import (
+    SubscriptionRepository,
+)
+from modules.platform_admin.services.entitlement_service import (
+    PlatformEntitlementService,
 )
 from modules.platform_admin.services.platform_jwt_service import PlatformJwtService
 
@@ -156,5 +164,57 @@ def require_platform_permission(code: str) -> Callable[..., PlatformPrincipal]:
                 message=f"Missing required Platform permission: {code}."
             )
         return principal
+
+    return _dependency
+
+
+def require_capability_entitled(capability_key: str) -> Callable[..., None]:
+    """Dependency factory: the **point-of-use** Plan Entitlement ceiling
+    (T122, ADR-3, plan.md §13.1 Correction 1). Mounted alongside
+    ``get_current_company_member`` on every entitled module's router
+    include — the same single place the repository already centralises
+    per-module request gating (§3.10), so every endpoint in that module
+    is covered automatically, with no per-endpoint annotation to forget.
+
+    Resolves fresh per request via the single authoritative
+    ``PlatformEntitlementService`` (never cached, FR-9A-170) and raises
+    ``CapabilityNotEntitledError`` (403) when the effective result is
+    Unavailable. This is the *primary* runtime enforcement point — a
+    module's own existing tenant-toggle gate (e.g. CRM's
+    ``require_crm_enabled``) is a secondary guard that continues to
+    honour the tenant's own choice *within* what this ceiling allows.
+
+    Usage::
+
+        router.include_router(
+            crm_router,
+            dependencies=[
+                Depends(get_current_company_member),
+                Depends(require_capability_entitled("crm")),
+                Depends(require_crm_enabled),
+            ],
+        )
+    """
+
+    def _dependency(
+        company_id: UUID,
+        db: Session = Depends(get_db),
+    ) -> None:
+        service = PlatformEntitlementService(
+            db=db,
+            plan_repo=PlanRepository(db),
+            subscription_repo=SubscriptionRepository(db),
+        )
+        result = service.resolve_effective_entitlement(
+            company_id=company_id, capability_key=capability_key
+        )
+        if not result.available:
+            raise CapabilityNotEntitledError(
+                message=(
+                    f"The '{capability_key}' capability is not entitled under "
+                    "the current plan."
+                ),
+                details={"capability_key": capability_key, "reason": result.reason},
+            )
 
     return _dependency
