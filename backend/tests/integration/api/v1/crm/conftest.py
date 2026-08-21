@@ -29,7 +29,30 @@ feature-flag gate itself is thoroughly covered by its own dedicated
 fixture (``flag_gated_client`` in ``test_feature_flag_gate.py``), so
 disabling it here does not remove any real coverage.
 
-Task: T032/T041 (tasks.md Phases 3-4); flag-override fix: T079 (Phase 9).
+**Epic 9A Phase 9 update (T133 landed)**: the production mount also
+gained ``require_capability_entitled("crm")`` ahead of
+``require_crm_enabled`` (plan.md §13.1). This is a *separate* dependency
+object — overriding ``require_crm_enabled`` alone does not neutralise it.
+Discovered via a real-Docker/PostgreSQL full-suite regression run: every
+test built on this fixture that doesn't explicitly assign a Subscription
+resolves via the "no Subscription → defer to Toggle" path
+(`entitlement_service.py`), and CRM's toggle defaults to *disabled* with
+no override row — so every one of those requests started failing with
+403 ``CAPABILITY_NOT_ENTITLED`` instead of reaching CRM's business logic
+at all (~75 pre-existing tests across `test_lead_api.py`,
+`test_opportunity_api.py`, `test_activity_api.py`,
+`test_pipeline_api.py`, `test_customer_360_api.py`,
+`test_lead_conversion_api.py`, `test_permission_enforcement.py`,
+`test_reports_api.py`, `tests/security/crm/test_tenant_and_security.py`).
+``crm_entitlement_gate`` (the named instance in ``api/v1/router.py``,
+added for exactly this purpose) is therefore also overridden to a no-op
+HERE, for the same reason and by the same mechanism as
+``require_crm_enabled`` above — the Plan-ceiling/entitlement layer is not
+this fixture's concern; it is covered by its own dedicated Gate D tests
+(``tests/security/modules/platform_admin/test_entitlement_enforcement.py``).
+
+Task: T032/T041 (tasks.md Phases 3-4); flag-override fix: T079 (Phase 9);
+entitlement-override fix: T133 (Epic 9A Phase 9).
 """
 
 from __future__ import annotations
@@ -56,9 +79,10 @@ _TEST_ARGON2_KWARGS: dict[str, int] = {
 @pytest.fixture
 def crm_client(db_session: Session) -> Generator[TestClient, None, None]:
     """A TestClient identical to the shared ``test_client`` fixture, with
-    ``require_crm_enabled`` overridden to a no-op (see module docstring)
-    so every CRM route behaves as it did before T079's production
-    mounting — test-only, zero production file changes."""
+    ``require_crm_enabled`` AND ``require_capability_entitled("crm")``
+    both overridden to a no-op (see module docstring) so every CRM route
+    behaves as it did before Epic 9A's production mounting — test-only,
+    zero production file changes."""
     from main import create_app
     from modules.crm.dependencies import require_crm_enabled
     from modules.crm.router import router as crm_router
@@ -77,9 +101,12 @@ def crm_client(db_session: Session) -> Generator[TestClient, None, None]:
             **_TEST_ARGON2_KWARGS,
         )
     )
+    from api.v1.router import crm_entitlement_gate
+
     app.include_router(crm_router, prefix="/api/v1/companies/{company_id}/crm")
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[require_crm_enabled] = lambda: None
+    app.dependency_overrides[crm_entitlement_gate] = lambda: None
 
     with patch("main.run_migrations"):
         with TestClient(app, raise_server_exceptions=False) as client:
