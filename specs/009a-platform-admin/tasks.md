@@ -1051,7 +1051,7 @@
   - **Acceptance**: Plan ceiling proven at point of use across all five modules.
   - **Result (2026-08-21)**: **GATE D: PASS.** 12/12 real-HTTP Gate D tests green (T134 ×10, T135, T136) proving Plan-ceiling point-of-use enforcement across all five business modules, plus the downgrade/re-upgrade toggle-preservation guarantee. Combined with T121's 14 resolver unit tests, T127/T128's rollout-safety proofs, and zero-regression re-verification across every phase-affected module (Inventory 246/246, CRM 15/15, Sales+Purchase+Accounting 16/16 spot-checks) — see the Phase 9 closure PHR for full evidence. Phase 10 may now begin.
 
-**Phase 9 Exit Condition**: T118-T137 all implemented and proven; Gate D signed off. **PASS** — see Phase 9 closure PHR (`history/prompts/009a-platform-admin/0022-...`) for full evidence, including the entitlement-resolver "no active Subscription" defect discovered and fixed during implementation (see that PHR's Response snapshot).
+**Phase 9 Exit Condition**: T118-T137 all implemented and proven; Gate D signed off. **PASS** — see Phase 9 closure PHR (`history/prompts/009a-platform-admin/0022-...`) for full evidence, including two real defects discovered and fixed: (1) the entitlement-resolver "no active Subscription" defect found during initial implementation (commit `d12365f`); (2) the shared `crm_client` test fixture's missing `crm_entitlement_gate` override, found during post-closure real-Docker/PostgreSQL verification (commit `6eb598f`) — full backend suite went from 79 failed to 4 failed/5814 passed/8 skipped after the fix, with all 4 remaining failures individually confirmed pre-existing/load-sensitive and unrelated to Phase 9 (see PHR Response snapshot for the full characterization).
 
 ---
 

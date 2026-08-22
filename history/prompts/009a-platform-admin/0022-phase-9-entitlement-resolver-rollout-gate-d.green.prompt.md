@@ -31,6 +31,7 @@ files:
   - backend/tests/security/modules/platform_admin/test_entitlement_enforcement.py
   - backend/tests/integration/api/v1/crm/test_production_router_mounting.py
   - backend/tests/integration/api/v1/crm/test_feature_flag_gate.py
+  - backend/tests/integration/api/v1/crm/conftest.py (follow-up fix, commit 6eb598f, after real-Docker verification)
 tests:
   - backend/tests/unit/modules/platform_admin/test_entitlement_matrix.py (14 passed)
   - backend/tests/integration/services/platform_admin/test_entitlement_rollout.py (2 passed)
@@ -38,12 +39,19 @@ tests:
   - backend/tests/integration/api/v1/crm/test_production_router_mounting.py (3 passed)
   - backend/tests/integration/api/v1/crm/test_feature_flag_gate.py (12 passed)
   - backend/tests/integration/api/v1/platform_admin/test_company_access.py (1 passed, Phase 7 regression re-check)
-  - backend/tests/integration/api/v1/inventory/ full suite (246 passed, 0 failed, module regression)
-  - backend/tests/integration/api/v1/purchase/test_reports_isolation.py (1 passed, spot-check)
-  - backend/tests/integration/api/v1/sales/test_phase0_api.py (passed, spot-check)
-  - backend/tests/integration/api/v1/accounting/test_bank_statement_import.py (passed, spot-check; 16 passed combined across the 3 spot-check files)
+  - backend/tests/integration/api/v1/inventory/ full suite (246 passed, 0 failed, module regression, SQLite venv)
+  - backend/tests/integration/api/v1/purchase/, sales/, accounting/ spot-checks (16 passed, SQLite venv)
   - ruff check: all changed/new files clean
   - mypy --strict: zero new errors attributable to Phase 9 (all findings pre-existing, in untouched code)
+  - REAL DOCKER/POSTGRESQL (post-closure, user-requested) — alembic head 061, no 062; live HTTP end-to-end
+    proof of Gate D (login -> deny/allow/downgrade/re-upgrade cycle) via curl against the actual running
+    uvicorn server; full backend suite twice — first run surfaced a second real defect (crm_client fixture,
+    ~76 failures), fixed (commit 6eb598f), second run: 4 failed, 5814 passed, 8 skipped, 4322.62s — all 4
+    failures individually re-run in isolation: 3 exactly match this project's pre-existing documented
+    baseline (test_settings_default_debug_is_false — deterministic env artifact; test_trial_balance_and_
+    balance_sheet_regression_guard and test_due_template_creates_and_posts_journal — load-sensitive,
+    isolation passes), 1 newly-observed but same class (test_supplier_with_contacts_and_address — passes
+    in isolation, unrelated Purchase E2E test, no connection to Phase 9's changes)
 ---
 
 ## Prompt
@@ -1286,37 +1294,75 @@ the regression. Two further pre-existing CRM test files needed
 alignment with the new production mount order (one via a corrected
 `FEATURE_DISABLED` -> `CAPABILITY_NOT_ENTITLED` expectation with an
 explanatory docstring; one via `app.dependency_overrides` on a newly
-class="added"-named `crm_entitlement_gate` module constant, replacing an
-initial broken route-stripping attempt that didn't account for FastAPI's
+named `crm_entitlement_gate` module constant, replacing an initial
+broken route-stripping attempt that didn't account for FastAPI's
 internal `_IncludedRouter` wrapper).
 
 Gate D: PASS — plan ceiling proven at point of use across all five
 modules, parametrised allow/deny tests, downgrade-denies-without-
 touching-toggle and re-upgrade-restores-access tests, all green.
 
+**Post-closure real-Docker/PostgreSQL verification (user-requested,
+commit 6eb598f)**: Docker Desktop was started, the full stack brought
+up, migration state re-verified on real Postgres (head `061`, no `062`),
+and a genuine live-HTTP end-to-end proof executed via `curl` against the
+actual running `uvicorn` server (not a test harness) — login, then the
+full Plan-deny / Plan-allow-but-toggle-off / toggle-on-succeeds /
+no-Subscription-defers-to-toggle cycle, all producing the exact expected
+status codes and `reason` values. The full backend suite (5818 tests)
+was then run against real PostgreSQL and surfaced a **second real
+defect**: the shared `crm_client` fixture (`tests/integration/api/v1/
+crm/conftest.py`, used by dozens of CRM test files since Phase 3)
+already neutralised `require_crm_enabled` but had never been taught
+about the new `require_capability_entitled("crm")` gate T133 added —
+~76 tests failed with `CAPABILITY_NOT_ENTITLED` instead of exercising
+CRM business logic at all. This had been missed by the Windows-venv/
+SQLite spot-checks performed during the original closure (which sampled
+individual CRM files, not this specific shared fixture's full blast
+radius). Fixed with the identical `app.dependency_overrides[
+crm_entitlement_gate]` technique already applied to `flag_gated_client`.
+Full suite re-run after the fix: **4 failed, 5814 passed, 8 skipped,
+4322.62s** — all 4 failures individually re-run in isolation and
+characterized: 3 exactly match this project's own pre-existing
+documented baseline (`test_settings_default_debug_is_false` — a
+deterministic `.env` `DEBUG=true` artifact; `test_trial_balance_and_
+balance_sheet_regression_guard` and `test_due_template_creates_and_
+posts_journal` — load-sensitive, pass in isolation), and 1 newly-observed
+but same class (`test_supplier_with_contacts_and_address`, an unrelated
+Purchase E2E test — passes in isolation, no connection to any Phase 9
+change).
+
 ## Outcome
 
-- ✅ Impact: Phase 9 complete; Gate D passed; entitlement enforcement is
-  now the live, authoritative point-of-use boundary for all five
-  business modules, with the one-time rollout guaranteeing zero access
-  loss for every pre-existing tenant.
+- ✅ Impact: Phase 9 complete; Gate D passed and re-verified against a
+  real running Docker/PostgreSQL stack via genuine HTTP calls (not only
+  a test harness); entitlement enforcement is now the live, authoritative
+  point-of-use boundary for all five business modules, with the one-time
+  rollout guaranteeing zero access loss for every pre-existing tenant.
 - 🧪 Tests: 43 new/updated Phase-9 tests green (unit + integration +
-  security); zero-regression re-verified via targeted re-runs of the
-  Inventory, Purchase, Sales, Accounting, and CRM API suites after the
-  resolver fix (see final report for exact counts). Full-repo regression
-  suite run deferred to real Docker/PostgreSQL per this session's
-  environment constraints (see final report §Pre-existing gaps).
+  security). Two full-repo regression runs on real PostgreSQL: the first
+  surfaced the `crm_client` fixture defect (~76 failures, fixed in
+  6eb598f); the second is clean modulo 3 exactly-documented pre-existing
+  failures and 1 newly-observed-but-same-class flaky test (4 failed,
+  5814 passed, 8 skipped, 4322.62s total).
 - 📁 Files: 5 new services/schemas, 5 modified platform_admin/api files,
-  2 small supporting-repository additions, 5 new/updated test files
-  (3 new Phase 9 test files, 2 pre-existing CRM test files corrected to
-  match the new, intentional production contract).
+  2 small supporting-repository additions, 6 new/updated test files
+  (3 new Phase 9 test files, 3 pre-existing CRM test files corrected to
+  match the new, intentional production contract — 2 in the original
+  closure commit, 1 follow-up after real-Docker verification).
 - 🔁 Next prompts: Phase 10 (Existing Feature-Toggle Mutation Hardening)
   — not started, per this phase's strict scope boundary.
-- 🧠 Reflection: The most valuable check this phase performed was running
-  a real pre-existing test file end-to-end after wiring the new
-  dependency, rather than trusting the unit-level resolver tests alone —
-  that is what surfaced the no-Subscription regression, which no amount
-  of resolver-level unit testing alone would have caught.
+- 🧠 Reflection: Two distinct real defects were found by two distinct
+  verification depths — the resolver's no-Subscription bug by running
+  one real pre-existing test file end-to-end (not trusting unit tests
+  alone), and the `crm_client` fixture bug only by running the *entire*
+  backend suite against *real* PostgreSQL (a Windows-venv spot-check of
+  individual CRM files sampled the wrong fixture and missed it entirely).
+  Neither would have surfaced from code review or resolver-level
+  reasoning alone — this reinforces that "run the real thing end-to-end,
+  broadly" is a stronger signal than either static review or narrow
+  targeted testing, especially for a phase that changes a shared,
+  early-in-the-dependency-chain gate.
 
 ## Evaluation notes (flywheel)
 
