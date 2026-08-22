@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
@@ -59,7 +60,7 @@ def _make_actor(db: Session) -> PlatformAdministrator:
     return administrator
 
 
-def _make_company(db: Session, *, owner_id) -> Company:
+def _make_company(db: Session, *, owner_id: UUID) -> Company:
     suffix = uuid.uuid4().hex[:10]
     company = Company(
         legal_name=f"T144 Ceiling Co {suffix}",
@@ -74,7 +75,11 @@ def _make_company(db: Session, *, owner_id) -> Company:
 
 
 def _subscribe(
-    db: Session, *, company: Company, actor: PlatformAdministrator, capability_map: dict
+    db: Session,
+    *,
+    company: Company,
+    actor: PlatformAdministrator,
+    capability_map: dict[str, bool],
 ) -> None:
     suffix = uuid.uuid4().hex[:10]
     plan = Plan(

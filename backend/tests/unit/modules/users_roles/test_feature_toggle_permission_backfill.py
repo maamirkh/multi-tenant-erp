@@ -7,6 +7,7 @@ mitigation).
 from __future__ import annotations
 
 import uuid
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -28,7 +29,7 @@ _NEW_CODES = {
 }
 
 
-def _make_company(db: Session, *, owner_id) -> Company:
+def _make_company(db: Session, *, owner_id: UUID) -> Company:
     suffix = uuid.uuid4().hex[:10]
     company = Company(
         legal_name=f"T141 Backfill Co {suffix}",
