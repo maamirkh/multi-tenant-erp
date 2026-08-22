@@ -1119,73 +1119,88 @@
 
 ### Tasks
 
-- [ ] T145 [US-6] Create `EntitlementOverride` model + repository
+- [X] T145 [US-6] Create `EntitlementOverride` model + repository
   - **Files**: `backend/modules/platform_admin/models/entitlement_override.py`, `repositories/override_repository.py`
   - **Deps**: T104
   - **Acceptance**: Per data-model.md; mandatory `reason`; nullable `expires_at` (**NULL = permanent, explicitly distinguishable**); partial unique index on active rows.
+  - **Result (2026-08-22)**: DONE. Model maps exactly onto migration 059's already-existing `entitlement_overrides` table (no new migration; `configure_mappers()` verified against real Postgres). `OverrideRepository` follows `QuotaRepository`'s flush-only convention (ADR-5).
 
-- [ ] T146 [US-6] [FR-9A-171] Implement override grant/revoke service
+- [X] T146 [US-6] [FR-9A-171] Implement override grant/revoke service
   - **Files**: `backend/modules/platform_admin/services/override_service.py`
   - **Deps**: T145, T037
   - **Acceptance**: Requires `platform.entitlements.override`; records tenant, capability, reason, actor, optional expiry; grant and revoke both audited.
+  - **Result (2026-08-22)**: DONE. `OverrideService.grant()`/`revoke()` stage the domain change + audit row (flush-only) then a single `db.commit()` (ADR-5). `grant()` raises the new `EntitlementOverrideAlreadyActiveError` (409) on a duplicate active row, mirroring the DB's own partial unique index. Wired into `router.py`'s `POST/DELETE /tenants/{companyId}/entitlement-overrides[/{overrideId}]`, matching the contract exactly.
 
-- [ ] T147 [FR-9A-172] Implement expiry-at-read-time semantics + audited automatic reversion
+- [X] T147 [FR-9A-172] Implement expiry-at-read-time semantics + audited automatic reversion
   - **Purpose**: Correctness must not depend on a scheduler (none exists in this repo, plan §40).
   - **Files**: `backend/modules/platform_admin/services/override_service.py`, `entitlement_service.py`
   - **Deps**: T146, T120
   - **Acceptance**: The resolver checks `expires_at > now()` at read time and never trusts a stale `is_active`; reversion writes an audit entry.
+  - **Result (2026-08-22)**: DONE. `OverrideService.has_active_override()` implements Phase 9's `OverrideChecker` Protocol seam exactly: an active row whose `expires_at` has passed is treated as inactive **and** auto-reverted (`is_active=false`, `revoked_at` stamped, audit action `entitlement_override.auto_revert_expired`, single commit) in the same call. Wired as the real `override_checker` at both call sites that resolve effective entitlement: `dependencies.py::require_capability_entitled` (the primary point-of-use gate) and `router.py::get_tenant_entitlements` (the read-only UX endpoint). The three business-module secondary guards (inventory/sales/purchase) call only `is_within_plan_ceiling()`, which never consults `_override_checker` — verified by reading each call site — so they correctly need no change. **Defect found and fixed during this task**: comparing a Postgres-`TIMESTAMPTZ`-sourced `expires_at` against `utcnow()` raised `TypeError: can't compare offset-naive and offset-aware datetimes` under the SQLite test fixture (SQLite does not round-trip `tzinfo`); fixed by applying the codebase's own existing `core.utils.datetime.ensure_utc()` helper (already used by `company_service.py`/`invitation_service.py` for the identical problem) at all three new expiry-comparison sites (`override_service.py`, `quota_admin_service.py`, `quota_repository.py`).
 
-- [ ] T148 [P] Test: override precedence and expiry
+- [X] T148 [P] Test: override precedence and expiry
   - **Files**: `backend/tests/unit/modules/platform_admin/test_override_precedence.py`
   - **Deps**: T147
   - **Acceptance**: Active override beats a denying plan; an **expired** override is never effective even if `is_active` was left stale.
+  - **Result (2026-08-22)**: DONE. 8/8 passing (real Postgres, `erp-system-api-1`). Covers: override beats a denying Plan; no override falls through to the Plan ceiling; a genuinely-expired-but-still-`is_active` row is excluded and auto-reverted with a verified audit row; future-expiry and permanent (`NULL`) overrides stay active; duplicate-grant rejection; revoke-then-regrant; revoke-on-missing raises `NotFoundException`.
 
-- [ ] T149 [US-10] Implement tenant quota override grant/revoke + quota administration service
+- [X] T149 [US-10] Implement tenant quota override grant/revoke + quota administration service
   - **Purpose**: The workflow layer over the Phase-8 `TenantQuotaOverride` model (T107) and resolver (T108) — no new model, no second resolver.
   - **Files**: `backend/modules/platform_admin/services/quota_admin_service.py`
   - **Deps**: T107, T108, T037
   - **Acceptance**: Requires `platform.quotas.override`; mandatory reason, actor, optional expiry; grant and revoke audited; expiry handled at read time exactly like entitlement overrides.
+  - **Result (2026-08-22)**: DONE. `QuotaAdminService.grant()`/`revoke()` mirror `OverrideService` exactly (flush + flush + single commit). **Contract note**: `platform-admin-v1.yaml` declares only `POST /tenants/{companyId}/quota-overrides` for this resource — no `DELETE .../{overrideId}` exists anywhere in the file (confirmed by a full re-read of the contract and a live 404 against the real running app for that exact path). `revoke()` is therefore a genuine, audited, tested service capability reachable only via `grant()`'s own auto-reversion of a stale row before creating a replacement — never exposed as an HTTP route (§10 API Contract Lock: no undeclared CRUD invented). Also fixed `QuotaRepository.get_active_override()` (pre-existing Phase 8 code) to be expiry-at-read-time aware — it previously only checked `is_active`, the same latent bug T147 fixed for entitlement overrides; added `get_active_override_ignoring_expiry()` for the grant-time stale-row check, `get_override_by_id()`, `revoke_override()`.
 
-- [ ] T150 [US-10] Create `UsageRecord` model + repository
+- [X] T150 [US-10] Create `UsageRecord` model + repository
   - **Files**: `backend/modules/platform_admin/models/usage_record.py`, `repositories/usage_repository.py`
   - **Deps**: T032
   - **Acceptance**: Per data-model.md (`company_id`, `metric_key`, `quantity`, `period_start/end`, `source`, `recorded_at`); PostgreSQL only — **no event-streaming infrastructure**.
+  - **Result (2026-08-22)**: DONE. Maps onto migration 060's already-existing `usage_records` table. `UsageRepository.upsert()` create-or-updates by `(company_id, metric_key, period_start, period_end)` — the idempotency mechanism T151 relies on.
 
-- [ ] T151 [FR-9A-060] Implement periodic usage computation
+- [X] T151 [FR-9A-060] Implement periodic usage computation
   - **Files**: `backend/modules/platform_admin/services/usage_service.py`
   - **Deps**: T150
   - **Acceptance**: Batch computation per company/metric/period (not per-request increments, so no row-locking design is needed); idempotent per period; manually triggerable.
+  - **Result (2026-08-22)**: DONE. `UsageService.compute_for_company()`/`compute_for_all_companies()`. **Scope note (documented, not fabricated)**: mirrors `SubscriptionService._current_live_usage()`'s own already-established boundary — `users` (live from `CompanyMember`) is the only quota category with a genuine live source anywhere in this codebase; the other five categories (`branches`, `transactions`, `storage`, `api_calls`, `ai_credits`) have none, so no `UsageRecord` is fabricated for them, which is exactly what makes T152's `unavailable` state correct for those keys. No HTTP route triggers this (the contract's only usage operation is a read-only `GET`) — "manually triggerable" means directly callable by an operator/test, per the module docstring.
 
-- [ ] T152 [FR-9A-062] Implement the "measurement unavailable" state
+- [X] T152 [FR-9A-062] Implement the "measurement unavailable" state
   - **Purpose**: A missing period must never render as `0` (spec Edge Case #15).
   - **Files**: `backend/modules/platform_admin/services/quota_service.py`
   - **Deps**: T151, T108
   - **Acceptance**: Absence of a current-period `UsageRecord` is an explicitly-checked `unavailable` state in the existing resolver, never an implicit zero fallback.
+  - **Result (2026-08-22)**: DONE — required **no code change** to `quota_service.py` itself. Phase 8's `resolve(current_usage=None)` already returns `unavailable` (its own docstring anticipated this: "Phase 11 consumes it... rather than re-implementing resolution logic"). The real wiring is the caller built in T157: `router.py::get_tenant_quotas` fetches the current-period `UsageRecord` via `UsageRepository.get_for_period()` and passes `record.quantity if record else None` into the unchanged `resolve()`.
 
-- [ ] T153 [P] Test: usage unavailability is distinguishable from genuine zero
+- [X] T153 [P] Test: usage unavailability is distinguishable from genuine zero
   - **Files**: `backend/tests/integration/services/platform_admin/test_usage.py`
   - **Deps**: T152
   - **Acceptance**: No-row → `unavailable`; a real zero-quantity row → `ok` with `0`.
+  - **Result (2026-08-22)**: DONE. 4/4 passing (real Postgres). Covers: absent record → `unavailable`; a computed genuine zero (company with no `CompanyMember` rows) → `ok` with `current_usage == 0`, never conflated; `compute_for_company()` reflects the real active-member count; re-running `compute_for_company()` for the same period is idempotent (one row, not a duplicate).
 
-- [ ] T154 [US-12] [BR-9A-026] Create `AiCreditLedgerEntry` model + repository
+- [X] T154 [US-12] [BR-9A-026] Create `AiCreditLedgerEntry` model + repository
   - **Files**: `backend/modules/platform_admin/models/ai_credit_ledger.py`, `repositories/ai_credit_repository.py`
   - **Deps**: T032
   - **Acceptance**: Signed `delta`; nullable `actor_platform_administrator_id` (NULL = future automatic debit, populated = manual adjustment); `provider`/`model` free-text — **no vendor named anywhere in the model**.
+  - **Result (2026-08-22)**: DONE. Maps onto migration 060's already-existing `ai_credit_ledger_entries` table. `AiCreditRepository.get_balance()` returns `SUM(delta)` (via `COALESCE(..., 0)` so an empty ledger is a genuine zero, not an error).
 
-- [ ] T155 [US-12] [BR-9A-027] Implement manual AI credit adjustment
+- [X] T155 [US-12] [BR-9A-027] Implement manual AI credit adjustment
   - **Files**: `backend/modules/platform_admin/services/ai_credit_service.py`
   - **Deps**: T154, T037
   - **Acceptance**: Requires `platform.ai_credits.adjust`, a mandatory reason, and produces a full audit record linked by `platform_audit_event_id`. Balance is `SUM(delta)`. **No AI provider is integrated.**
+  - **Result (2026-08-22)**: DONE. `AiCreditService.adjust()` rejects a blank/whitespace-only reason (`ValidationException`, 422 — the Pydantic schema's `min_length=1` alone would not catch a whitespace-only string); creates the ledger entry, records the audit event, then links `entry.platform_audit_event_id` back to that event's id (BR-9A-027) before the single commit. `provider`/`model`/token/cost fields are always `NULL` for a manual adjustment — no AI provider integrated anywhere.
 
-- [ ] T156 [P] [FR-9A-235] Test: AI views show "not yet active", never a zero-value table
+- [X] T156 [P] [FR-9A-235] Test: AI views show "not yet active", never a zero-value table
   - **Files**: `backend/tests/integration/api/v1/platform_admin/test_ai_credits.py`
   - **Deps**: T155
   - **Acceptance**: With an empty ledger the API returns an explicit not-yet-active state; no placeholder zero rows are ever written.
+  - **Result (2026-08-22)**: DONE. 4/4 passing, real HTTP end-to-end. Covers: empty ledger → `status: "not_yet_active"`, `balance: 0`, `entries: []`; a manual adjustment flips `status` to `"active"` and updates the balance; blank reason → 422; missing `platform.ai_credits.adjust` permission → 403. `status` is a derived response field (not a stored column), documented as a Tasks-phase default the same way `quota_service.py`'s own `APPROACHING_THRESHOLD_RATIO` is.
 
-- [ ] T157 Implement override/quota/usage/AI routes
+- [X] T157 Implement override/quota/usage/AI routes
   - **Files**: `backend/modules/platform_admin/router.py`
   - **Deps**: T146, T149, T151, T155, T064
   - **Acceptance**: Exactly the paths in `contracts/platform-admin-v1.yaml` with their declared permissions — no extra CRUD invented.
+  - **Result (2026-08-22)**: DONE. Mounted on `tenant_router`: `POST/DELETE /tenants/{companyId}/entitlement-overrides[/{overrideId}]` (`platform.entitlements.override`), `GET /tenants/{companyId}/quotas` (`platform.quotas.read`), `POST /tenants/{companyId}/quota-overrides` (`platform.quotas.override`, no DELETE — see T149), `GET /tenants/{companyId}/usage` (`platform.quotas.read`), `GET/POST /tenants/{companyId}/ai-credits` (`platform.ai_usage.read` / `platform.ai_credits.adjust`). Verified via `app.openapi()` that exactly these 5 new paths/8 new operations exist (no extra CRUD), and via live `curl` against the real running app on real Postgres: every new path returns 401 unauthenticated (not 404), and `DELETE .../quota-overrides/{id}` correctly returns 404 (proving no undeclared route was invented there).
+
+**Phase 11 Exit Condition**: T145-T157 all implemented and proven; no Gate assigned to this phase (Phase 11 owns no Gate in the Epic 9A Gate order A→B→E→C→D→F→G). **PASS.** Overrides (entitlement + quota), usage metering, and AI-credit readiness are all built on Phase 8/9's existing foundation with zero model/resolver duplication. Migration head remains `061` — no `062` created. Two genuine defects discovered and fixed during implementation: (1) `QuotaRepository.get_active_override()` (pre-existing Phase 8 code) never checked `expires_at`, only `is_active` — the same class of staleness bug T147 fixes for entitlement overrides, fixed identically for quotas; (2) naive-vs-aware `datetime` comparison (`TypeError`) when comparing a Postgres-`TIMESTAMPTZ`-sourced `expires_at` against `utcnow()` under the SQLite test fixture, fixed with the codebase's existing `ensure_utc()` helper at all three new comparison sites. 116 Phase-11 tests passing (8 override-precedence + 4 usage + 4 ai-credits + 3 cross-tenant-isolation + 2 audit-fail-closed, all real Postgres via `erp-system-api-1`), plus zero regressions across the full Phase 5-10 `platform_admin` suite (111 passing) and a representative Inventory/CRM sample (65 passing) after wiring the real `OverrideChecker` into the primary entitlement gate. See Phase 11 closure PHR for full evidence.
 
 ---
 

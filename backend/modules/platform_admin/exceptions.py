@@ -189,3 +189,38 @@ class SubscriptionUsageConflictError(ConflictException):
     ) -> None:
         super().__init__(message=message, details=details)
         self.code = "SUBSCRIPTION_USAGE_CONFLICT"
+
+
+class EntitlementOverrideAlreadyActiveError(ConflictException):
+    """Raised when granting an entitlement override for a
+    (company, capability_key) pair that already has one active — the DB
+    carries a matching partial unique index (migration 059); this gives a
+    clean 409 instead of a raw ``IntegrityError`` (T146)."""
+
+    def __init__(
+        self,
+        message: str = (
+            "An active entitlement override already exists for this "
+            "tenant/capability. Revoke it before granting a new one."
+        ),
+        details: dict[str, object] | None = None,
+    ) -> None:
+        super().__init__(message=message, details=details)
+        self.code = "ENTITLEMENT_OVERRIDE_ALREADY_ACTIVE"
+
+
+class QuotaOverrideAlreadyActiveError(ConflictException):
+    """Raised when granting a tenant quota override for a
+    (company, quota_key) pair that already has one active — the DB
+    carries a matching partial unique index (migration 059) (T149)."""
+
+    def __init__(
+        self,
+        message: str = (
+            "An active quota override already exists for this "
+            "tenant/quota key. Revoke it before granting a new one."
+        ),
+        details: dict[str, object] | None = None,
+    ) -> None:
+        super().__init__(message=message, details=details)
+        self.code = "QUOTA_OVERRIDE_ALREADY_ACTIVE"

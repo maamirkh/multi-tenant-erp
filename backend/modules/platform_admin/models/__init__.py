@@ -11,9 +11,14 @@ reference ``PlatformPermission``/``PlatformRole``/``PlatformAdministrator``,
 and the Phase-8 SaaS control-plane models (``Capability``, ``Plan``,
 ``PlanCapability``, ``Subscription``, ``QuotaDefinition``, ``PlanQuota``,
 ``TenantQuotaOverride``) reference each other and ``PlatformAdministrator``.
+The Phase-11 override/usage/AI-readiness models (``EntitlementOverride``,
+``UsageRecord``, ``AiCreditLedgerEntry``) reference ``Company``,
+``PlatformAdministrator``, and (for ``UsageRecord``) ``QuotaDefinition``.
 """
 
+from modules.platform_admin.models.ai_credit_ledger import AiCreditLedgerEntry
 from modules.platform_admin.models.capability import Capability
+from modules.platform_admin.models.entitlement_override import EntitlementOverride
 from modules.platform_admin.models.plan import Plan
 from modules.platform_admin.models.plan_capability import PlanCapability
 from modules.platform_admin.models.platform_administrator import PlatformAdministrator
@@ -32,9 +37,12 @@ from modules.platform_admin.models.quota import (
     TenantQuotaOverride,
 )
 from modules.platform_admin.models.subscription import Subscription
+from modules.platform_admin.models.usage_record import UsageRecord
 
 __all__ = [
+    "AiCreditLedgerEntry",
     "Capability",
+    "EntitlementOverride",
     "Plan",
     "PlanCapability",
     "PlanQuota",
@@ -49,4 +57,5 @@ __all__ = [
     "QuotaDefinition",
     "Subscription",
     "TenantQuotaOverride",
+    "UsageRecord",
 ]

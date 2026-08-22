@@ -36,9 +36,13 @@ from modules.platform_admin.exceptions import (
     InsufficientPlatformPermissionError,
     PlatformSessionInvalidError,
 )
+from modules.platform_admin.repositories.override_repository import OverrideRepository
 from modules.platform_admin.repositories.plan_repository import PlanRepository
 from modules.platform_admin.repositories.platform_administrator_repository import (
     PlatformAdministratorRepository,
+)
+from modules.platform_admin.repositories.platform_audit_repository import (
+    PlatformAuditRepository,
 )
 from modules.platform_admin.repositories.platform_rbac_repository import (
     PlatformRbacRepository,
@@ -52,6 +56,8 @@ from modules.platform_admin.repositories.subscription_repository import (
 from modules.platform_admin.services.entitlement_service import (
     PlatformEntitlementService,
 )
+from modules.platform_admin.services.override_service import OverrideService
+from modules.platform_admin.services.platform_audit_service import PlatformAuditService
 from modules.platform_admin.services.platform_jwt_service import PlatformJwtService
 
 logger = logging.getLogger(__name__)
@@ -200,10 +206,16 @@ def require_capability_entitled(capability_key: str) -> Callable[..., None]:
         company_id: UUID,
         db: Session = Depends(get_db),
     ) -> None:
+        override_service = OverrideService(
+            db=db,
+            repo=OverrideRepository(db),
+            audit=PlatformAuditService(db, PlatformAuditRepository(db)),
+        )
         service = PlatformEntitlementService(
             db=db,
             plan_repo=PlanRepository(db),
             subscription_repo=SubscriptionRepository(db),
+            override_checker=override_service,
         )
         result = service.resolve_effective_entitlement(
             company_id=company_id, capability_key=capability_key

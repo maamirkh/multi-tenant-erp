@@ -12,13 +12,14 @@ module.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from core.utils.datetime import ensure_utc
 from modules.platform_admin.models.quota import (
     PlanQuota,
     QuotaDefinition,
@@ -94,14 +95,55 @@ class QuotaRepository:
     # ------------------------------------------------------------------
 
     def get_active_override(
+        self, company_id: UUID, quota_key: str, *, now: datetime | None = None
+    ) -> TenantQuotaOverride | None:
+        """The genuinely-active override, if any — expiry-at-read-time
+        (T149, mirroring `EntitlementOverride`'s own semantics): a row
+        whose `expires_at` has passed is excluded here even if its
+        stored `is_active` has not yet been physically reverted, so
+        `QuotaService.resolve()` never trusts a stale flag. Physically
+        reverting that stale row (with an audit entry) is
+        `QuotaAdminService`'s concern, not this read-only query."""
+        stmt = select(TenantQuotaOverride).where(
+            TenantQuotaOverride.company_id == company_id,
+            TenantQuotaOverride.quota_key == quota_key,
+            TenantQuotaOverride.is_active == True,  # noqa: E712
+        )
+        override = self.db.execute(stmt).scalars().one_or_none()
+        if override is None:
+            return None
+        current_time = now if now is not None else datetime.now(UTC)
+        if (
+            override.expires_at is not None
+            and ensure_utc(override.expires_at) <= current_time
+        ):
+            return None
+        return override
+
+    def get_active_override_ignoring_expiry(
         self, company_id: UUID, quota_key: str
     ) -> TenantQuotaOverride | None:
+        """The stored-active row regardless of expiry — used only by
+        `QuotaAdminService.grant()` to find a stale (expired but not yet
+        reverted) row to audit-revert before creating a replacement,
+        never by the resolution path."""
         stmt = select(TenantQuotaOverride).where(
             TenantQuotaOverride.company_id == company_id,
             TenantQuotaOverride.quota_key == quota_key,
             TenantQuotaOverride.is_active == True,  # noqa: E712
         )
         return self.db.execute(stmt).scalars().one_or_none()
+
+    def get_override_by_id(self, override_id: UUID) -> TenantQuotaOverride | None:
+        return self.db.get(TenantQuotaOverride, override_id)
+
+    def revoke_override(
+        self, override: TenantQuotaOverride, *, revoked_at: datetime
+    ) -> None:
+        """Mark an override inactive in place. Caller commits."""
+        override.is_active = False
+        override.revoked_at = revoked_at
+        self.db.flush()
 
     def create_override(
         self,

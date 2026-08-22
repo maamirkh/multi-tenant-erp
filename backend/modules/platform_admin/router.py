@@ -57,9 +57,11 @@ from modules.platform_admin.dependencies import (
     get_current_platform_admin,
     require_platform_permission,
 )
+from modules.platform_admin.repositories.ai_credit_repository import AiCreditRepository
 from modules.platform_admin.repositories.capability_repository import (
     CapabilityRepository,
 )
+from modules.platform_admin.repositories.override_repository import OverrideRepository
 from modules.platform_admin.repositories.plan_repository import PlanRepository
 from modules.platform_admin.repositories.platform_administrator_repository import (
     PlatformAdministratorRepository,
@@ -77,9 +79,21 @@ from modules.platform_admin.repositories.quota_repository import QuotaRepository
 from modules.platform_admin.repositories.subscription_repository import (
     SubscriptionRepository,
 )
+from modules.platform_admin.repositories.usage_repository import UsageRepository
+from modules.platform_admin.schemas.ai_credit import (
+    AdjustAiCreditsRequest,
+    AiCreditLedgerEntryResponse,
+    TenantAiCreditsResponse,
+)
 from modules.platform_admin.schemas.entitlement import (
     CapabilityEntitlementResponse,
     TenantEntitlementsResponse,
+)
+from modules.platform_admin.schemas.override import (
+    EntitlementOverrideResponse,
+    GrantEntitlementOverrideRequest,
+    GrantQuotaOverrideRequest,
+    QuotaOverrideResponse,
 )
 from modules.platform_admin.schemas.plan import (
     CreatePlanRequest,
@@ -103,6 +117,10 @@ from modules.platform_admin.schemas.platform_rbac import (
     RoleAssignmentResponse,
     RoleResponse,
 )
+from modules.platform_admin.schemas.quota import (
+    QuotaStatusResponse,
+    TenantQuotasResponse,
+)
 from modules.platform_admin.schemas.subscription import (
     AssignSubscriptionRequest,
     SubscriptionHistoryResponse,
@@ -112,9 +130,15 @@ from modules.platform_admin.schemas.tenant_lifecycle import (
     TenantLifecycleActionRequest,
     TenantLifecycleResponse,
 )
+from modules.platform_admin.schemas.usage import (
+    TenantUsageResponse,
+    UsageRecordResponse,
+)
+from modules.platform_admin.services.ai_credit_service import AiCreditService
 from modules.platform_admin.services.entitlement_service import (
     PlatformEntitlementService,
 )
+from modules.platform_admin.services.override_service import OverrideService
 from modules.platform_admin.services.plan_service import PlanService
 from modules.platform_admin.services.platform_administrator_service import (
     PlatformAdministratorService,
@@ -122,11 +146,13 @@ from modules.platform_admin.services.platform_administrator_service import (
 from modules.platform_admin.services.platform_audit_service import PlatformAuditService
 from modules.platform_admin.services.platform_auth_service import PlatformAuthService
 from modules.platform_admin.services.platform_rbac_service import PlatformRbacService
+from modules.platform_admin.services.quota_admin_service import QuotaAdminService
 from modules.platform_admin.services.quota_service import QuotaService
 from modules.platform_admin.services.subscription_service import SubscriptionService
 from modules.platform_admin.services.tenant_lifecycle_service import (
     TenantLifecycleService,
 )
+from modules.platform_admin.services.usage_service import current_month_period
 
 router = APIRouter(prefix="/auth", tags=["Platform Authentication"])
 admin_router = APIRouter(tags=["Platform Administrators"])
@@ -819,10 +845,16 @@ async def get_tenant_entitlements(
     if CompanyRepository(db).get_by_id(companyId) is None:
         raise NotFoundException(message="Company not found.")
 
+    override_service = OverrideService(
+        db=db,
+        repo=OverrideRepository(db),
+        audit=PlatformAuditService(db, PlatformAuditRepository(db)),
+    )
     service = PlatformEntitlementService(
         db=db,
         plan_repo=PlanRepository(db),
         subscription_repo=SubscriptionRepository(db),
+        override_checker=override_service,
     )
     capabilities = CapabilityRepository(db).list_all(is_active=True)
     entitlements = []
@@ -842,5 +874,292 @@ async def get_tenant_entitlements(
             company_id=str(companyId), entitlements=entitlements
         ),
         message=f"{len(entitlements)} capability entitlement(s) resolved.",
+        meta=_meta(request),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Entitlement overrides (T146/T147/T157, FR-9A-171)
+# ---------------------------------------------------------------------------
+
+
+def _override_service(db: Session = Depends(get_db)) -> OverrideService:
+    return OverrideService(
+        db=db,
+        repo=OverrideRepository(db),
+        audit=PlatformAuditService(db, PlatformAuditRepository(db)),
+    )
+
+
+@tenant_router.post(
+    "/tenants/{companyId}/entitlement-overrides",
+    response_model=StandardResponse[EntitlementOverrideResponse],
+    status_code=status.HTTP_201_CREATED,
+    summary="Grant a time-boxed (or permanent) entitlement override",
+    dependencies=[
+        Depends(require_platform_permission("platform.entitlements.override"))
+    ],
+    responses={
+        404: {"description": "Company not found"},
+        409: {"description": "An active override already exists for this capability"},
+    },
+)
+async def grant_entitlement_override(
+    request: Request,
+    payload: GrantEntitlementOverrideRequest,
+    companyId: UUID = Path(...),  # noqa: N803 — matches contract's path parameter name
+    current: PlatformPrincipal = Depends(get_current_platform_admin),
+    svc: OverrideService = Depends(_override_service),
+    db: Session = Depends(get_db),
+) -> StandardResponse[EntitlementOverrideResponse]:
+    if CompanyRepository(db).get_by_id(companyId) is None:
+        raise NotFoundException(message="Company not found.")
+
+    override = svc.grant(
+        company_id=companyId,
+        capability_key=payload.capability_key,
+        reason=payload.reason,
+        actor_platform_administrator_id=current.platform_administrator_id,
+        expires_at=payload.expires_at,
+    )
+    return StandardResponse(
+        data=EntitlementOverrideResponse.model_validate(override),
+        message="Entitlement override granted.",
+        meta=_meta(request),
+    )
+
+
+@tenant_router.delete(
+    "/tenants/{companyId}/entitlement-overrides/{overrideId}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Revoke an active entitlement override",
+    dependencies=[
+        Depends(require_platform_permission("platform.entitlements.override"))
+    ],
+    responses={404: {"description": "Override not found or already inactive"}},
+)
+async def revoke_entitlement_override(
+    overrideId: UUID = Path(...),  # noqa: N803 — matches contract's path parameter name
+    companyId: UUID = Path(...),  # noqa: N803 — matches contract's path parameter name
+    current: PlatformPrincipal = Depends(get_current_platform_admin),
+    svc: OverrideService = Depends(_override_service),
+) -> None:
+    svc.revoke(
+        override_id=overrideId,
+        actor_platform_administrator_id=current.platform_administrator_id,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Quotas & quota overrides (T149/T152/T157)
+# ---------------------------------------------------------------------------
+
+
+def _quota_admin_service(db: Session = Depends(get_db)) -> QuotaAdminService:
+    return QuotaAdminService(
+        db=db,
+        repo=QuotaRepository(db),
+        audit=PlatformAuditService(db, PlatformAuditRepository(db)),
+    )
+
+
+@tenant_router.get(
+    "/tenants/{companyId}/quotas",
+    response_model=StandardResponse[TenantQuotasResponse],
+    summary="Effective quota status per category",
+    dependencies=[Depends(require_platform_permission("platform.quotas.read"))],
+    responses={404: {"description": "Company not found"}},
+)
+async def get_tenant_quotas(
+    request: Request,
+    companyId: UUID = Path(...),  # noqa: N803 — matches contract's path parameter name
+    db: Session = Depends(get_db),
+) -> StandardResponse[TenantQuotasResponse]:
+    if CompanyRepository(db).get_by_id(companyId) is None:
+        raise NotFoundException(message="Company not found.")
+
+    quota_repo = QuotaRepository(db)
+    usage_repo = UsageRepository(db)
+    quota_service = QuotaService(quota_repo)
+    subscription = SubscriptionRepository(db).get_active_for_company(companyId)
+    plan_id = subscription.plan_id if subscription is not None else None
+    period_start, period_end = current_month_period()
+
+    statuses = []
+    for definition in quota_repo.list_definitions():
+        usage_record = usage_repo.get_for_period(
+            company_id=companyId,
+            metric_key=definition.key,
+            period_start=period_start,
+            period_end=period_end,
+        )
+        resolution = quota_service.resolve(
+            company_id=companyId,
+            plan_id=plan_id,
+            quota_key=definition.key,
+            current_usage=usage_record.quantity if usage_record is not None else None,
+        )
+        statuses.append(
+            QuotaStatusResponse(
+                quota_key=resolution.quota_key,
+                state=resolution.state.value,
+                limit=resolution.limit,
+                current_usage=resolution.current_usage,
+                enforcement_style=resolution.enforcement_style,
+            )
+        )
+    return StandardResponse(
+        data=TenantQuotasResponse(company_id=str(companyId), quotas=statuses),
+        message=f"{len(statuses)} quota categor(y/ies) resolved.",
+        meta=_meta(request),
+    )
+
+
+@tenant_router.post(
+    "/tenants/{companyId}/quota-overrides",
+    response_model=StandardResponse[QuotaOverrideResponse],
+    status_code=status.HTTP_201_CREATED,
+    summary="Grant a time-boxed (or permanent) quota override",
+    dependencies=[Depends(require_platform_permission("platform.quotas.override"))],
+    responses={
+        404: {"description": "Company not found"},
+        409: {"description": "An active override already exists for this quota key"},
+    },
+)
+async def grant_quota_override(
+    request: Request,
+    payload: GrantQuotaOverrideRequest,
+    companyId: UUID = Path(...),  # noqa: N803 — matches contract's path parameter name
+    current: PlatformPrincipal = Depends(get_current_platform_admin),
+    svc: QuotaAdminService = Depends(_quota_admin_service),
+    db: Session = Depends(get_db),
+) -> StandardResponse[QuotaOverrideResponse]:
+    if CompanyRepository(db).get_by_id(companyId) is None:
+        raise NotFoundException(message="Company not found.")
+
+    override = svc.grant(
+        company_id=companyId,
+        quota_key=payload.quota_key,
+        override_limit=payload.override_limit,
+        reason=payload.reason,
+        actor_platform_administrator_id=current.platform_administrator_id,
+        expires_at=payload.expires_at,
+    )
+    return StandardResponse(
+        data=QuotaOverrideResponse.model_validate(override),
+        message="Quota override granted.",
+        meta=_meta(request),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Usage (T150/T151/T152/T157)
+# ---------------------------------------------------------------------------
+
+
+@tenant_router.get(
+    "/tenants/{companyId}/usage",
+    response_model=StandardResponse[TenantUsageResponse],
+    summary="Usage records for a tenant per metric/period",
+    dependencies=[Depends(require_platform_permission("platform.quotas.read"))],
+    responses={404: {"description": "Company not found"}},
+)
+async def get_tenant_usage(
+    request: Request,
+    companyId: UUID = Path(...),  # noqa: N803 — matches contract's path parameter name
+    db: Session = Depends(get_db),
+) -> StandardResponse[TenantUsageResponse]:
+    if CompanyRepository(db).get_by_id(companyId) is None:
+        raise NotFoundException(message="Company not found.")
+
+    records = UsageRepository(db).list_for_company(companyId)
+    return StandardResponse(
+        data=TenantUsageResponse(
+            company_id=str(companyId),
+            records=[UsageRecordResponse.model_validate(r) for r in records],
+        ),
+        message=f"{len(records)} usage record(s) found.",
+        meta=_meta(request),
+    )
+
+
+# ---------------------------------------------------------------------------
+# AI credits (T154/T155/T157, BR-9A-026/027)
+# ---------------------------------------------------------------------------
+
+
+def _ai_credit_service(db: Session = Depends(get_db)) -> AiCreditService:
+    return AiCreditService(
+        db=db,
+        repo=AiCreditRepository(db),
+        audit=PlatformAuditService(db, PlatformAuditRepository(db)),
+    )
+
+
+@tenant_router.get(
+    "/tenants/{companyId}/ai-credits",
+    response_model=StandardResponse[TenantAiCreditsResponse],
+    summary="AI credit ledger and current balance",
+    description="Empty/'not yet active' until an AI capability exists (data-model.md §19).",
+    dependencies=[Depends(require_platform_permission("platform.ai_usage.read"))],
+    responses={404: {"description": "Company not found"}},
+)
+async def get_tenant_ai_credits(
+    request: Request,
+    companyId: UUID = Path(...),  # noqa: N803 — matches contract's path parameter name
+    db: Session = Depends(get_db),
+) -> StandardResponse[TenantAiCreditsResponse]:
+    if CompanyRepository(db).get_by_id(companyId) is None:
+        raise NotFoundException(message="Company not found.")
+
+    repo = AiCreditRepository(db)
+    entries = repo.list_for_company(companyId)
+    balance = repo.get_balance(companyId)
+    status_label = "not_yet_active" if not entries else "active"
+    return StandardResponse(
+        data=TenantAiCreditsResponse(
+            company_id=str(companyId),
+            status=status_label,
+            balance=balance,
+            entries=[AiCreditLedgerEntryResponse.model_validate(e) for e in entries],
+        ),
+        message=(
+            "No AI capability is active for this tenant yet."
+            if not entries
+            else f"{len(entries)} AI credit ledger entry(ies) found."
+        ),
+        meta=_meta(request),
+    )
+
+
+@tenant_router.post(
+    "/tenants/{companyId}/ai-credits",
+    response_model=StandardResponse[AiCreditLedgerEntryResponse],
+    status_code=status.HTTP_201_CREATED,
+    summary="Manual AI credit adjustment",
+    description="Reason required, audited (BR-9A-026/027). No AI provider is integrated.",
+    dependencies=[Depends(require_platform_permission("platform.ai_credits.adjust"))],
+    responses={404: {"description": "Company not found"}},
+)
+async def adjust_ai_credits(
+    request: Request,
+    payload: AdjustAiCreditsRequest,
+    companyId: UUID = Path(...),  # noqa: N803 — matches contract's path parameter name
+    current: PlatformPrincipal = Depends(get_current_platform_admin),
+    svc: AiCreditService = Depends(_ai_credit_service),
+    db: Session = Depends(get_db),
+) -> StandardResponse[AiCreditLedgerEntryResponse]:
+    if CompanyRepository(db).get_by_id(companyId) is None:
+        raise NotFoundException(message="Company not found.")
+
+    entry = svc.adjust(
+        company_id=companyId,
+        delta=payload.delta,
+        reason=payload.reason,
+        actor_platform_administrator_id=current.platform_administrator_id,
+    )
+    return StandardResponse(
+        data=AiCreditLedgerEntryResponse.model_validate(entry),
+        message="AI credit ledger entry recorded.",
         meta=_meta(request),
     )

@@ -44,8 +44,10 @@ from modules.auth.models.user import User
 from modules.companies.models.company import Company
 from modules.companies.models.enums import CompanyStatus
 from modules.companies.repositories.company_repository import CompanyRepository
+from modules.platform_admin.models.entitlement_override import EntitlementOverride
 from modules.platform_admin.models.platform_administrator import PlatformAdministrator
 from modules.platform_admin.models.platform_audit_event import PlatformAuditEvent
+from modules.platform_admin.repositories.override_repository import OverrideRepository
 from modules.platform_admin.repositories.platform_administrator_repository import (
     PlatformAdministratorRepository,
 )
@@ -55,6 +57,7 @@ from modules.platform_admin.repositories.platform_audit_repository import (
 from modules.platform_admin.repositories.platform_rbac_repository import (
     PlatformRbacRepository,
 )
+from modules.platform_admin.services.override_service import OverrideService
 from modules.platform_admin.services.platform_audit_service import PlatformAuditService
 from modules.platform_admin.services.platform_rbac_seed_service import (
     PlatformRbacSeedService,
@@ -299,6 +302,114 @@ class TestGateCAuditFailClosedOnTenantSuspension:
             .filter(
                 PlatformAuditEvent.company_id == company.id,
                 PlatformAuditEvent.action == "tenant_lifecycle.suspend",
+            )
+            .all()
+        )
+        assert len(audit_events) == 1
+
+
+def _make_override_service(db: Session) -> OverrideService:
+    return OverrideService(
+        db=db,
+        repo=OverrideRepository(db),
+        audit=PlatformAuditService(db, PlatformAuditRepository(db)),
+    )
+
+
+def _make_company_for_override(db: Session, *, owner_id: uuid.UUID) -> Company:
+    suffix = uuid.uuid4().hex[:10]
+    company = Company(
+        legal_name=f"Audit Fail Closed Override Co {suffix}",
+        slug=f"audit-fail-closed-override-co-{suffix}",
+        owner_id=owner_id,
+        email=f"audit-fail-closed-override-co-{suffix}@example.test",
+        status=CompanyStatus.active.value,
+    )
+    db.add(company)
+    db.flush()
+    db.commit()
+    return company
+
+
+class TestPhase11AuditFailClosedOnEntitlementOverrideGrant:
+    """[T146/T147] Phase 11's own audit fail-closed proof — representative
+    of the three new audited mutation types this phase introduces
+    (entitlement override grant/revoke, quota override grant/revoke, AI
+    credit adjust), all built on the identical `PlatformAuditService`
+    helper already proven generically above (quickstart.md §9: "whichever
+    privileged mutation was under test" is sufficient evidence)."""
+
+    def test_forced_audit_write_failure_rolls_back_the_override_grant_too(
+        self, db_session: Session
+    ) -> None:
+        actor = _make_administrator(db_session, label="override-actor")
+        company = _make_company_for_override(db_session, owner_id=actor.user_id)
+        service = _make_override_service(db_session)
+
+        with patch.object(
+            PlatformAuditService,
+            "record",
+            side_effect=_simulated_constraint_violation(),
+        ):
+            with pytest.raises(IntegrityError):
+                service.grant(
+                    company_id=company.id,
+                    capability_key="inventory",
+                    reason="Phase 11 forced-failure test",
+                    actor_platform_administrator_id=actor.id,
+                )
+
+        # Nothing committed inside grant() — simulate the real
+        # request-teardown rollback.
+        db_session.rollback()
+
+        overrides = (
+            db_session.query(EntitlementOverride)
+            .filter(EntitlementOverride.company_id == company.id)
+            .all()
+        )
+        assert overrides == []
+
+        audit_events = (
+            db_session.query(PlatformAuditEvent)
+            .filter(
+                PlatformAuditEvent.company_id == company.id,
+                PlatformAuditEvent.action == "entitlement_override.grant",
+            )
+            .all()
+        )
+        assert audit_events == []
+
+    def test_normal_override_grant_success_still_commits_both(
+        self, db_session: Session
+    ) -> None:
+        """Positive control: without a forced failure, the exact same
+        mutation genuinely commits the override row and its audit event
+        together."""
+        actor = _make_administrator(db_session, label="override-actor-ok")
+        company = _make_company_for_override(db_session, owner_id=actor.user_id)
+        service = _make_override_service(db_session)
+
+        service.grant(
+            company_id=company.id,
+            capability_key="inventory",
+            reason="Phase 11 success-path control",
+            actor_platform_administrator_id=actor.id,
+        )
+
+        overrides = (
+            db_session.query(EntitlementOverride)
+            .filter(EntitlementOverride.company_id == company.id)
+            .all()
+        )
+        assert len(overrides) == 1
+        assert overrides[0].is_active is True
+
+        audit_events = (
+            db_session.query(PlatformAuditEvent)
+            .filter(
+                PlatformAuditEvent.company_id == company.id,
+                PlatformAuditEvent.action == "entitlement_override.grant",
             )
             .all()
         )
