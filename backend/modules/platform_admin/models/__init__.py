@@ -14,6 +14,8 @@ and the Phase-8 SaaS control-plane models (``Capability``, ``Plan``,
 The Phase-11 override/usage/AI-readiness models (``EntitlementOverride``,
 ``UsageRecord``, ``AiCreditLedgerEntry``) reference ``Company``,
 ``PlatformAdministrator``, and (for ``UsageRecord``) ``QuotaDefinition``.
+The Phase-12 ``SupportAccessGrant`` references ``Company`` and
+``PlatformAdministrator`` (twice — initiator and, nullable, terminator).
 """
 
 from modules.platform_admin.models.ai_credit_ledger import AiCreditLedgerEntry
@@ -37,6 +39,7 @@ from modules.platform_admin.models.quota import (
     TenantQuotaOverride,
 )
 from modules.platform_admin.models.subscription import Subscription
+from modules.platform_admin.models.support_access_grant import SupportAccessGrant
 from modules.platform_admin.models.usage_record import UsageRecord
 
 __all__ = [
@@ -56,6 +59,7 @@ __all__ = [
     "PlatformSession",
     "QuotaDefinition",
     "Subscription",
+    "SupportAccessGrant",
     "TenantQuotaOverride",
     "UsageRecord",
 ]

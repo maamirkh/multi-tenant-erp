@@ -79,6 +79,9 @@ from modules.platform_admin.repositories.quota_repository import QuotaRepository
 from modules.platform_admin.repositories.subscription_repository import (
     SubscriptionRepository,
 )
+from modules.platform_admin.repositories.support_access_repository import (
+    SupportAccessRepository,
+)
 from modules.platform_admin.repositories.usage_repository import UsageRepository
 from modules.platform_admin.schemas.ai_credit import (
     AdjustAiCreditsRequest,
@@ -126,6 +129,10 @@ from modules.platform_admin.schemas.subscription import (
     SubscriptionHistoryResponse,
     SubscriptionResponse,
 )
+from modules.platform_admin.schemas.support_access import (
+    InitiateSupportAccessRequest,
+    SupportAccessGrantResponse,
+)
 from modules.platform_admin.schemas.tenant_lifecycle import (
     TenantLifecycleActionRequest,
     TenantLifecycleResponse,
@@ -149,6 +156,9 @@ from modules.platform_admin.services.platform_rbac_service import PlatformRbacSe
 from modules.platform_admin.services.quota_admin_service import QuotaAdminService
 from modules.platform_admin.services.quota_service import QuotaService
 from modules.platform_admin.services.subscription_service import SubscriptionService
+from modules.platform_admin.services.support_access_service import (
+    SupportAccessService,
+)
 from modules.platform_admin.services.tenant_lifecycle_service import (
     TenantLifecycleService,
 )
@@ -158,6 +168,7 @@ router = APIRouter(prefix="/auth", tags=["Platform Authentication"])
 admin_router = APIRouter(tags=["Platform Administrators"])
 rbac_router = APIRouter(tags=["Platform RBAC"])
 tenant_router = APIRouter(tags=["Platform Tenants"])
+support_access_router = APIRouter(tags=["Platform Support Access"])
 plan_router = APIRouter(tags=["Platform Plans"])
 
 
@@ -1161,5 +1172,105 @@ async def adjust_ai_credits(
     return StandardResponse(
         data=AiCreditLedgerEntryResponse.model_validate(entry),
         message="AI credit ledger entry recorded.",
+        meta=_meta(request),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Support access (T158-T162, Gate F) — time-bounded, reason-required,
+# inspection-only. This module imports no business-record repository from
+# any of Inventory/Purchase/Sales/Accounting/CRM (T163) — there is no
+# route here that returns tenant business data at all.
+# ---------------------------------------------------------------------------
+
+
+def _support_access_service(db: Session = Depends(get_db)) -> SupportAccessService:
+    return SupportAccessService(
+        db=db,
+        repo=SupportAccessRepository(db),
+        audit=PlatformAuditService(db, PlatformAuditRepository(db)),
+    )
+
+
+@tenant_router.post(
+    "/tenants/{companyId}/support-access",
+    response_model=StandardResponse[SupportAccessGrantResponse],
+    status_code=status.HTTP_201_CREATED,
+    summary="Initiate a time-bounded, reason-required, inspection-only support-access grant",
+    dependencies=[
+        Depends(require_platform_permission("platform.support_access.initiate"))
+    ],
+    responses={404: {"description": "Company not found"}},
+)
+async def initiate_support_access(
+    request: Request,
+    payload: InitiateSupportAccessRequest,
+    companyId: UUID = Path(...),  # noqa: N803 — matches contract's path parameter name
+    current: PlatformPrincipal = Depends(get_current_platform_admin),
+    svc: SupportAccessService = Depends(_support_access_service),
+    db: Session = Depends(get_db),
+) -> StandardResponse[SupportAccessGrantResponse]:
+    if CompanyRepository(db).get_by_id(companyId) is None:
+        raise NotFoundException(message="Company not found.")
+
+    grant = svc.initiate(
+        company_id=companyId,
+        reason=payload.reason,
+        actor_platform_administrator_id=current.platform_administrator_id,
+    )
+    return StandardResponse(
+        data=SupportAccessGrantResponse.model_validate(grant),
+        message="Support-access grant initiated.",
+        meta=_meta(request),
+    )
+
+
+@support_access_router.delete(
+    "/support-access/{grantId}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Terminate an active support-access grant",
+    dependencies=[
+        Depends(require_platform_permission("platform.support_access.initiate"))
+    ],
+    responses={
+        403: {"description": "Grant already expired or terminated"},
+        404: {"description": "Grant not found"},
+    },
+)
+async def terminate_support_access(
+    grantId: UUID = Path(...),  # noqa: N803 — matches contract's path parameter name
+    current: PlatformPrincipal = Depends(get_current_platform_admin),
+    svc: SupportAccessService = Depends(_support_access_service),
+) -> None:
+    svc.terminate(
+        grant_id=grantId,
+        actor_platform_administrator_id=current.platform_administrator_id,
+    )
+
+
+@support_access_router.get(
+    "/support-access",
+    response_model=PaginatedResponse[SupportAccessGrantResponse],
+    summary="List support-access grant history",
+    dependencies=[Depends(require_platform_permission("platform.support_access.read"))],
+)
+async def list_support_access(
+    request: Request,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> PaginatedResponse[SupportAccessGrantResponse]:
+    repo = SupportAccessRepository(db)
+    items, total = repo.list_paginated(offset=(page - 1) * page_size, limit=page_size)
+    pages = math.ceil(total / page_size) if total > 0 else 0
+    return PaginatedResponse(
+        data=PaginatedData(
+            items=[SupportAccessGrantResponse.model_validate(g) for g in items],
+            total=total,
+            page=page,
+            page_size=page_size,
+            pages=pages,
+        ),
+        message=f"{total} support-access grant(s) found.",
         meta=_meta(request),
     )

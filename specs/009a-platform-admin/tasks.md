@@ -1211,50 +1211,61 @@
 
 ### Tasks
 
-- [ ] T158 [US-9] Create `SupportAccessGrant` model + repository
+- [X] T158 [US-9] Create `SupportAccessGrant` model + repository
   - **Files**: `backend/modules/platform_admin/models/support_access_grant.py`, `repositories/support_access_repository.py`
   - **Deps**: T032
   - **Acceptance**: Per data-model.md; mandatory `reason`; mandatory `expires_at` (**no indefinite grant**); `status` `active|expired|terminated`.
+  - **Result (2026-08-22)**: DONE. Model maps exactly onto migration 061's already-existing `support_access_grants` table (final Epic 9A migration; no new migration created — `configure_mappers()` verified against real Postgres). `SupportAccessRepository` follows the established flush-only convention (ADR-5); `mark_expired()`/`terminate()` are separate methods so the two terminal transitions (lazy expiry vs. explicit termination) never conflate `ended_at`/`ended_by`.
 
-- [ ] T159 [US-9] [FR-9A-190..193] Implement grant initiation
+- [X] T159 [US-9] [FR-9A-190..193] Implement grant initiation
   - **Files**: `backend/modules/platform_admin/services/support_access_service.py`
   - **Deps**: T158, T037
   - **Acceptance**: Requires `platform.support_access.initiate`; exactly one target tenant per grant; mandatory reason; explicit expiry; start audited.
+  - **Result (2026-08-22)**: DONE. `SupportAccessService.initiate()` stages the grant + audit row (flush-only) then a single `db.commit()` (ADR-5). **Contract note**: the OpenAPI request body declares only `reason` (no client-supplied `expires_at`) — the grant window is a server-determined policy, `DEFAULT_GRANT_DURATION_HOURS = 4`, a documented Tasks-phase default (spec mandates only "time-bounded... explicit, visible expiry", never a specific duration) — same precedent as `quota_service.py`'s `APPROACHING_THRESHOLD_RATIO`.
 
-- [ ] T160 [US-9] [FR-9A-196/197] Implement termination and lazy expiry
+- [X] T160 [US-9] [FR-9A-196/197] Implement termination and lazy expiry
   - **Files**: `backend/modules/platform_admin/services/support_access_service.py`
   - **Deps**: T159
   - **Acceptance**: Expiry checked at request time (`expires_at < now()` → 403, status flipped lazily); explicit termination by the initiator or a sufficiently-privileged admin; end timestamp audited.
+  - **Result (2026-08-22)**: DONE. `assert_grant_active()` is the authoritative expiry-at-read-time seam (mirrors Phase 11's `OverrideService.has_active_override()` pattern exactly): a stored `status='active'` row whose `expires_at` has passed is lazily flipped to `expired` and audited (`support_access.auto_expire`) in the same call, then `SupportAccessExpiredError` (403) is raised. `terminate()` runs this same check first, so terminating an already-time-expired grant correctly reports `expired`, never overwriting it with a false `terminated` transition — proven directly by `test_terminate_on_already_expired_grant_reports_expired_not_terminated`. "Sufficiently privileged admin" = any actor holding `platform.support_access.initiate` (the router's own permission gate on `DELETE` uses the identical code — spec.md defines no separate rank tier for this action).
 
-- [ ] T161 [US-9] [FR-9A-195] Implement per-action audit within an active grant
+- [X] T161 [US-9] [FR-9A-195] Implement per-action audit within an active grant
   - **Files**: `backend/modules/platform_admin/services/support_access_service.py`
   - **Deps**: T160, T036
   - **Acceptance**: Every read during a grant writes a `PlatformAuditEvent` with `support_access_grant_id` populated — in addition to the grant's own start/end rows (BR-9A-020, no parallel audit table).
+  - **Result (2026-08-22)**: DONE. `record_action()` asserts the grant is genuinely active (via `assert_grant_active()`) then stages a `PlatformAuditEvent` with `support_access_grant_id` populated — flush-only, deliberately does not commit itself (no domain mutation of its own to commit alongside; the calling action's transaction commits it). **Scope note**: no caller exists yet in this Epic — plan.md §21's "thin wrapper read endpoints" over tenant configuration/entitlements/users/lifecycle are a plan.md aspiration with no corresponding task in T158-T166's actual range (confirmed by re-reading Phase 12's full task list and Phase 13's T167+ header — neither declares such an endpoint), so building one here would be undeclared scope expansion. The seam itself is proven directly by its own unit tests (`test_record_action_within_active_grant_writes_action_level_audit`, `test_record_action_on_expired_grant_is_rejected`) rather than through a caller that doesn't exist.
 
-- [ ] T162 [US-9] Implement the support-access routes
+- [X] T162 [US-9] Implement the support-access routes
   - **Files**: `backend/modules/platform_admin/router.py`
   - **Deps**: T159–T161, T064
   - **Acceptance**: `POST /platform/tenants/{companyId}/support-access`, `DELETE /platform/support-access/{grantId}`, `GET /platform/support-access` per contract. The router imports **no** business-record repository from any of the five modules.
+  - **Result (2026-08-22)**: DONE. New `support_access_router` (mirrors `admin_router`'s bare-path convention) mounted in `api/v1/router.py` alongside the other `platform_admin` sub-routers. Verified via `app.openapi()` that exactly these 3 paths/3 operations exist (no extra CRUD), and via live `curl` against the real running app on real Postgres: all 3 return 401 unauthenticated (not 404). Static AST check (`test_platform_admin_router_imports_no_business_record_module`) proves zero imports from `modules.{inventory,purchase,sales,accounting,crm}` anywhere in `router.py`.
 
-- [ ] T163 **[Gate F]** [BR-9A-021] Security test: support access cannot reach tenant business records
+- [X] T163 **[Gate F]** [BR-9A-021] Security test: support access cannot reach tenant business records
   - **Purpose**: The resolved-OQ-2 boundary — read **or** write, inside **or** outside a grant.
   - **Files**: `backend/tests/security/modules/platform_admin/test_support_access_boundary.py`
   - **Deps**: T162
   - **Acceptance**: With an active grant on a tenant holding real invoices/sales orders/journal entries/stock movements/CRM records, no support-access route exposes any of them; a static check asserts the support-access module imports no business-record repository.
+  - **Result (2026-08-22)**: DONE, 16/16 passing (real Postgres). A genuine `Product` row (`"T163 Confidential Business Product"`) is created on the test tenant, an active grant initiated, then: (1) an AST-based static check proves `support_access_service.py` and the whole `router.py` import nothing from `modules.{inventory,purchase,sales,accounting,crm}`; (2) `app.openapi()` proves exactly the 3 contract paths exist under `support-access`; (3) the product's confidential name is asserted absent from every support-access response body. Also added a tenant-token-crossover proof (master prompt §11) specific to this phase's new attack surface: a genuine tenant access token is rejected (401) by both new bare `/support-access` routes.
 
-- [ ] T164 [P] Test: grant expiry and termination end access
+- [X] T164 [P] Test: grant expiry and termination end access
   - **Files**: `backend/tests/security/modules/platform_admin/test_support_access_boundary.py`
   - **Deps**: T162
   - **Acceptance**: Post-expiry and post-termination requests are rejected; both are recorded in the audit trail.
+  - **Result (2026-08-22)**: DONE (same file, part of the 16/16). Covers: genuine time-based expiry (real `time.sleep`, not a mocked clock) → `assert_grant_active()` raises `SupportAccessExpiredError`, status flips to `expired`, one `support_access.auto_expire` audit row; explicit `terminate()` → raises on the next `assert_grant_active()` call, `ended_at`/`ended_by` populated, one `support_access.terminate` audit row; terminating an already-expired grant correctly reports `expired` (not overwritten); terminating a missing grant raises `NotFoundException`.
 
-- [ ] T165 [P] Test: support access requires its own permission and a reason
+- [X] T165 [P] Test: support access requires its own permission and a reason
   - **Files**: `backend/tests/security/modules/platform_admin/test_support_access_boundary.py`
   - **Deps**: T162
   - **Acceptance**: Missing permission → 403; missing/empty reason → rejected before the grant is created.
+  - **Result (2026-08-22)**: DONE (same file). Missing `platform.support_access.initiate` → 403; empty-string `reason` → 422 (Pydantic `min_length=1` + a `field_validator` rejecting blank/whitespace) with zero grant rows created; whitespace-only reason rejected at the service layer too (`ValidationException`, defense-in-depth matching `AiCreditService`'s identical double-check pattern); valid permission + reason → 201 with `status: "active"`.
 
-- [ ] T166 **[Gate F]** Gate F sign-off
+- [X] T166 **[Gate F]** Gate F sign-off
   - **Deps**: T163–T165
   - **Acceptance**: Support boundary proven; no impersonation exists anywhere in the implementation.
+  - **Result (2026-08-22)**: **GATE F PASSED**. Support boundary proven both statically (no business-record imports anywhere in the support-access code path) and dynamically (live HTTP against real Postgres with genuine business data present). No impersonation exists: every support-access route operates under the initiating/terminating Platform Administrator's own identity and permissions — there is no mechanism anywhere in this phase that assumes, masquerades as, or borrows a tenant user's identity; the grant only records *which tenant* was selected for inspection (`company_id`), never a tenant *user* identity. mypy --strict and ruff clean on every new/changed file. Zero regressions: full Phase 5-12 `platform_admin` suite — **225/225 passing** (209 from Phase 11 + 16 new) — plus a 35-test Inventory/CRM cross-module sample, both against real Postgres (`erp-system-api-1`).
+
+**Phase 12 Exit Condition**: T158-T166 all implemented and proven; **Gate F PASSED**. Migration head remains `061` — no `062` created (this phase adds zero schema, mapping entirely onto migration 061's already-existing `support_access_grants` table). No defects discovered during implementation — all 16 new security-boundary tests passed on the first real run. See Phase 12 closure PHR for full evidence.
 
 ---
 
