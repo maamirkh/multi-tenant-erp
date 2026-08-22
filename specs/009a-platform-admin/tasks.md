@@ -1062,43 +1062,52 @@
 
 ### Tasks
 
-- [ ] T138 Add `inventory.settings.manage` permission + check to the Inventory toggle endpoint
+- [X] T138 Add `inventory.settings.manage` permission + check to the Inventory toggle endpoint
   - **Purpose**: Ordinary active members must not be able to flip module feature state (FR-9A-183/184).
   - **Files**: `backend/modules/inventory/router.py`, `backend/modules/inventory/constants.py`
   - **Deps**: T137
   - **Acceptance**: Replicates Accounting's existing `user_has_accounting_permission` pattern exactly; the endpoint additionally consults the entitlement ceiling (secondary guard, FR-9A-185).
+  - **Result (2026-08-22)**: DONE. New `modules/inventory/services/permission_check.py` (`user_has_inventory_permission`) is a byte-for-byte mirror of Accounting's helper. `INVENTORY_SETTINGS_MANAGE_PERMISSION = "inventory.settings.manage"` added to `constants.py` (a distinct code from the pre-existing, never-enforced `inventory.settings.update` entry — left untouched, out of scope). New `InventoryPermissionDeniedError` (403) added to `exceptions.py`, mirroring `InventoryFeatureDisabledError`'s shape. `update_feature_flag()` now checks the permission first, then (when `is_enabled=True`) consults `PlatformEntitlementService.is_within_plan_ceiling()` as the secondary guard. Real-PostgreSQL HTTP proof: `test_feature_toggle_hardening.py`.
 
-- [ ] T139 [P] Add `sales.settings.manage` permission + check to the Sales toggle endpoint
+- [X] T139 [P] Add `sales.settings.manage` permission + check to the Sales toggle endpoint
   - **Files**: `backend/modules/sales/router.py`, `backend/modules/sales/constants.py`
   - **Deps**: T138
   - **Acceptance**: Same pattern.
+  - **Result (2026-08-22)**: DONE. `user_has_sales_permission` in new `modules/sales/services/permission_check.py`; `SALES_SETTINGS_MANAGE_PERMISSION` added to `constants.py`. Sales has no dedicated exception hierarchy (confirmed — no `exceptions.py` exists), so the denial raises `core.exceptions.base.ForbiddenException` directly, matching this module's own existing convention of using framework-level exceptions for simple cases (not inventing a new per-module hierarchy). Same secondary-guard wiring as T138.
 
-- [ ] T140 [P] Add `purchase.settings.manage` permission + check to the Purchase toggle endpoint
+- [X] T140 [P] Add `purchase.settings.manage` permission + check to the Purchase toggle endpoint
   - **Files**: `backend/modules/purchase/router.py`, `backend/modules/purchase/constants.py`
   - **Deps**: T138
   - **Acceptance**: Same pattern.
+  - **Result (2026-08-22)**: DONE. `user_has_purchase_permission` in new `modules/purchase/services/permission_check.py`; `PURCHASE_SETTINGS_MANAGE_PERMISSION` added to `constants.py`; `ForbiddenException` used (Purchase also has no `exceptions.py`, same reasoning as T139). Same secondary-guard wiring as T138.
 
-- [ ] T141 Seed the three new permissions onto existing tenant `owner`/`admin` roles via `RoleSeedService`
+- [X] T141 Seed the three new permissions onto existing tenant `owner`/`admin` roles via `RoleSeedService`
   - **Purpose**: Prevents locking out tenant admins who legitimately relied on the previous (unguarded) behaviour (plan §38 risk mitigation). Revision 2 fix — the previous "migration **or** RoleSeedService" wording was ambiguous and could have produced a forbidden `062`.
   - **Files**: `backend/modules/users_roles/constants.py` (add the 3 codes to `INITIAL_PERMISSIONS` and to `DEFAULT_ROLE_PERMISSIONS` for `owner`/`admin`), `backend/modules/users_roles/services/role_seed_service.py` (existing idempotent seeder — extend only if required, do not rewrite)
   - **Deps**: T138–T140
   - **Acceptance**: The three codes are seeded through the **existing `RoleSeedService`** mechanism, which plan.md §14 names explicitly ("seeded via the existing `RoleSeedService` convention") and which is already idempotent (skips duplicates via unique constraints). Existing owner/admin members can still manage toggles immediately after deploy; ordinary members cannot. **NO NEW MIGRATION `062` MAY BE CREATED** — the Epic 9A migration sequence is frozen at `057`–`061` and T029 asserts this. If a backfill onto already-existing role rows proves impossible through `RoleSeedService` alone, **STOP and report** rather than adding a migration.
+  - **Result (2026-08-22)**: DONE — backfill confirmed possible through `RoleSeedService` alone, no STOP triggered. The 3 codes added to `INITIAL_PERMISSIONS` and to a new shared `_FEATURE_TOGGLE_MANAGE` frozenset unioned into both `owner` and `admin` in `DEFAULT_ROLE_PERMISSIONS`. **Discovered during implementation**: `RoleSeedService.seed_all()`/`seed_role_permissions()` is only ever invoked at company-creation time (`POST /companies`) — confirmed via a full-repository call-site search — so updating the constants alone only reaches *new* companies; a genuine backfill step was required for companies that already existed. Added one new method, `RoleSeedService.backfill_default_role_permissions_for_existing_companies()` (reuses `seed_role_permissions()`'s own additive-only logic unchanged — no rewrite), plus a standalone operator script `modules/users_roles/backfill_feature_toggle_permissions.py`, mirroring `bootstrap.py`/`rollout_service.py`'s established out-of-band, non-HTTP, non-migration convention (the identical problem shape Phase 9's T126 already solved this way). **Live-verified against the real production database** (not only unit-tested): `python -m modules.users_roles.backfill_feature_toggle_permissions` run twice — first run "26 company(ies) processed", a direct SQL query confirmed all 3 codes now present on every existing company's `owner`/`admin` roles, second run re-confirmed idempotent (no errors, no duplicate-key violations).
 
-- [ ] T142 [P] Security test: ordinary active member cannot mutate feature state on the three hardened modules
+- [X] T142 [P] Security test: ordinary active member cannot mutate feature state on the three hardened modules
   - **Files**: `backend/tests/security/modules/platform_admin/test_feature_toggle_hardening.py`
   - **Deps**: T141
   - **Acceptance**: 403 for a plain member; success for an owner/admin — across Inventory, Sales, Purchase.
+  - **Result (2026-08-22, real HTTP against real PostgreSQL)**: PASS — parametrised across all 3 modules × (viewer→403, owner→200, admin→200) = 9 tests.
 
-- [ ] T143 [P] Regression test: Accounting and CRM toggle behaviour is unchanged
+- [X] T143 [P] Regression test: Accounting and CRM toggle behaviour is unchanged
   - **Purpose**: Proves the already-correct modules were not disturbed.
   - **Files**: `backend/tests/security/modules/platform_admin/test_feature_toggle_hardening.py`
   - **Deps**: T141
   - **Acceptance**: Accounting still requires `accounting.approvalworkflow.manage`; CRM still requires `require_admin_or_above()`; behaviour identical to the Phase 1 baseline.
+  - **Result (2026-08-22, real HTTP)**: PASS — 4 tests. `git diff modules/accounting/ modules/crm/` confirms zero source changes to either module. **Test-fixture bug found and fixed during implementation**: the first CRM sub-test initially failed because the test's "viewer" member was, by fixture construction, also `company.owner_id` — `require_admin_or_above()` checks `company.owner_id` directly (not only the CompanyMember role rank), so the is-owner bypass trivially passed regardless of role. Added `_login_non_owner_member()` (a genuinely separate owner + member) to fix; re-run green.
 
-- [ ] T144 [P] Test: a tenant cannot enable a toggle beyond the Plan ceiling
+- [X] T144 [P] Test: a tenant cannot enable a toggle beyond the Plan ceiling
   - **Files**: `backend/tests/security/modules/platform_admin/test_feature_toggle_hardening.py`
   - **Deps**: T141
   - **Acceptance**: With a denying plan, even a tenant owner's enable attempt is rejected with a clear error (no silently-ineffective write).
+  - **Result (2026-08-22, real HTTP)**: PASS — literal acceptance text proven directly (3 tests, one per module): owner + denying plan → 403 `CAPABILITY_NOT_ENTITLED`. **Reachability finding** (verified via a raw debug HTTP call, response body inspected directly — not assumed): for these 3 modules, this observed denial is produced by Phase 9's *primary* mount-level `require_capability_entitled(<module>)` dependency, not the secondary guard added in T138-T140 — the response's error `details` matches the primary gate's shape exactly (`{"capability_key", "reason": "plan_ceiling"}`, no `flag_key`). The secondary guard's own code is therefore unreachable-for-denial on these 3 modules' toggle endpoints specifically, mirroring Phase 9's own discovered `require_crm_enabled`-unreachable finding. Not a defect — plan.md §14 itself states removing the secondary guard "would not create a runtime bypass" (defense-in-depth intent). Added a second, direct test file, `test_plan_ceiling_secondary_guard.py` (4 tests), proving `PlatformEntitlementService.is_within_plan_ceiling()`'s own logic correctly in isolation, since the HTTP path alone cannot demonstrate it independently of the primary gate. Both test files' docstrings document this precisely.
+
+**Phase 10 Exit Condition**: T138-T144 all implemented and proven; the confirmed authorization gap closed on exactly Inventory/Sales/Purchase; Accounting/CRM unchanged (regression-proven); existing tenants' owner/admin roles backfilled (live-verified against the real database, 26 companies); the FR-9A-185 secondary guard implemented per plan.md §14 exactly, with its practical unreachability for these 3 modules honestly discovered, verified, and documented rather than silently assumed working. **PASS.** Gate: N/A (Phase 10 owns no Gate in the Epic 9A Gate order A→B→E→C→D→F→G). No migration `062` created (Phase 10 introduces no schema change at all). See Phase 10 closure PHR for full evidence.
 
 ---
 

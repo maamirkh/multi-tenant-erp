@@ -159,6 +159,28 @@ class RoleSeedService:
             extra={"company_id": str(company_id)},
         )
 
+    def backfill_default_role_permissions_for_existing_companies(
+        self, company_ids: list[UUID]
+    ) -> int:
+        """One-time backfill (Epic 9A Phase 10, T141, plan.md §14 risk
+        mitigation): re-run ``seed_role_permissions`` for every already-
+        existing company, so a newly-added ``DEFAULT_ROLE_PERMISSIONS``
+        code (e.g. the three feature-toggle-management codes) reaches
+        pre-existing owner/admin roles too — not only companies created
+        after this deploy. Uses the existing, already-idempotent
+        ``seed_role_permissions`` mechanism unchanged (additive-only:
+        ``new_codes = permission_codes - existing_codes``); safe to
+        re-run. Not a migration (ADR-8's decoupling principle) — a
+        one-time operator step, mirroring ``rollout_service.py``'s own
+        convention for the identical problem shape in Epic 9A.
+
+        Returns the number of companies processed.
+        """
+        for company_id in company_ids:
+            self.seed_role_permissions(company_id)
+        self._db.commit()
+        return len(company_ids)
+
     def seed_all(
         self,
         company_id: UUID,

@@ -127,6 +127,27 @@ class InventoryFeatureDisabledError(InventoryException):
         )
 
 
+class InventoryPermissionDeniedError(InventoryException):
+    """Raised when the acting user lacks the required inventory
+    settings-management permission (Epic 9A Phase 10, T138 — plan.md §14
+    feature-toggle mutation hardening)."""
+
+    def __init__(
+        self,
+        permission_code: str,
+        message: str | None = None,
+        details: dict[str, object] | None = None,
+    ) -> None:
+        super().__init__(
+            message=message
+            or f"You do not have the '{permission_code}' permission required "
+            "to perform this action.",
+            code="PERMISSION_DENIED",
+            details=details or {"permission_code": permission_code},
+            http_status=403,
+        )
+
+
 class InsufficientStockError(InventoryException):
     """Available stock is insufficient to fulfil the requested operation."""
 

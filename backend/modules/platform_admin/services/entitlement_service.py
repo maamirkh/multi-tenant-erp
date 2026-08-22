@@ -159,3 +159,31 @@ class PlatformEntitlementService:
         return EffectiveEntitlement(
             capability_key=capability_key, available=True, reason="plan_and_toggle"
         )
+
+    def is_within_plan_ceiling(self, *, company_id: UUID, capability_key: str) -> bool:
+        """The mutation-point secondary guard (Epic 9A Phase 10, plan.md
+        §14, FR-9A-185): ``True`` if the Plan ceiling allows
+        *capability_key* for *company_id*, **independent of the tenant's
+        own toggle state**.
+
+        Deliberately a separate method from ``resolve_effective_
+        entitlement`` rather than a re-use of it: that method resolves
+        against the toggle's *current* (pre-mutation) value, which is
+        useless here — a caller checking "may I turn this toggle ON" is
+        asking about the ceiling alone, not the stale pre-write toggle
+        state that would trivially read as denied on every enable
+        attempt regardless of the Plan. No module re-implements the
+        ceiling lookup itself (BR-9A-015/016) — both methods share the
+        same injected ``plan_repo``/``subscription_repo``.
+
+        No active Subscription -> ceiling not yet in effect -> ``True``
+        (does not block), matching ``resolve_effective_entitlement``'s
+        own "no Subscription defers to Toggle" backward-compatibility
+        rule exactly.
+        """
+        subscription = self._subscription_repo.get_active_for_company(company_id)
+        if subscription is None:
+            return True
+
+        capability_map = self._plan_repo.get_capability_map(subscription.plan_id)
+        return capability_map.get(capability_key, False)

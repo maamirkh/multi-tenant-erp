@@ -179,11 +179,24 @@ INVENTORY_PERMISSIONS: Final[tuple[InventoryPermissionDefinition, ...]] = (
         "settings.update",
         "Update inventory module configuration and feature flags",
     ),
+    InventoryPermissionDefinition(
+        "inventory.settings.manage",
+        "Manage Inventory Feature Flags",
+        "inventory",
+        "settings.manage",
+        "Enable or disable inventory module feature flags (Epic 9A "
+        "security prerequisite, plan.md §14 — a distinct code from the "
+        "pre-existing, unenforced 'settings.update' above)",
+    ),
 )
 
 INVENTORY_PERMISSION_BY_CODE: Final[dict[str, InventoryPermissionDefinition]] = {
     p.code: p for p in INVENTORY_PERMISSIONS
 }
+
+# Feature-toggle mutation gate (Epic 9A Phase 10, T138, plan.md §14) — the
+# permission code the PUT /feature-flags/{flag_key} handler checks.
+INVENTORY_SETTINGS_MANAGE_PERMISSION: Final[str] = "inventory.settings.manage"
 
 
 # ---------------------------------------------------------------------------
