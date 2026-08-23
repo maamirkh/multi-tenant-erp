@@ -1355,59 +1355,71 @@
 
 ### Tasks
 
-- [ ] T178 [ADR-11] Refactor `ApiClient` to accept an injected `AuthStrategy`
+- [X] T178 [ADR-11] Refactor `ApiClient` to accept an injected `AuthStrategy`
   - **Purpose**: Structural prevention of token crossover; the singleton currently hardcodes tenant auth at module scope.
   - **Files**: `frontend/src/lib/api/client.ts`
   - **Deps**: T008
   - **Acceptance**: `AuthStrategy { getToken, refresh, onAuthFailure }` injected via constructor; `buildHeaders()`, the 401 branch and `postMultipart()` all route through `this.auth`. Shared transport/URL/error/unwrap logic stays in the one class.
+  - **Result (2026-08-23)**: DONE. `AuthStrategy` interface exported from `client.ts`; `ApiClient` constructor now takes `(auth: AuthStrategy, baseUrl?: string)`, holds no token-storage import of its own. `buildHeaders()`, the 401-retry branch, and `postMultipart()` all call `this.auth.getToken()`/`this.auth.refresh()`/`this.auth.onAuthFailure()` exclusively — zero direct `tokenStorage`/`auth/client` imports remain in `client.ts`.
 
-- [ ] T179 Export `apiClient` with the tenant strategy — behaviour unchanged
+- [X] T179 Export `apiClient` with the tenant strategy — behaviour unchanged
   - **Purpose**: Zero regression for every existing domain file.
   - **Files**: `frontend/src/lib/api/client.ts`, `frontend/src/lib/auth/tenantAuthStrategy.ts`
   - **Deps**: T178
   - **Acceptance**: `accounting.ts`, `crm.ts`, `sales.ts`, etc. are **not modified**; existing behaviour byte-identical.
+  - **Result (2026-08-23)**: DONE. `tenantAuthStrategy` relocates the exact pre-T178 calls (`getAccessToken()`, `acquireRefreshLock()`, `clearTokens()` + `session-expired` dispatch) behind the interface — including the pre-existing double-dispatch of `session-expired` on refresh failure (once inside `acquireRefreshLock()`'s own catch, once inside `onAuthFailure()`), deliberately preserved rather than "fixed" to keep behaviour byte-identical. Verified: zero domain files (`accounting.ts`, `crm.ts`, `sales.ts`, `companies.ts`, `inventory.ts`, `purchase.ts`, `users-roles.ts`, `auth.ts`) touched — `git diff --stat` confirms only `client.ts` modified plus new files added. Full frontend Jest suite: 105/106 passing (the 1 failure is a genuine pre-existing bug in `AuthContext.test.tsx`, confirmed via `git stash` against the unmodified `client.ts` — reproduces identically, see Defects/Pre-existing Failures).
 
-- [ ] T180 Create the platform token storage and refresh lock
+- [X] T180 Create the platform token storage and refresh lock
   - **Files**: `frontend/src/lib/platform-auth/platformTokenStorage.ts`, `platformAuthClient.ts`
   - **Deps**: T178
   - **Acceptance**: Platform access token **in-memory only** (mirroring the tenant XSS-mitigation rationale); platform refresh token in its own storage key, never `erp_refresh_token`; `acquirePlatformRefreshLock()` is a **separate** single-flight promise from the tenant lock.
+  - **Result (2026-08-23)**: DONE. `_platformAccessToken` module-level variable (never localStorage); `erp_platform_refresh_token` storage key (verified distinct from `erp_refresh_token` by direct string comparison in T182). `_platformRefreshPromise` is a wholly separate module-level singleton from `auth/client.ts`'s `_refreshPromise` — proven independent by T183's concurrent-401 test (both locks fire exactly once, neither coalesces onto the other).
 
-- [ ] T181 Export `platformApiClient` with the platform strategy
+- [X] T181 Export `platformApiClient` with the platform strategy
   - **Files**: `frontend/src/lib/api/platform.ts`
   - **Deps**: T180, T179
   - **Acceptance**: Own `platformBase()` path helper; imports only the platform strategy; used by every Platform page.
+  - **Result (2026-08-23)**: DONE. `platformBase()` returns `/api/v1/platform` (the contract's `servers[0].url`). `platformAuthStrategy` defined inline in this file (per T181's own Files list — asymmetric from T179's dedicated `tenantAuthStrategy.ts` deliberately, matching the task's literal file scope) — imports only `lib/platform-auth/*`, never `lib/auth/*`. "Used by every Platform page" is realized starting with T185's context (Phase 15's actual pages consume it from there, per the strict phase-scope rule against pre-creating future pages).
 
-- [ ] T182 [P] Test: zero token crossover in both directions
+- [X] T182 [P] Test: zero token crossover in both directions
   - **Files**: `frontend/src/lib/api/__tests__/token-separation.test.ts`
   - **Deps**: T181
   - **Acceptance**: Platform requests carry only the platform token; tenant requests only the tenant token; neither client can read the other's storage.
+  - **Result (2026-08-23)**: DONE (3 tests). Exercises the real `apiClient`/`platformApiClient` singletons end-to-end (not mocked strategies) against a mocked `global.fetch`: a Platform request's `Authorization` header contains only the Platform token; a tenant request's contains only the tenant token; overwriting/clearing one domain's stored token is proven to leave the other's completely unaffected.
 
-- [ ] T183 [P] Test: a 401 invokes only its own domain's refresh flow
+- [X] T183 [P] Test: a 401 invokes only its own domain's refresh flow
   - **Files**: `frontend/src/lib/api/__tests__/token-separation.test.ts`
   - **Deps**: T182
   - **Acceptance**: Platform 401 → only `acquirePlatformRefreshLock`; tenant 401 → only `acquireRefreshLock`; a failed platform refresh does **not** clear tenant tokens nor emit the tenant `session-expired` event (and vice versa). Includes a concurrent-401 case proving the locks are independent.
+  - **Result (2026-08-23)**: DONE (5 tests). A Platform 401 calls `/api/v1/platform/auth/refresh` exactly once and the mock throws if the tenant refresh endpoint is ever hit (and vice versa); a failed Platform refresh leaves the tenant's tokens and `erp_refresh_token` value completely untouched and never fires `session-expired` (and vice versa); the concurrent case fires both requests via `Promise.all` and proves each domain's refresh endpoint was called exactly once, with both requests resolving successfully — neither lock blocked or coalesced with the other.
 
-- [ ] T184 [ADR-13] Create the canonical tenant-context accessor
+- [X] T184 [ADR-13] Create the canonical tenant-context accessor
   - **Purpose**: A contract over the existing persistence key — **not** a broad ERP refactor.
   - **Files**: `frontend/src/lib/tenant-context/activeCompany.ts`
   - **Deps**: none
   - **Acceptance**: `getActiveCompanyId()/setActiveCompanyId()/clearActiveCompanyId()` backed by the unchanged `erp_active_company_id` key; 100% compatible with `CompanyContext.tsx`. **Existing modules are not migrated** (out of scope).
+  - **Result (2026-08-23)**: DONE. Three plain functions reading/writing the exact same `erp_active_company_id` localStorage key `CompanyContext.tsx` already uses — verified byte-identical key string by direct comparison. `CompanyContext.tsx` itself is untouched (confirmed via `git diff --stat`) and no other existing module was migrated to this accessor — used only by T187's isolation test in this phase, as intended (Platform pages consuming it for display purposes is Phase 15+ scope).
 
-- [ ] T185 Create `PlatformAuthContext`
+- [X] T185 Create `PlatformAuthContext`
   - **Files**: `frontend/src/contexts/PlatformAuthContext.tsx`
   - **Deps**: T181
   - **Acceptance**: Own login/logout/refresh/session-expiry state; **never nested inside or sharing state with** `AuthContext`; handles deactivated-administrator responses.
+  - **Result (2026-08-23)**: DONE. `PlatformAuthProvider`/`usePlatformAuthContext` are entirely self-contained — no import of `AuthContext.tsx`, no shared state, own `platform-session-expired` listener (never `session-expired`). **Scope note**: the finalized contract declares no `GET /platform/auth/me` operation (only login/refresh/logout are public Platform auth operations, confirmed by re-reading the contract's public-operations section) — this context therefore tracks authentication *status* only, not a fetched administrator profile, unlike tenant `AuthContext`'s `user` field. "Handles deactivated-administrator responses": the backend returns one generic 401 for both invalid credentials and "no active PlatformAdministrator" (deliberate anti-enumeration, matching FR-9A's pattern elsewhere) — `login()` propagates it to the caller exactly as `AuthContext.login()` does for its own generic 401; a mid-session deactivation revokes the `PlatformSession` server-side (Phase 5) so the next refresh fails and flows through the same `platform-session-expired` path as any other expired session, with no special-casing required. Deliberately does **not** include an auto-refresh timer hook (`useTokenRefresh` is tenant-specific — hardcodes `/login` and tenant `refreshApi`/`tokenStorage`, unsuitable for direct reuse) since no such hook is declared in this task's Files list; hydration-on-mount + the 401-retry interceptor cover session continuity within this phase's literal scope.
 
-- [ ] T186 [BR-9A-035] Create `PlatformSelectedTenantContext`
+- [X] T186 [BR-9A-035] Create `PlatformSelectedTenantContext`
   - **Purpose**: Platform's tenant selection must never touch tenant context.
   - **Files**: `frontend/src/contexts/PlatformSelectedTenantContext.tsx`
   - **Deps**: T185
   - **Acceptance**: In-memory only; **never reads or writes `erp_active_company_id`**; never grants any permission; cleared on platform logout.
+  - **Result (2026-08-23)**: DONE. Pure `useState` — zero localStorage code anywhere in the file (verified by inspection, not merely by convention). Nested inside `<PlatformAuthProvider>` and consumes `isAuthenticated`; a `useEffect` clears the selection whenever `isAuthenticated` transitions to `false`, covering both explicit logout and session-expiry with no separate event wiring. Carries only a display-purposes `{id, legalName}` summary — no method anywhere derives a permission from it; every Platform API call remains gated server-side by the actor's actual `platform.*` permissions.
 
-- [ ] T187 [P] Test: platform tenant selection does not disturb tenant context
+- [X] T187 [P] Test: platform tenant selection does not disturb tenant context
   - **Files**: `frontend/src/contexts/__tests__/context-isolation.test.tsx`
   - **Deps**: T186, T184
   - **Acceptance**: Selecting a tenant in the Platform context leaves `erp_active_company_id` unchanged; manipulating `erp_active_company_id` grants no platform capability.
+  - **Result (2026-08-23)**: DONE (3 tests). Selecting a Platform-inspected tenant while a pre-existing `erp_active_company_id` value is present leaves that exact value untouched (verified both via raw `localStorage.getItem` and T184's `getActiveCompanyId()` accessor); pre-setting `erp_active_company_id` before any Platform session exists grants neither `isAuthenticated` nor a populated tenant selection; a genuinely-authenticated-then-logged-out session (real `isAuthenticated` true→false transition, via mocked refresh+logout network calls) proves T186's "cleared on platform logout" acceptance directly.
+
+**Phase 14 Exit Condition**: T178-T187 all implemented and proven; no Gate assigned to this phase (Phase 14 owns no Gate in the Epic 9A Gate order A→B→E→C→D→F→G). **PASS.** This is Epic 9A's first frontend phase — the token-crossover-prevention structure (ADR-11) and tenant-context contract (ADR-13) are established and proven before any Platform page exists to consume them, per this phase's own stated purpose. 14 new tests passing (8 token-separation + 3 context-isolation + covered incidentally by regression), 105/106 passing across the full frontend Jest suite — the single failure is a genuine pre-existing bug in `AuthContext.test.tsx` (its mock target, `refreshApi`, is never actually called by `AuthContext`'s real hydration path, which uses `acquireRefreshLock()` instead — confirmed pre-existing via `git stash` against the unmodified `client.ts`, reproduces identically, wholly unrelated to this phase's changes). `tsc --noEmit` and `eslint .` both clean (0 errors) across the entire frontend repo — the 55 pre-existing ESLint warnings are all in files this phase never touched. No new migration, no backend changes. See Phase 14 closure PHR for full evidence.
 
 ---
 
