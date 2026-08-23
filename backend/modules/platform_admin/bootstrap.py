@@ -183,10 +183,13 @@ def main() -> int:
 
     # Never logs the email/password hash — only the operator-facing
     # result, which itself never contains either (see bootstrap_platform_owner).
+    # `result_message`, not `message` — the stdlib `logging` module
+    # reserves `message` as a computed `LogRecord` attribute; passing it
+    # inside `extra={}` raises `KeyError: "Attempt to overwrite 'message'"`.
     log = logger.info if exit_code == 0 else logger.error
     log(
         "Platform Owner bootstrap result",
-        extra={"exit_code": exit_code, "message": message},
+        extra={"exit_code": exit_code, "result_message": message},
     )
 
     print(message)

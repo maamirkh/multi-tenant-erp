@@ -122,3 +122,93 @@ class TestGateAMigrationCyclePostgres:
         assert _subscriptions_partial_index_exists(engine)
 
         engine.dispose()
+
+    def test_downgrade_after_a_populated_subscription_id_re_upgrades_clean(
+        self, pg_test_db: str
+    ) -> None:
+        """Regression guard for a real defect found live during Epic 9A
+        Phase 17 (T214): this test's sibling above never populates
+        ``companies.subscription_id`` before downgrading, so it never
+        exercised the one scenario Epic 9A's own rollout creates — a
+        company whose ``subscription_id`` genuinely points at a row in
+        ``subscriptions``. Migration 058's original ``downgrade()``
+        dropped the FK constraint and the ``subscriptions`` table but
+        never reset that dangling value back to NULL, so the *next*
+        ``upgrade head`` failed re-adding ``fk_companies_subscription_id``
+        (``ForeignKeyViolation`` — the stale UUID no longer resolves to
+        anything). Fixed by adding an explicit
+        ``UPDATE companies SET subscription_id = NULL`` before dropping
+        ``subscriptions`` in the downgrade path.
+        """
+        engine = db_engine(pg_test_db)
+        alembic_upgrade(pg_test_db, "061")
+
+        with engine.begin() as conn:
+            user_id = conn.execute(
+                sa.text(
+                    "INSERT INTO users (email, display_name) "
+                    "VALUES ('t214-regress@example.com', 'T214 Regress') "
+                    "RETURNING id"
+                )
+            ).scalar_one()
+            company_id = conn.execute(
+                sa.text(
+                    "INSERT INTO companies (legal_name, slug, owner_id, email) "
+                    "VALUES ('T214 Regress Co', 't214-regress-co', :owner_id, "
+                    "'t214-regress-co@example.com') RETURNING id"
+                ),
+                {"owner_id": user_id},
+            ).scalar_one()
+            admin_id = conn.execute(
+                sa.text(
+                    "INSERT INTO platform_administrators (user_id) "
+                    "VALUES (:user_id) RETURNING id"
+                ),
+                {"user_id": user_id},
+            ).scalar_one()
+            plan_id = conn.execute(
+                sa.text(
+                    "INSERT INTO plans (code, name, status) "
+                    "VALUES ('t214-regress-plan', 'T214 Regress Plan', 'published') "
+                    "RETURNING id"
+                )
+            ).scalar_one()
+            subscription_id = conn.execute(
+                sa.text(
+                    "INSERT INTO subscriptions "
+                    "(company_id, plan_id, status, effective_date, actor_id) "
+                    "VALUES (:company_id, :plan_id, 'active', CURRENT_DATE, :actor_id) "
+                    "RETURNING id"
+                ),
+                {
+                    "company_id": company_id,
+                    "plan_id": plan_id,
+                    "actor_id": admin_id,
+                },
+            ).scalar_one()
+            conn.execute(
+                sa.text(
+                    "UPDATE companies SET subscription_id = :sub_id WHERE id = :company_id"
+                ),
+                {"sub_id": subscription_id, "company_id": company_id},
+            )
+
+        # The exact sequence that broke pre-fix: downgrade with a
+        # genuinely populated subscription_id, then upgrade again.
+        alembic_downgrade(pg_test_db, "056")
+
+        with engine.connect() as conn:
+            remaining = conn.execute(
+                sa.text("SELECT subscription_id FROM companies WHERE id = :id"),
+                {"id": company_id},
+            ).scalar_one()
+        assert remaining is None, (
+            "subscription_id must be reset to NULL on downgrade, matching "
+            "the column's pre-058 invariant"
+        )
+
+        # This is the line that raised ForeignKeyViolation before the fix.
+        alembic_upgrade(pg_test_db, "061")
+        assert _alembic_version(engine) == "061"
+
+        engine.dispose()

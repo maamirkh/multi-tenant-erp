@@ -224,6 +224,18 @@ def downgrade() -> None:
     # intact — it predates Epic 9A.
     op.drop_constraint("fk_companies_subscription_id", "companies", type_="foreignkey")
 
+    # Reset any values this migration's own lifetime populated (via
+    # Epic 9A's rollout/subscription-assignment code) back to the
+    # column's pre-058 invariant of always NULL — discovered live during
+    # T214's real-Postgres upgrade->seed->bulk-assign->downgrade->upgrade
+    # cycle: without this, a company whose subscription_id was ever set
+    # leaves a dangling UUID once `subscriptions` is dropped below, and
+    # the next `upgrade head` fails re-adding `fk_companies_subscription_id`
+    # (ForeignKeyViolation) since that stale value no longer resolves.
+    op.execute(
+        "UPDATE companies SET subscription_id = NULL WHERE subscription_id IS NOT NULL"
+    )
+
     op.execute("DROP INDEX IF EXISTS uq_subscriptions_company_active")
     op.drop_index("ix_subscriptions_company_id", "subscriptions")
     op.drop_table("subscriptions")

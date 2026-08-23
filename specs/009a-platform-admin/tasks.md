@@ -1629,65 +1629,79 @@
 
 ### Tasks
 
-- [ ] T214 Full real-PostgreSQL migration verification `056 → 061` with rollout applied
+- [X] T214 Full real-PostgreSQL migration verification `056 → 061` with rollout applied
   - **Files**: Docker Compose stack
   - **Deps**: T029, T128
   - **Acceptance**: Fresh database → `alembic upgrade head` (ends at `061`, no `062`) → seed capabilities → baseline plan → bulk-assign → verify no tenant lost access; then `downgrade 056` → `upgrade head` clean.
+  - **Result (2026-08-23)**: DONE, on an isolated throwaway database (`erp_migration_test`, same Postgres server, dropped after — never the shared dev DB, per an explicit product-owner decision to avoid destructively wiping weeks of accumulated dev data). Full `001→061` chain from empty ran clean (`exit=0`); `platform_administrators` count confirmed `0` immediately post-migration, pre-bootstrap; 8 `platform_*` tables + `subscriptions` + `capabilities` present; `companies.pre_suspension_status`/`access_invalidated_at` + both CHECK constraints present. Bootstrap + rollout (`create_baseline_plan`/`bulk_assign_existing_tenants`) run against 2 seeded "legacy" tenants; **no tenant lost access** proven directly via `PlatformEntitlementService.resolve_effective_entitlement()` for all 5 capabilities per tenant, including one tenant with CRM's own toggle genuinely pre-enabled (`available=True, reason=plan_and_toggle`). **Real defect found and fixed**: the downgrade→upgrade cycle failed on the *second* upgrade (`ForeignKeyViolation` re-adding `fk_companies_subscription_id`) — migration 058's `downgrade()` dropped the FK constraint and the `subscriptions` table but never reset `companies.subscription_id` back to `NULL` first, so a company whose subscription had genuinely been assigned (exactly what rollout does) left a dangling UUID. Fixed with an explicit `UPDATE companies SET subscription_id = NULL` before the table drop; re-ran the full cycle clean. Added a permanent regression test, `test_downgrade_after_a_populated_subscription_id_re_upgrades_clean` (`test_migration_cycle_postgres.py`), since the existing Gate A test never populated `subscription_id` before downgrading and so never caught this. All 11 existing `tests/integration/migrations/` + `test_subscription_constraints.py` tests still pass after the fix.
 
-- [ ] T215 Docker Compose live verification: bootstrap → platform login → RBAC
+- [X] T215 Docker Compose live verification: bootstrap → platform login → RBAC
   - **Files**: real stack (`erp-system-api-1`, `erp-system-db-1`, `erp-system-web-1`)
   - **Deps**: T214, T067
   - **Acceptance**: Follows `quickstart.md` §1/§1b/§2/§3 exactly, including the **negative** bootstrap checks (missing config → non-zero exit; repeat → safe no-op) and `platform_administrators` count `0` after migrations alone.
+  - **Result (2026-08-23)**: DONE. §1/§1b (bootstrap, including both negative checks and the count-`0` proof) verified on T214's isolated fresh DB — genuinely equivalent evidence, same production code path. §2/§3 verified live against the real shared stack (`localhost:8000`): platform login returns a `typ:"platform_access"` token (decoded and confirmed); a real tenant user with no `PlatformAdministrator` row and a totally unknown email both produce a **byte-identical** `401 INVALID_CREDENTIALS` response (anti-enumeration proven); a genuine tenant access token against `/platform/dashboard` → `401 PLATFORM_SESSION_INVALID`; the reverse crossover (platform token against tenant `/auth/me`) also → `401`. RBAC proven live end-to-end: a freshly-bootstrapped administrator with no role assigned → `403 INSUFFICIENT_PLATFORM_PERMISSION` on `/platform/dashboard`; after assigning the seeded `platform_owner` role directly → `200` with real dashboard data.
 
-- [ ] T216 Docker Compose live verification: suspension → invalidation → reactivation → refresh-bypass
+- [X] T216 Docker Compose live verification: suspension → invalidation → reactivation → refresh-bypass
   - **Files**: real stack
   - **Deps**: T215, T102
   - **Acceptance**: `quickstart.md` §4 end-to-end with a **multi-tenant user**: A denied, B still works on the same token, old access token denied after reactivation, **old refresh token still denied**, genuine login restores, status returns to the pre-suspension value (verified for both `active` and `inactive` origins).
+  - **Result (2026-08-23)**: DONE, fully live against real Postgres/HTTP. User X created as owner of two real Companies A/B (both activated); confirmed both accessible with X's token. Platform Owner suspends A → **immediately**, with the same still-unexpired token, A is denied (`403 COMPANY_SUSPENDED`) across two modules (inventory + sales), while B remains fully accessible with the exact same token throughout. Reactivate A → the **original pre-suspension token** is still rejected (watermark). **Critical check**: redeeming X's **old pre-suspension refresh token** mints a brand-new access token — retried against A, **still rejected** (`Session.created_at` never advances on refresh; the refresh-bypass does not exist). A genuine new login restores A access, `status` returns to `"active"`. Repeated the full suspend→reactivate cycle on Company B starting from `inactive` (via a real deactivate call first): `pre_suspension_status` recorded as `"inactive"`, and reactivation correctly restores `"inactive"`, **not** `"active"`. The localStorage-manipulation and multi-device sub-checks are structurally guaranteed by the same proven mechanism (server never reads `erp_active_company_id`; each device maps to its own `Session`, independently watermark-gated) rather than separately live-simulated — noted, not silently assumed.
 
-- [ ] T217 Docker Compose live verification: entitlement downgrade bypass check
+- [X] T217 Docker Compose live verification: entitlement downgrade bypass check
   - **Files**: real stack
   - **Deps**: T216, T137
   - **Acceptance**: `quickstart.md` §6a–§6d on the real stack, including the direct-`curl` check proving the frontend is not the security boundary and that the stored toggle is never rewritten.
+  - **Result (2026-08-23)**: DONE, fully live. §6a: Company A on an allowing Plan with CRM toggle genuinely enabled → `GET .../crm/leads` succeeds; moved (as Platform Owner) to a Plan with `crm: false` **without touching the toggle** → very next request `403 CAPABILITY_NOT_ENTITLED` (`reason: plan_ceiling`); toggle row confirmed still `true` in `crm_feature_flags` directly via DB query; moved back to the allowing Plan → access resumes automatically, no toggle mutation at any point. Repeated for Inventory (a non-CRM, always-toggle-enabled module) — same ceiling behaviour, confirming the rule is uniform. §6b: attempted `POST /crm/enable` while on the denying Plan — **finding**: this succeeds (200), which is the already-documented, already-audited Phase 10 scope decision (`T138-T144`'s own recorded evidence: the `is_within_plan_ceiling()` secondary guard was wired only into Inventory/Sales/Purchase's toggle endpoints, "Accounting/CRM unchanged" — deliberate, not a Phase 17 defect). Confirmed live that this does **not** create a runtime bypass: `GET .../crm/leads` immediately re-tested in the same sequence still correctly returns `403 CAPABILITY_NOT_ENTITLED` — the primary mount-level gate remains authoritative regardless of the toggle-mutation outcome. §6c: granted a time-boxed `EntitlementOverride` for `crm` while still on the denying Plan → `GET .../crm/leads` immediately succeeds via the override; expiry-at-read-time reversion mechanics already exhaustively proven by Phase 9/11's existing automated suite, not re-derived by live sleep-waiting. §6d: every check in this task was performed via direct `curl`, never through any UI — the frontend-is-not-the-boundary property is the substrate of the whole test, not a separate step.
 
-- [ ] T218 Docker Compose live verification: overrides, quotas, usage, audit, support access
+- [X] T218 Docker Compose live verification: overrides, quotas, usage, audit, support access
   - **Files**: real stack
   - **Deps**: T217, T166, T157
   - **Acceptance**: `quickstart.md` §7 support boundary; override grant/expiry; quota states; audit filtering — all against real Postgres.
+  - **Result (2026-08-23)**: DONE, fully live. §7: initiated a real support-access grant for Company A; confirmed **no route exists anywhere** under `/platform/tenants/{id}/{sales,inventory,crm}/...` (`404` for all three — there is no code path from the support-access router into any business-record repository, matching the module's own docstring); confirmed the administrative views (entitlements, lifecycle-history, tenant detail) work fully within the grant; terminated the grant (`204`); re-terminating the same grant → specific `403 SUPPORT_ACCESS_EXPIRED`, never a silent no-op. Quota states: found the shared dev stack's `quota_definitions` catalogue had never been seeded (a dev-environment data gap, not a code defect) — seeded it via the existing idempotent `QuotaRepository.create_definition()` path, then demonstrated **`unlimited`** (no plan-quota limit set), **`unavailable`** (limit set, no usage recorded yet — never a fabricated `0`), and **`approaching`** (85/100 usage) states live against real Postgres, plus an override grant flipping a quota to `unlimited`. Audit filtering: unfiltered `/platform/audit` returns all 27 events generated across this whole live-verification session; `?company_id=` scopes correctly to exactly Company A's 11 events; `?action=tenant_lifecycle.suspend` returns exactly the matching events with zero leakage of other action types.
 
 - [ ] T219 Playwright: Platform Admin happy path
   - **Purpose**: Follows this project's established live-browser methodology (Epics 7–9).
   - **Files**: verification script under the session scratchpad
   - **Deps**: T218, T204
   - **Acceptance**: bootstrap owner → login → dashboard → tenant list → tenant detail → plan/subscription → entitlement action → audit shows the action. **Zero unexpected browser console errors.**
+  - **Result (2026-08-23)**: **BLOCKED — not completed.** No Playwright/browser automation tool is available in this session (confirmed via tool search before starting the phase; surfaced to the product owner up front, who chose to proceed with the rest of Phase 17 and record this honestly rather than fabricate or skip silently). Every functional step this task would exercise through a browser (bootstrap, login, dashboard, tenant list/detail, plan/subscription assignment, an entitlement action, and audit reflecting it) has been independently proven at the real HTTP/Postgres level by T215–T218 — the only genuinely untested surface is the actual rendered frontend and its browser console. Requires either browser tooling access in a future session or manual QA execution.
 
 - [ ] T220 Playwright: suspension flow in the browser
   - **Files**: verification script
   - **Deps**: T219
   - **Acceptance**: tenant user logged in → platform admin suspends → tenant request denied → reactivate → old access token denied → old refresh used → new access token **still denied** → genuine login → access restored. Zero unexpected console errors.
+  - **Result (2026-08-23)**: **BLOCKED — not completed.** Same tooling gap as T219. The exact underlying flow (including the critical old-refresh-token-still-denied step) is fully proven at the HTTP/Postgres level by T216; only the browser-rendered UI and console are unverified.
 
 - [ ] T221 Playwright: multi-tenant and support flows
   - **Files**: verification script
   - **Deps**: T220
   - **Acceptance**: user in A and B → suspend A → A denied, B fully functional; support grant → administrative context visible, business records unavailable → revoke → access ends. Zero unexpected console errors.
+  - **Result (2026-08-23)**: **BLOCKED — not completed.** Same tooling gap as T219/T220. The multi-tenant isolation flow is proven by T216; the support-access boundary flow is proven by T218. Only the browser-rendered UI and console are unverified.
 
-- [ ] T222 [P] **[Gate G]** Regression: Auth, Companies, Users & Roles
+- [X] T222 [P] **[Gate G]** Regression: Auth, Companies, Users & Roles
   - **Files**: existing `backend/tests/` suites
   - **Deps**: T214
   - **Acceptance**: Tenant login, refresh, company switching and existing RBAC all unaffected by T083/T084.
+  - **Result (2026-08-23)**: DONE. `tests/integration/api/v1/{auth,companies,users_roles}` — 238/238 passed. `tests/unit/modules/{auth,companies,users_roles}` — 382/382 passed. 620/620 total, zero failures — this exact module set was not covered by Phase 16's cross-module regression run (which covered only CRM/Inventory/Sales/Purchase/Accounting), so this is a genuinely fresh confirmation.
 
-- [ ] T223 [P] **[Gate G]** Regression: Inventory, Purchase, Sales
+- [X] T223 [P] **[Gate G]** Regression: Inventory, Purchase, Sales
   - **Files**: existing suites + live smoke
   - **Deps**: T214
   - **Acceptance**: Full suites green; feature toggles work for owner/admin; the new entitlement mount denies nothing for baseline-plan tenants.
+  - **Result (2026-08-23)**: DONE. `tests/integration/api/v1/{inventory,purchase,sales}` re-run fresh post-T214/T211 fixes (bundled with Accounting in one run — see T224's own Result for the combined count and the one characterized flake). Live smoke: T216/T217's own live verification independently exercised Inventory (suspension checks, entitlement-ceiling check) and Sales (suspension check) against the real stack with genuine baseline-plan/no-plan tenants — access was never spuriously denied for either.
 
-- [ ] T224 [P] **[Gate G]** Regression: Accounting and CRM
+- [X] T224 [P] **[Gate G]** Regression: Accounting and CRM
   - **Files**: existing suites + live smoke
   - **Deps**: T214
   - **Acceptance**: Accounting's and CRM's existing gates behave identically to the Phase 1 baseline; the CRM happy path (lead → qualify → convert → customer/opportunity → activity) still passes end-to-end.
+  - **Result (2026-08-23)**: DONE. `tests/integration/api/v1/crm/` run standalone: **85/85 passed**, including `test_lead_conversion_api.py`'s lead→qualify→convert coverage end-to-end. `tests/integration/api/v1/{inventory,purchase,sales,accounting}` run together: **886 passed, 1 failed, 4 skipped** (`test_approval_api.py::TestApprovalActionsAPI::test_get_approval_status`) — re-run in isolation (1/1 pass) and as its full file (27/27 pass) immediately after, confirming a load-sensitive flake under heavy concurrent Docker load (consistent with this project's own previously-documented flaky-test precedent, e.g. Epic 8's closure notes), **not** attributable to any Phase 17 change (no Purchase-module file was touched this phase). Combined with T223: **971/972 passed on the first full run, 972/972 confirmed on isolation re-run** — matching Phase 16's own 972-passed cross-module baseline exactly.
 
-- [ ] T225 **[Gate G]** Gate G sign-off and Epic closure audit
+- [X] T225 **[Gate G]** Gate G sign-off and Epic closure audit
   - **Deps**: T214–T224
   - **Acceptance**: All gates A–G green; the Final Completeness Audit below fully ticked; every deviation or deferred item explicitly recorded — never silently closed.
+  - **Result (2026-08-23)**: **Gate G: PASS** — "real-stack regression across Epics 1-9" (Gate G's own literal one-line definition) is fully proven: T214's real-Postgres migration cycle (with a genuine defect found and fixed), T215-T218's live HTTP/Postgres verification of every backend security/business property in `quickstart.md`, and T222-T224's regression suites (620 + 972 tests, one isolation-confirmed flake, zero real failures). **One explicit, non-silent deviation**: T219-T221 (Playwright browser scripts) are NOT completed — no browser automation tooling was available in this session; surfaced to and acknowledged by the product owner before proceeding, with every T219-T221 functional step independently proven at the HTTP/Postgres level instead. See the Final Completeness Audit below for the full item-by-item sign-off, including this same exception recorded against every audit line it touches.
+
+**Phase 17 Exit Condition**: T214-T218 and T222-T225 all implemented and proven; **Gate G PASSED** on its own literal terms (real-stack regression across Epics 1-9, proven via real Postgres/Docker/HTTP). **T219-T221 (Playwright browser scripts) are explicitly NOT complete** — blocked on the absence of any browser-automation tool in this session, a gap surfaced to and consciously accepted by the product owner before proceeding, not a silent omission. Every functional scenario T219-T221 would have exercised through a browser was independently proven at the real HTTP/Postgres level by T215-T218. Two genuine defects discovered and fixed during implementation: (1) migration 058's `downgrade()` left a dangling `companies.subscription_id` FK reference, breaking the very next `upgrade head` — fixed with an explicit `NULL` reset, covered by a new permanent regression test; (2) `bootstrap.py`'s `main()` passed the stdlib-reserved key `message` inside a logging `extra={}` dict, raising `KeyError` on every bootstrap run — renamed to `result_message`. Migration head remains `061` — no `062` created. **Overall: PASS with one explicitly recorded, product-owner-accepted deviation (T219-T221).** See Phase 17 closure PHR for full evidence.
 
 ---
 
@@ -1791,6 +1805,8 @@ Phase 17: T222, T223, T224 in parallel (independent existing suites)
 | US-11 operational health | T174, T203 | T175 |
 | US-12 AI usage/credits | T154, T155, T201 | T156 |
 | FR-9A-017/018/222 auth freshness | T082–T084, T088, T089 | T095–T100, T216, T220 |
+
+**Phase 17 verification-coverage note (2026-08-23)**: every row above that cites T219, T220, or T221 as verification evidence (US-1, US-2, US-3, US-8, US-9, FR-9A-017/018/222) has that Playwright task **blocked/not completed** (no browser-automation tool available this session). In every case the same requirement is independently, fully verified at the real HTTP/Postgres level by T215 (US-1/US-2/US-8's underlying flows), T216 (US-3, FR-9A-017/018/222), and T218 (US-9) — see those tasks' Result notes above. Browser-rendered UI/console behaviour specifically remains unverified pending future Playwright tooling access.
 | FR-9A-036 bootstrap | T067 | T070–T074, T215 |
 | FR-9A-165/166 downgrade conflict | T113 | T117, T217 |
 | FR-9A-183–186 toggle hardening | T138–T141 | T142–T144 |
@@ -1817,55 +1833,55 @@ Phase 17: T222, T223, T224 in parallel (independent existing suites)
 
 ## Phase Gate Checklist
 
-- [ ] **Gate A** (T031, Phase 2) — migration safety on real PostgreSQL
-- [ ] **Gate B** (T077, Phase 5) — platform trust boundary + RBAC on the Phase-5 route surface
-- [ ] **Gate E** (T081, Phase 6) — audit atomicity on a real Phase-5 privileged mutation
-- [ ] **Gate C** (T102, Phase 7) — lifecycle, authentication freshness incl. refresh bypass, **and the 3-way state+audit+outbox atomicity proof (T101)**
-- [ ] **Gate D** (T137, Phase 9) — entitlement ceiling at point of use, all 5 modules
-- [ ] **Gate F** (T166, Phase 12) — support security boundary
-- [ ] **Gate G** (T225, Phase 17) — real-stack regression across Epics 1–9
-- [ ] **Gate B final coverage** (T206, Phase 16) — exhaustive route-permission matrix once all routers exist
+- [X] **Gate A** (T031, Phase 2) — migration safety on real PostgreSQL. Re-confirmed live in T214 (full `056→061→056→061` cycle on an isolated database), which also found and fixed a real migration-058 downgrade defect not previously caught.
+- [X] **Gate B** (T077, Phase 5) — platform trust boundary + RBAC on the Phase-5 route surface
+- [X] **Gate E** (T081, Phase 6) — audit atomicity on a real Phase-5 privileged mutation
+- [X] **Gate C** (T102, Phase 7) — lifecycle, authentication freshness incl. refresh bypass, **and the 3-way state+audit+outbox atomicity proof (T101)**. Re-confirmed live in T216 (real suspend/reactivate/old-refresh-still-denied sequence against the real stack).
+- [X] **Gate D** (T137, Phase 9) — entitlement ceiling at point of use, all 5 modules. Re-confirmed live in T217.
+- [X] **Gate F** (T166, Phase 12) — support security boundary. Re-confirmed live in T218 (no route exists from support access into any business-record repository — live `404`s).
+- [X] **Gate G** (T225, Phase 17) — real-stack regression across Epics 1–9. **PASS on its own literal terms**, proven by T214-T218 (real Postgres/HTTP) + T222-T224 (620+972 regression tests). **Caveat**: the Playwright browser-level scripts this phase also specifies (T219-T221) are NOT completed — no browser automation tool was available in this session; the product owner explicitly accepted proceeding with backend/HTTP-equivalent proof instead (see T219-T221 Result notes above).
+- [X] **Gate B final coverage** (T206, Phase 16) — exhaustive route-permission matrix once all routers exist
 
 ---
 
 ## Final Completeness Audit
 
-- [ ] All 12 user stories have implementation + verification coverage
-- [ ] Migrations `057`–`061` exist; **no `062`**; bootstrap is not a migration; T029 and T141 both assert this
-- [ ] Migration `057` suspended-row preflight is explicit and tested (T012, T025, T026)
-- [ ] `PlatformAdministrator`, `PlatformSession`, `PlatformRefreshToken` tasks exist
-- [ ] BR-9A-011 session-revoking deactivation is implemented (T054) and proved at API level (T059)
-- [ ] Platform RBAC with permission-code enforcement exists; last-owner and self-escalation protected
-- [ ] Bootstrap tasks + all 5 negative cases exist
-- [ ] Audit foundation precedes every audited mutation; fail-closed proved twice (T079 foundation, T101 full 3-way)
-- [ ] Suspension and reactivation are separate tasks; reactivation restores the recorded status
-- [ ] Authentication freshness uses `Session.created_at`; **no runtime authorization uses token `iat`**
-- [ ] Old-refresh-token bypass test (T096) exists and is a Gate C blocker
-- [ ] Multi-tenant A/B test (T098) and multi-device test (T099) exist
-- [ ] Plans, Subscriptions, Capability registry, quota foundation and entitlement resolver tasks exist, each exactly once
-- [ ] Point-of-use enforcement covers Inventory, Purchase, Sales, Accounting, CRM
-- [ ] Feature-toggle hardening covers exactly Inventory, Sales, Purchase; Accounting/CRM not rewritten
-- [ ] Canonical tenant-context accessor and `PlatformSelectedTenantContext` tasks exist
-- [ ] Override, quota-admin, usage tasks exist; AI readiness remains provider-neutral
-- [ ] Support access has negative business-record tests
-- [ ] **Platform Administrator backend API routes exist** (T068 — `GET/POST /administrators`, `PATCH /administrators/{adminId}`)
-- [ ] **Platform RBAC backend API routes exist** (T069 — `GET/POST /roles`, `POST /administrators/{adminId}/roles`)
-- [ ] **Frontend Administrators page consumes the Platform API** via `platformApiClient` (T198 → T068, T179), never a Python service
-- [ ] **Frontend Roles page consumes the Platform API** via `platformApiClient` (T199 → T069, T179), never a Python service
-- [ ] **Gate B (T076) tests only real, existing Phase-5 routes** — the 9 operations from auth + T068 + T069
-- [ ] **T206 covers the complete final route table** — all 30 permission-guarded operations, completeness asserted
-- [ ] All **28 contract paths / 33 operations** have explicit implementation coverage (T177) and permission coverage (T206); no undeclared CRUD invented
-- [ ] **`/platform-admin/login` is structurally outside the protected layout** — defined in the `(platform-auth)` group (T190), mirroring the repo's existing `(auth)` vs `(protected)` split
-- [ ] **Unauthenticated login page has a no-redirect-loop test** (T205 case A)
-- [ ] **Protected-route redirect test exists** (T205 case B); authenticated render (case C); logout (case E)
-- [ ] **Tenant auth cannot satisfy Platform route protection** (T205 case D, plus backend T055/T056)
-- [ ] Tenant/Platform client separation has crossover tests (T182, T183)
-- [ ] Platform frontend has a shell + 14 page tasks; dashboard degraded states covered
-- [ ] PostgreSQL, Docker Compose and Playwright verification all exist
-- [ ] Existing ERP regression verification exists for all 8 completed modules
-- [ ] No out-of-scope task introduced (see below)
-- [ ] No unresolved architectural decision deferred into `/sp.implement`
-- [ ] **Dependency graph is acyclic; every gate depends only on tasks executable before it**
+- [X] All 12 user stories have implementation + verification coverage. **Caveat**: stories whose designated verification task is T219/T220/T221 (Playwright) are covered by the T215-T218 backend/HTTP equivalent instead — see traceability table above for the per-row note.
+- [X] Migrations `057`–`061` exist; **no `062`**; bootstrap is not a migration; T029 and T141 both assert this. Re-confirmed live in T214.
+- [X] Migration `057` suspended-row preflight is explicit and tested (T012, T025, T026)
+- [X] `PlatformAdministrator`, `PlatformSession`, `PlatformRefreshToken` tasks exist
+- [X] BR-9A-011 session-revoking deactivation is implemented (T054) and proved at API level (T059)
+- [X] Platform RBAC with permission-code enforcement exists; last-owner and self-escalation protected
+- [X] Bootstrap tasks + all 5 negative cases exist. Re-confirmed live in T215, including a real defect found and fixed this phase (`bootstrap.py`'s `main()` logging `KeyError`).
+- [X] Audit foundation precedes every audited mutation; fail-closed proved twice (T079 foundation, T101 full 3-way)
+- [X] Suspension and reactivation are separate tasks; reactivation restores the recorded status. Re-confirmed live in T216 for both `active`- and `inactive`-origin companies.
+- [X] Authentication freshness uses `Session.created_at`; **no runtime authorization uses token `iat`**. Re-confirmed live in T216.
+- [X] Old-refresh-token bypass test (T096) exists and is a Gate C blocker. Re-confirmed live in T216 (old refresh token mints a new access token that is still denied).
+- [X] Multi-tenant A/B test (T098) and multi-device test (T099) exist. T098 re-confirmed live in T216; T099's device-independence follows from the same proven per-`Session` watermark mechanism (not separately re-simulated live).
+- [X] Plans, Subscriptions, Capability registry, quota foundation and entitlement resolver tasks exist, each exactly once
+- [X] Point-of-use enforcement covers Inventory, Purchase, Sales, Accounting, CRM. Re-confirmed live in T217 for CRM and Inventory.
+- [X] Feature-toggle hardening covers exactly Inventory, Sales, Purchase; Accounting/CRM not rewritten. Re-confirmed live in T217 (CRM's `/enable` ceiling gap is the documented Phase 10 scope decision, not a defect — primary gate still blocks actual data access).
+- [X] Canonical tenant-context accessor and `PlatformSelectedTenantContext` tasks exist
+- [X] Override, quota-admin, usage tasks exist; AI readiness remains provider-neutral. Re-confirmed live in T218, including fixing a `quota_definitions` seeding gap on the shared dev stack.
+- [X] Support access has negative business-record tests. Re-confirmed live in T218 (`404` on every business-record path under a support grant — the route does not exist at all).
+- [X] **Platform Administrator backend API routes exist** (T068 — `GET/POST /administrators`, `PATCH /administrators/{adminId}`)
+- [X] **Platform RBAC backend API routes exist** (T069 — `GET/POST /roles`, `POST /administrators/{adminId}/roles`)
+- [X] **Frontend Administrators page consumes the Platform API** via `platformApiClient` (T198 → T068, T179), never a Python service
+- [X] **Frontend Roles page consumes the Platform API** via `platformApiClient` (T199 → T069, T179), never a Python service
+- [X] **Gate B (T076) tests only real, existing Phase-5 routes** — the 9 operations from auth + T068 + T069
+- [X] **T206 covers the complete final route table** — all 30 permission-guarded operations, completeness asserted
+- [X] All **28 contract paths / 33 operations** have explicit implementation coverage (T177) and permission coverage (T206); no undeclared CRUD invented
+- [X] **`/platform-admin/login` is structurally outside the protected layout** — defined in the `(platform-auth)` group (T190), mirroring the repo's existing `(auth)` vs `(protected)` split
+- [X] **Unauthenticated login page has a no-redirect-loop test** (T205 case A)
+- [X] **Protected-route redirect test exists** (T205 case B); authenticated render (case C); logout (case E)
+- [X] **Tenant auth cannot satisfy Platform route protection** (T205 case D, plus backend T055/T056). Re-confirmed live in T215 (tenant token vs `/platform/dashboard` → `401`; reverse crossover also `401`).
+- [X] Tenant/Platform client separation has crossover tests (T182, T183)
+- [X] Platform frontend has a shell + 14 page tasks; dashboard degraded states covered
+- [ ] **PostgreSQL, Docker Compose and Playwright verification all exist.** PostgreSQL and Docker Compose verification: **complete** (T214-T218, T222-T224). **Playwright verification: NOT complete** (T219-T221 blocked — no browser automation tool available in this session; explicitly accepted by the product owner; backend/HTTP-equivalent proof substituted throughout T215-T218). Left unchecked deliberately — this is the one honest gap in this audit, not an oversight.
+- [X] Existing ERP regression verification exists for all 8 completed modules. T222 (Auth/Companies/Users&Roles, 620 tests) + T223/T224 (Inventory/Purchase/Sales/Accounting/CRM, 972 tests, 1 isolation-confirmed flake) — all real modules covered.
+- [X] No out-of-scope task introduced (see below). Confirmed via `git diff --stat` — exactly 3 files touched in Phase 17, all within migration-058/bootstrap/regression-test scope; no migration `062`; no Phase 18 file.
+- [X] No unresolved architectural decision deferred into `/sp.implement`
+- [X] **Dependency graph is acyclic; every gate depends only on tasks executable before it**
 
 ---
 
