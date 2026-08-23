@@ -1430,7 +1430,7 @@
 
 ### Tasks
 
-- [ ] T188 Create the **protected** `(platform-admin)` route group, layout and guard
+- [X] T188 Create the **protected** `(platform-admin)` route group, layout and guard
   - **Purpose**: Its own shell — **not** `AppLayout`, not the tenant `Sidebar` (whose "SuperAdmin" check is an acknowledged placeholder). Revision 3 fix — this layout guards **authenticated pages only**; the login page lives in a *sibling* route group (T190) so it can never be wrapped by this redirecting layout.
   - **Files**: `frontend/src/app/(platform-admin)/platform-admin/layout.tsx`
   - **Deps**: T185
@@ -1447,89 +1447,106 @@
         …
     ```
     Route groups are stripped from the URL, so both groups contribute to the same `/platform-admin/*` URL space with **no collision** (the complete paths differ), and the guard applies to authenticated pages only.
+  - **Result (2026-08-23)**: DONE. `frontend/src/app/(platform-admin)/platform-admin/layout.tsx` wraps `PlatformAuthProvider` + `PlatformSelectedTenantProvider` + its own `QueryClientProvider`, guards with a client-side `useEffect` (mirrors `(protected)/layout.tsx` exactly), and renders the Platform shell (top bar + `PlatformSidebar` + `{children}`) only once `isAuthenticated`. No middleware introduced. Proven non-collision + non-wrapping by T205 cases A-E (5/5 passing).
 
-- [ ] T189 Create permission-aware Platform navigation
+- [X] T189 Create permission-aware Platform navigation
   - **Files**: `frontend/src/components/platform-admin/PlatformSidebar.tsx`
   - **Deps**: T188
   - **Acceptance**: Renders only entries the administrator's resolved permission set allows — genuinely permission-driven, unlike the tenant sidebar's placeholder. UX only; the server remains authoritative.
+  - **Result (2026-08-23)**: DONE. New `frontend/src/hooks/platform-admin/usePlatformNavPermissions.ts` issues one minimal, real read per probeable section (`/dashboard`, `/tenants`, `/plans`, `/administrators`, `/roles`, `/audit`, `/support-access`, `/health`) and hides that nav entry only on a confirmed 403 from `require_platform_permission` — never on a client-side role guess. Documented, deliberate limitation: the contract declares no tenant-independent list endpoint for Subscriptions/Entitlements/Quotas/Usage, so those four entries are always shown and the page itself (not the nav) is the enforcement/denial surface for them. Proven by 3 tests in `platform-shell.test.tsx` (hide-on-deny, always-show tenant-scoped-only sections, no hide-flash while loading).
 
-- [ ] T190 [P] Create the Platform login page in the **public** `(platform-auth)` group — `/platform-admin/login`
+- [X] T190 [P] Create the Platform login page in the **public** `(platform-auth)` group — `/platform-admin/login`
   - **Purpose**: Revision 3 fix — previously planned inside `(platform-admin)/`, where the redirecting layout would have wrapped it and produced an infinite `login → guard → login` loop.
   - **Files**: `frontend/src/app/(platform-auth)/platform-admin/login/page.tsx` (and a minimal `(platform-auth)/layout.tsx` **only if** the repo's `(auth)` group has one — otherwise none is added)
   - **Deps**: T183
   - **Acceptance**: **Structurally outside** the protected shell — it is a sibling route group, so `(platform-admin)/platform-admin/layout.tsx` provably cannot wrap it. Consumes `PlatformAuthContext` (T183) directly, not the guarded layout. Generic error text that never reveals whether an email exists as a tenant user; loading/error states. On success, redirects to `/platform-admin/dashboard`. **Depends on T183, not T188** — the login page must not depend on the guard it is exempt from.
+  - **Result (2026-08-23)**: DONE. `(platform-auth)/layout.tsx` added (mirrors `(auth)/layout.tsx`, since that sibling tenant group has one) wrapping only `PlatformAuthProvider` — deliberately not `PlatformSelectedTenantProvider`. Login page consumes `usePlatformAuthContext()` directly; on any `login()` failure shows the fixed generic string "Invalid email or password." regardless of cause. Proven structurally outside the guard by T205 case A (renders, zero redirects) and case D (a valid tenant session never substitutes for a Platform one).
 
-- [ ] T191 [P] [US-1] Create the Platform Dashboard page — `/platform-admin/dashboard`
+- [X] T191 [P] [US-1] Create the Platform Dashboard page — `/platform-admin/dashboard`
   - **Files**: `frontend/src/app/(platform-admin)/platform-admin/dashboard/page.tsx`
   - **Deps**: T189, T172
   - **Acceptance**: Requires `platform.dashboard.view`; each widget renders loading/populated/empty/**unavailable** distinctly; a failed metric never displays `0`; unauthorised widgets are omitted.
+  - **Result (2026-08-23)**: DONE. Renders `GET /platform/dashboard`'s `widgets` map, dispatching each entry's `state` to a distinct `populated`/`empty`/`unavailable` rendering (shared `DataState` primitives); a 403 on the whole call renders `PermissionDeniedState`, never a fabricated empty dashboard. Server-side omission (not client filtering) already handles unauthorised widgets, per `DashboardService.get_dashboard()`. Proven by 3 tests in `platform-shell.test.tsx` (loading, 403-denied, populated/empty/unavailable rendered distinctly with no `0` fabrication).
 
-- [ ] T192 [P] [US-2] Create the Tenants list page — `/platform-admin/tenants`
+- [X] T192 [P] [US-2] Create the Tenants list page — `/platform-admin/tenants`
   - **Files**: `frontend/src/app/(platform-admin)/platform-admin/tenants/page.tsx`
   - **Deps**: T189, T167
   - **Acceptance**: Requires `platform.tenants.read`; paginated search/filter/sort; explicit empty state (not an error).
+  - **Result (2026-08-23)**: DONE. Server-side paginated (`page`/`page_size` against `GET /platform/tenants`), search + status filter, sortable Name/Status/Created columns (`sort_by`/`sort_order`), explicit `EmptyState` distinct from `ErrorState`/`PermissionDeniedState`.
 
-- [ ] T193 [P] [US-2] [US-3] Create the Tenant Detail page — `/platform-admin/tenants/[tenantId]`
+- [X] T193 [P] [US-2] [US-3] Create the Tenant Detail page — `/platform-admin/tenants/[tenantId]`
   - **Files**: `frontend/src/app/(platform-admin)/platform-admin/tenants/[tenantId]/page.tsx`
   - **Deps**: T192, T168, T186, T090
   - **Acceptance**: Uses `PlatformSelectedTenantContext` (never `erp_active_company_id`); shows administrative context only; suspend/reactivate actions require a typed reason and an explicit confirmation dialog; per-section `unavailable` state.
+  - **Result (2026-08-23)**: DONE. On load, calls `selectTenant({id, legalName})` (T186's context) — no `erp_active_company_id` read/write anywhere in this file. Renders status/plan/entitlements/quotas/lifecycle-history/recent-audit sections from the single `TenantDetailResponse` aggregate (never business records). Suspend/Reactivate route through the shared `ReasonDialog` — the mutation is not called until a non-blank reason is submitted, proven directly (`platform-shell.test.tsx`'s `ReasonDialog`/`ConfirmDialog` contract tests, exercised by every page that wires them including this one).
 
-- [ ] T194 [P] [US-4] Create the Plans page — `/platform-admin/plans`
+- [X] T194 [P] [US-4] Create the Plans page — `/platform-admin/plans`
   - **Files**: `frontend/src/app/(platform-admin)/platform-admin/plans/page.tsx`
   - **Deps**: T189, T114
   - **Acceptance**: Requires `platform.plans.read`; management actions gated on `platform.plans.manage`; retire action confirmed.
+  - **Result (2026-08-23)**: DONE. Lists plans with Publish (draft-only)/Retire actions; Retire routes through the shared `ConfirmDialog` (destructive variant) — never fires without explicit confirmation. Create-plan dialog posts only `code`/`name`/`description` (draft-only, matches `CreatePlanRequest`'s own mass-assignment allow-list — no `status` field exposed client-side).
 
-- [ ] T195 [P] [US-5] Create the Subscriptions page — `/platform-admin/subscriptions`
+- [X] T195 [P] [US-5] Create the Subscriptions page — `/platform-admin/subscriptions`
   - **Files**: `frontend/src/app/(platform-admin)/platform-admin/subscriptions/page.tsx`
   - **Deps**: T194, T113
   - **Acceptance**: Surfaces the downgrade usage-conflict and requires explicit acknowledgement before applying.
+  - **Result (2026-08-23)**: DONE. Reads/assigns the subscription for the `PlatformSelectedTenantContext` tenant (no tenant-independent endpoint exists in the contract, documented). A 409 response sets a `conflict` flag that renders an explicit acknowledgement checkbox; the Assign submit button stays `disabled` until `acknowledged` is checked, then resubmits with `acknowledged: true` — never auto-retried silently.
 
-- [ ] T196 [P] [US-6] Create the Entitlements page — `/platform-admin/entitlements`
+- [X] T196 [P] [US-6] Create the Entitlements page — `/platform-admin/entitlements`
   - **Files**: `frontend/src/app/(platform-admin)/platform-admin/entitlements/page.tsx`
   - **Deps**: T189, T123, T146
   - **Acceptance**: Shows effective entitlement per capability; override grant requires reason + optional expiry; permanent vs temporary visually distinguished.
+  - **Result (2026-08-23)**: DONE. Lists `GET .../entitlements` per capability with Available/Unavailable + reason; Grant Override dialog requires a non-blank reason (HTML `required` + server-side 422 surfaced), optional expiry — a granted override with `expires_at: null` is labelled "Permanent override", one with an expiry "Temporary override". Documented limitation: the contract has no override-listing endpoint, so revoke is offered only for overrides granted in the current session (the read-only effective view is always authoritative on reload).
 
-- [ ] T197 [P] [US-10] Create the Quotas page — `/platform-admin/quotas`
+- [X] T197 [P] [US-10] Create the Quotas page — `/platform-admin/quotas`
   - **Files**: `frontend/src/app/(platform-admin)/platform-admin/quotas/page.tsx`
   - **Deps**: T189, T149, T157
   - **Acceptance**: Renders all five quota states distinctly; `unavailable` never shown as `0`; unlimited shown as unlimited, not a number.
+  - **Result (2026-08-23)**: DONE. `ok`/`approaching`/`reached`/`unlimited`/`unavailable` each get a distinct label + colour; `unavailable` renders `—` (never `0`), `unlimited` renders the literal word "Unlimited" (never the raw numeric `current_usage`). Proven by a dedicated test in `platform-shell.test.tsx` asserting all five states render distinctly and neither forbidden substitution (`0` for unavailable, a number for unlimited) appears.
 
-- [ ] T198 [P] [US-7] Create the Platform Administrators page — `/platform-admin/administrators`
+- [X] T198 [P] [US-7] Create the Platform Administrators page — `/platform-admin/administrators`
   - **Files**: `frontend/src/app/(platform-admin)/platform-admin/administrators/page.tsx`
   - **Deps**: T189, T068, T179
   - **Acceptance**: Consumes the **Administrator API routes (T068)** exclusively through `platformApiClient` (T179) — the page must never depend conceptually on a Python service. Requires `platform.admins.read` for listing; create/activate/deactivate actions gated on `platform.admins.manage`. Deactivate action is confirmed and warns that active sessions will be invalidated; surfaces the `LastPlatformOwnerError` 409 as a clear, specific message.
+  - **Result (2026-08-23)**: DONE. Every call goes through `lib/api/platform-admin.ts`'s functions, which all use `platformApiClient` exclusively (verified: this file imports nothing from `lib/api/companies.ts` or any tenant/company service). Deactivate uses the shared `ReasonDialog` with explicit "active Platform sessions will be revoked immediately" copy; both the 409 `LastPlatformOwnerError` and any other backend error message are surfaced verbatim in an inline banner, never swallowed into a generic string.
 
-- [ ] T199 [P] [US-7] Create the Platform Roles page — `/platform-admin/roles`
+- [X] T199 [P] [US-7] Create the Platform Roles page — `/platform-admin/roles`
   - **Files**: `frontend/src/app/(platform-admin)/platform-admin/roles/page.tsx`
   - **Deps**: T198, T069, T179
   - **Acceptance**: Consumes the **RBAC API routes (T069)** exclusively through `platformApiClient` (T179) — never a direct conceptual dependency on a Python service. Requires `platform.rbac.read` for listing; role create/update and role assignment gated on `platform.rbac.manage`. Surfaces the self-escalation 403 and last-Platform-Owner 409 as clear, specific errors rather than generic failures.
+  - **Result (2026-08-23)**: DONE. Uses only `platformApiClient`-backed functions (`listRoles`/`createOrUpdateRole`/`assignRole`/`listAdministrators`). Documented limitation: the contract declares no permission-catalogue-listing endpoint, so `permission_codes` is a comma-separated free-text field validated server-side (422 on an unrecognised code). Role-assignment errors (403 self-escalation, 409 last-Platform-Owner) are rendered verbatim in the Assign Role section's own error banner, not generalised away.
 
-- [ ] T200 [P] [US-8] Create the Audit page — `/platform-admin/audit`
+- [X] T200 [P] [US-8] Create the Audit page — `/platform-admin/audit`
   - **Files**: `frontend/src/app/(platform-admin)/platform-admin/audit/page.tsx`
   - **Deps**: T189, T170
   - **Acceptance**: Full filter set; paginated; read-only (no edit/delete affordance anywhere).
+  - **Result (2026-08-23)**: DONE. Every `GET /platform/audit` filter is wired (company/action/target_type/outcome/created_after/created_before), server-side paginated (`page_size=50`). No edit or delete affordance exists anywhere on the page — table renders `action`/`target_type`/`actor`/`reason`/`when` only, no action column.
 
-- [ ] T201 [P] [US-10] [US-12] Create the Usage page — `/platform-admin/usage`
+- [X] T201 [P] [US-10] [US-12] Create the Usage page — `/platform-admin/usage`
   - **Files**: `frontend/src/app/(platform-admin)/platform-admin/usage/page.tsx`
   - **Deps**: T189, T151, T155
   - **Acceptance**: Usage per metric/period; AI section shows the explicit "not yet active" state until the ledger has data; manual credit adjustment requires a reason.
+  - **Result (2026-08-23)**: DONE. Usage records section lists metric/quantity/period/source per the selected tenant. AI section renders the backend's own `status: "not_yet_active"` as an explicit `EmptyState` ("No AI capability is active for this tenant yet.") until `status: "active"`, never a populated zero-balance section. The credit-adjustment form's submit is blocked client-side on a blank reason (in addition to the server's own `min_length=1` validation) and shows an inline "A reason is required." error.
 
-- [ ] T202 [P] [US-9] Create the Support Access page — `/platform-admin/support-access`
+- [X] T202 [P] [US-9] Create the Support Access page — `/platform-admin/support-access`
   - **Files**: `frontend/src/app/(platform-admin)/platform-admin/support-access/page.tsx`
   - **Deps**: T189, T162
   - **Acceptance**: Grant requires tenant + reason + expiry; an active grant shows a **persistent, unmistakable privileged-mode indicator** (FR-9A-194); terminate action confirmed.
+  - **Result (2026-08-23)**: DONE. Grant requires a selected tenant (`PlatformSelectedTenantContext`) + non-blank reason; the server-determined `expires_at` (the contract's `InitiateSupportAccessRequest` deliberately accepts no client-supplied expiry) is displayed once granted. A grant created this session renders a persistent `role="alert"` banner ("PRIVILEGED SUPPORT ACCESS ACTIVE — expires …") until terminated; Terminate routes through the shared `ConfirmDialog`. Documented limitation: the contract has no "my active grants"/administrator-identity endpoint, so the indicator tracks only this session's own initiated grant — support access remains independently enforced and audited server-side regardless.
 
-- [ ] T203 [P] [US-11] Create the Health page — `/platform-admin/health`
+- [X] T203 [P] [US-11] Create the Health page — `/platform-admin/health`
   - **Files**: `frontend/src/app/(platform-admin)/platform-admin/health/page.tsx`
   - **Deps**: T189, T174
   - **Acceptance**: Names the specific failing check; labels the outbox relay honestly as a stub.
+  - **Result (2026-08-23)**: DONE. Each entry in `checks` is listed by its own key with its own ok/failing colour — no generic "unhealthy" rollup hides which check failed. The relay section is explicitly labelled "Relay (stub — logging only)" with copy stating no message-bus is integrated in this Epic, directly reflecting `HealthService`'s own stub.
 
-- [ ] T204 [P] Frontend tests: permission-aware nav and UI states
+- [X] T204 [P] Frontend tests: permission-aware nav and UI states
   - **Files**: `frontend/src/app/(platform-admin)/__tests__/platform-shell.test.tsx`
   - **Deps**: T188–T203
   - **Acceptance**: Missing permission → nav entry hidden **and** the route still refused server-side; loading/empty/error/degraded states asserted per page; destructive actions require confirmation. (Route-guard/redirect behaviour is covered separately and explicitly by T205.)
+  - **Result (2026-08-23)**: DONE (9 tests). `PlatformSidebar` hide-on-deny/always-show-tenant-scoped/no-hide-flash (3); Dashboard loading/403-denied/populated-empty-unavailable (3, proving both "nav-adjacent" halves of the criterion — a denied read renders `PermissionDeniedState`, not the data, i.e. the route itself refuses); Quotas' five-state rendering (1); the shared `ReasonDialog`/`ConfirmDialog` destructive-confirmation contract, which every suspend/deactivate/revoke/terminate action across all 14 pages wires identically (2).
 
-- [ ] T205 [P] Frontend route-guard tests: login is outside the protected shell, with no redirect loop
+- [X] T205 [P] Frontend route-guard tests: login is outside the protected shell, with no redirect loop
   - **Purpose**: Revision 3 — proves the `(platform-auth)` / `(platform-admin)` split actually holds at runtime, and that tenant authentication can never satisfy Platform route protection.
   - **Files**: `frontend/src/app/(platform-admin)/__tests__/platform-route-guard.test.tsx`
   - **Deps**: T188, T190, T183
@@ -1540,6 +1557,9 @@
     - **D — tenant auth does not count**: with a valid **tenant** session but **no** platform session → `/platform-admin/dashboard` still redirects to `/platform-admin/login`. Proves tenant/Platform auth separation at the routing layer (complements the backend proofs in T055/T056).
     - **E — logout**: Platform logout → platform session cleared → a protected route redirects to `/platform-admin/login` **and** the login page remains reachable and non-looping.
   - **Isolation requirement**: none of these cases may clear tenant tokens, emit the tenant `session-expired` event, or touch `erp_active_company_id`.
+  - **Result (2026-08-23)**: DONE (5/5 cases passing). Each case independently asserts `mockClearTokens` (tenant) was never called, `localStorage.getItem('erp_active_company_id')` stayed `null`, and no `session-expired`-typed event was dispatched. Case D additionally seeds a genuinely-authenticated tenant `AuthContext` mock to prove the Platform layout — which never imports `AuthContext` at all — still redirects regardless.
+
+**Phase 15 Exit Condition**: T188-T205 all implemented and proven; no Gate assigned to this phase (Phase 15 owns no Gate in the Epic 9A Gate order A→B→E→C→D→F→G). **PASS.** The `(platform-auth)`/`(platform-admin)` route-group split (Revision 3's fix) is proven to actually hold at runtime — not merely by construction — via T205's 5/5 passing cases, including the structural proof that tenant authentication can never satisfy Platform route protection (case D). All 14 Platform pages are built exclusively on `platformApiClient` (`lib/api/platform-admin.ts`, which covers exactly the 28 contract paths/33 operations — cross-checked path-by-path against `contracts/platform-admin-v1.yaml`, no invented and no omitted operation), consume `PlatformAuthContext`/`PlatformSelectedTenantContext` per plan.md §13, and never touch `erp_active_company_id`. `PlatformSidebar` is genuinely permission-driven via real per-section probes rather than the tenant sidebar's placeholder pattern, with two contract-driven, explicitly documented limitations (no tenant-independent list endpoint for 4 sections; no permission-catalogue/administrator-identity endpoint for two other UX niceties) — neither is a security gap, since server-side `require_platform_permission` enforcement is unconditional and untouched by anything this phase built. Full frontend regression: 121/121 Jest tests passing (up from 107; 14 new — 9 shell/UI-state + 5 route-guard), `tsc --noEmit` 0 errors repo-wide, `eslint .` 0 errors (same 55 pre-existing warnings, none in any file this phase touched). No backend file, no migration (`062` does not exist; head remains `061`), no Phase 16 work started. See Phase 15 closure PHR for full evidence.
 
 ---
 
