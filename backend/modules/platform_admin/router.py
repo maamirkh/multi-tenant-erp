@@ -38,6 +38,8 @@ subscription` operations of ``platform-admin-v1.yaml``.
 from __future__ import annotations
 
 import math
+from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Path, Query, Request, status
@@ -88,10 +90,15 @@ from modules.platform_admin.schemas.ai_credit import (
     AiCreditLedgerEntryResponse,
     TenantAiCreditsResponse,
 )
+from modules.platform_admin.schemas.dashboard import (
+    DashboardResponse,
+    DashboardWidgetResponse,
+)
 from modules.platform_admin.schemas.entitlement import (
     CapabilityEntitlementResponse,
     TenantEntitlementsResponse,
 )
+from modules.platform_admin.schemas.health import PlatformHealthResponse
 from modules.platform_admin.schemas.override import (
     EntitlementOverrideResponse,
     GrantEntitlementOverrideRequest,
@@ -133,6 +140,14 @@ from modules.platform_admin.schemas.support_access import (
     InitiateSupportAccessRequest,
     SupportAccessGrantResponse,
 )
+from modules.platform_admin.schemas.tenant_directory import (
+    AuditEventSummaryResponse,
+    LifecycleEventResponse,
+    PlanSummaryResponse,
+    TenantDetailResponse,
+    TenantLifecycleHistoryResponse,
+    TenantSummaryResponse,
+)
 from modules.platform_admin.schemas.tenant_lifecycle import (
     TenantLifecycleActionRequest,
     TenantLifecycleResponse,
@@ -142,13 +157,21 @@ from modules.platform_admin.schemas.usage import (
     UsageRecordResponse,
 )
 from modules.platform_admin.services.ai_credit_service import AiCreditService
+from modules.platform_admin.services.dashboard_service import (
+    DashboardService,
+    DashboardWidget,
+)
 from modules.platform_admin.services.entitlement_service import (
     PlatformEntitlementService,
 )
+from modules.platform_admin.services.health_service import HealthService
 from modules.platform_admin.services.override_service import OverrideService
 from modules.platform_admin.services.plan_service import PlanService
 from modules.platform_admin.services.platform_administrator_service import (
     PlatformAdministratorService,
+)
+from modules.platform_admin.services.platform_audit_query_service import (
+    PlatformAuditQueryService,
 )
 from modules.platform_admin.services.platform_audit_service import PlatformAuditService
 from modules.platform_admin.services.platform_auth_service import PlatformAuthService
@@ -158,6 +181,10 @@ from modules.platform_admin.services.quota_service import QuotaService
 from modules.platform_admin.services.subscription_service import SubscriptionService
 from modules.platform_admin.services.support_access_service import (
     SupportAccessService,
+)
+from modules.platform_admin.services.tenant_directory_service import (
+    TenantDetail,
+    TenantDirectoryService,
 )
 from modules.platform_admin.services.tenant_lifecycle_service import (
     TenantLifecycleService,
@@ -170,6 +197,9 @@ rbac_router = APIRouter(tags=["Platform RBAC"])
 tenant_router = APIRouter(tags=["Platform Tenants"])
 support_access_router = APIRouter(tags=["Platform Support Access"])
 plan_router = APIRouter(tags=["Platform Plans"])
+audit_router = APIRouter(tags=["Platform Audit"])
+dashboard_router = APIRouter(tags=["Platform Dashboard"])
+health_router = APIRouter(tags=["Platform Health"])
 
 
 def _meta(request: Request) -> ResponseMeta:
@@ -1272,5 +1302,340 @@ async def list_support_access(
             pages=pages,
         ),
         message=f"{total} support-access grant(s) found.",
+        meta=_meta(request),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tenant directory, 360° detail, lifecycle history (T167-T169)
+# ---------------------------------------------------------------------------
+
+
+def _tenant_directory_service(db: Session = Depends(get_db)) -> TenantDirectoryService:
+    return TenantDirectoryService(
+        db=db,
+        company_repo=CompanyRepository(db),
+        subscription_repo=SubscriptionRepository(db),
+        plan_repo=PlanRepository(db),
+        quota_repo=QuotaRepository(db),
+        usage_repo=UsageRepository(db),
+        capability_repo=CapabilityRepository(db),
+        audit_repo=PlatformAuditRepository(db),
+    )
+
+
+def _tenant_detail_response(detail: TenantDetail) -> TenantDetailResponse:
+    company = detail.company
+    return TenantDetailResponse(
+        id=company.id,
+        legal_name=company.legal_name,
+        slug=company.slug,
+        status=company.status,
+        pre_suspension_status=company.pre_suspension_status,
+        access_invalidated_at=company.access_invalidated_at,
+        email=company.email,
+        country=company.country,
+        created_at=company.created_at,
+        plan=(
+            PlanSummaryResponse(
+                id=detail.plan.id,
+                code=detail.plan.code,
+                name=detail.plan.name,
+                status=detail.plan.status,
+            )
+            if detail.plan is not None
+            else None
+        ),
+        subscription=(
+            SubscriptionResponse.model_validate(detail.subscription)
+            if detail.subscription is not None
+            else None
+        ),
+        entitlements=[
+            CapabilityEntitlementResponse(
+                capability_key=e.capability_key, available=e.available, reason=e.reason
+            )
+            for e in detail.entitlements
+        ],
+        quotas=[
+            QuotaStatusResponse(
+                quota_key=q.quota_key,
+                state=q.state.value,
+                limit=q.limit,
+                current_usage=q.current_usage,
+                enforcement_style=q.enforcement_style,
+            )
+            for q in detail.quotas
+        ],
+        user_count=detail.user_count,
+        lifecycle_history=[
+            LifecycleEventResponse.model_validate(e) for e in detail.lifecycle_history
+        ],
+        recent_audit_events=[
+            AuditEventSummaryResponse.model_validate(e)
+            for e in detail.recent_audit_events
+        ],
+    )
+
+
+@tenant_router.get(
+    "/tenants",
+    response_model=PaginatedResponse[TenantSummaryResponse],
+    summary="Search/filter/sort/paginate the full tenant list across all CompanyStatus values",
+    dependencies=[Depends(require_platform_permission("platform.tenants.read"))],
+)
+async def list_tenants(
+    request: Request,
+    status_filter: str | None = Query(None, alias="status"),
+    country: str | None = Query(None),
+    search: str | None = Query(None),
+    include_deleted: bool = Query(True),
+    sort_by: str = Query("created_at"),
+    sort_order: str = Query("desc"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    svc: TenantDirectoryService = Depends(_tenant_directory_service),
+) -> PaginatedResponse[TenantSummaryResponse]:
+    filters = {
+        "status": status_filter,
+        "country": country,
+        "search": search,
+        "include_deleted": include_deleted,
+    }
+    items, total = svc.list_tenants(
+        filters=filters,
+        page=page,
+        page_size=page_size,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+    pages = math.ceil(total / page_size) if total > 0 else 0
+    return PaginatedResponse(
+        data=PaginatedData(
+            items=[TenantSummaryResponse.model_validate(c) for c in items],
+            total=total,
+            page=page,
+            page_size=page_size,
+            pages=pages,
+        ),
+        message=f"{total} tenant(s) found.",
+        meta=_meta(request),
+    )
+
+
+@tenant_router.get(
+    "/tenants/{companyId}",
+    response_model=StandardResponse[TenantDetailResponse],
+    summary="Tenant 360 detail view (aggregate/summary only — never business records)",
+    dependencies=[Depends(require_platform_permission("platform.tenants.read"))],
+    responses={404: {"description": "Company not found"}},
+)
+async def get_tenant_detail(
+    request: Request,
+    companyId: UUID = Path(...),  # noqa: N803 — matches contract's path parameter name
+    svc: TenantDirectoryService = Depends(_tenant_directory_service),
+) -> StandardResponse[TenantDetailResponse]:
+    detail = svc.get_tenant_detail(companyId)
+    if detail is None:
+        raise NotFoundException(message="Company not found.")
+    return StandardResponse(
+        data=_tenant_detail_response(detail),
+        message="Tenant detail resolved.",
+        meta=_meta(request),
+    )
+
+
+@tenant_router.get(
+    "/tenants/{companyId}/lifecycle-history",
+    response_model=StandardResponse[TenantLifecycleHistoryResponse],
+    summary="Every status transition for a tenant with actor/timestamp/reason",
+    dependencies=[Depends(require_platform_permission("platform.tenants.read"))],
+    responses={404: {"description": "Company not found"}},
+)
+async def get_tenant_lifecycle_history(
+    request: Request,
+    companyId: UUID = Path(...),  # noqa: N803 — matches contract's path parameter name
+    db: Session = Depends(get_db),
+    svc: TenantDirectoryService = Depends(_tenant_directory_service),
+) -> StandardResponse[TenantLifecycleHistoryResponse]:
+    if CompanyRepository(db).get_by_id(companyId) is None:
+        raise NotFoundException(message="Company not found.")
+
+    events = svc.get_lifecycle_history(companyId)
+    return StandardResponse(
+        data=TenantLifecycleHistoryResponse(
+            company_id=str(companyId),
+            events=[LifecycleEventResponse.model_validate(e) for e in events],
+        ),
+        message=f"{len(events)} lifecycle event(s) found.",
+        meta=_meta(request),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Platform audit (T170) — the read surface for PlatformAuditQueryService (T78)
+# ---------------------------------------------------------------------------
+
+
+def _audit_query_service(db: Session = Depends(get_db)) -> PlatformAuditQueryService:
+    return PlatformAuditQueryService(PlatformAuditRepository(db))
+
+
+def _parse_outcome(outcome: str | None) -> Literal["success", "denied"] | None:
+    if outcome == "success":
+        return "success"
+    if outcome == "denied":
+        return "denied"
+    return None
+
+
+@audit_router.get(
+    "/audit",
+    response_model=PaginatedResponse[AuditEventSummaryResponse],
+    summary="Platform audit view, filterable by administrator/tenant/action/resource/date/status",
+    dependencies=[Depends(require_platform_permission("platform.audit.read"))],
+)
+async def list_audit_events(
+    request: Request,
+    actor_platform_administrator_id: UUID | None = Query(None),
+    company_id: UUID | None = Query(None),
+    action: str | None = Query(None),
+    target_type: str | None = Query(None),
+    target_id: UUID | None = Query(None),
+    created_after: str | None = Query(None),
+    created_before: str | None = Query(None),
+    outcome: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    svc: PlatformAuditQueryService = Depends(_audit_query_service),
+) -> PaginatedResponse[AuditEventSummaryResponse]:
+    items, total = svc.query(
+        actor_platform_administrator_id=actor_platform_administrator_id,
+        company_id=company_id,
+        action=action,
+        target_type=target_type,
+        target_id=target_id,
+        created_after=datetime.fromisoformat(created_after) if created_after else None,
+        created_before=(
+            datetime.fromisoformat(created_before) if created_before else None
+        ),
+        outcome=_parse_outcome(outcome),
+        offset=(page - 1) * page_size,
+        limit=page_size,
+    )
+    pages = math.ceil(total / page_size) if total > 0 else 0
+    return PaginatedResponse(
+        data=PaginatedData(
+            items=[AuditEventSummaryResponse.model_validate(e) for e in items],
+            total=total,
+            page=page,
+            page_size=page_size,
+            pages=pages,
+        ),
+        message=f"{total} audit event(s) found.",
+        meta=_meta(request),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Platform health (T174) — surfaces the existing /api/v1/health checks plus
+# outbox counts, with an honestly-labeled logging-only relay stub.
+# ---------------------------------------------------------------------------
+
+
+def _health_service(
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> HealthService:
+    return HealthService(
+        db=db, outbox_repo=EventOutboxRepository(db), settings=settings
+    )
+
+
+@health_router.get(
+    "/health",
+    response_model=StandardResponse[PlatformHealthResponse],
+    summary="Platform operational health",
+    description=(
+        "DB, outbox pending/published counts, honestly labeled stub relay "
+        "(no message-bus is integrated in this Epic)."
+    ),
+    dependencies=[Depends(require_platform_permission("platform.monitoring.read"))],
+)
+async def get_platform_health(
+    request: Request,
+    svc: HealthService = Depends(_health_service),
+) -> StandardResponse[PlatformHealthResponse]:
+    health = svc.get_health()
+    return StandardResponse(
+        data=PlatformHealthResponse(
+            status=health.status,
+            checks=health.checks,
+            outbox_pending=health.outbox_pending,
+            outbox_published=health.outbox_published,
+            relay=health.relay,
+        ),
+        message=f"Platform health: {health.status}.",
+        meta=_meta(request),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Platform Dashboard (T171-T173)
+# ---------------------------------------------------------------------------
+
+
+def _dashboard_service(
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> DashboardService:
+    return DashboardService(
+        db=db,
+        audit_repo=PlatformAuditRepository(db),
+        health_service=HealthService(
+            db=db, outbox_repo=EventOutboxRepository(db), settings=settings
+        ),
+    )
+
+
+def _serialize_widget(name: str, widget: DashboardWidget) -> DashboardWidgetResponse:
+    data = widget.data
+    if name == "recent_platform_actions" and data is not None:
+        data = [AuditEventSummaryResponse.model_validate(e).model_dump() for e in data]
+    elif name == "health_summary" and data is not None:
+        data = {
+            "status": data.status,
+            "checks": data.checks,
+            "outbox_pending": data.outbox_pending,
+            "outbox_published": data.outbox_published,
+            "relay": data.relay,
+        }
+    return DashboardWidgetResponse(state=widget.state.value, data=data)
+
+
+@dashboard_router.get(
+    "/dashboard",
+    response_model=StandardResponse[DashboardResponse],
+    summary="Platform Dashboard aggregates",
+    dependencies=[Depends(require_platform_permission("platform.dashboard.view"))],
+)
+async def get_dashboard(
+    request: Request,
+    current: PlatformPrincipal = Depends(get_current_platform_admin),
+    svc: DashboardService = Depends(_dashboard_service),
+    db: Session = Depends(get_db),
+) -> StandardResponse[DashboardResponse]:
+    held_permissions = PlatformRbacRepository(db).get_effective_permissions(
+        current.platform_administrator_id
+    )
+    widgets = svc.get_dashboard(held_permissions=held_permissions)
+    return StandardResponse(
+        data=DashboardResponse(
+            widgets={
+                name: _serialize_widget(name, widget)
+                for name, widget in widgets.items()
+            }
+        ),
+        message=f"{len(widgets)} dashboard widget(s) resolved.",
         meta=_meta(request),
     )

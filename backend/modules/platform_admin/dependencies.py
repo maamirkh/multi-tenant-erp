@@ -171,6 +171,11 @@ def require_platform_permission(code: str) -> Callable[..., PlatformPrincipal]:
             )
         return principal
 
+    # Exposed for the contract-conformance test (T177) — lets it verify
+    # each route's *wired* permission matches the contract's declared
+    # `x-permission` without duplicating a second permission map by hand.
+    _dependency.permission_code = code  # type: ignore[attr-defined]
+
     return _dependency
 
 

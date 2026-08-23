@@ -47,6 +47,11 @@ from modules.crm.router import router as crm_router
 from modules.inventory.router import router as inventory_router
 from modules.platform_admin.dependencies import require_capability_entitled
 from modules.platform_admin.router import admin_router as platform_admin_admin_router
+from modules.platform_admin.router import audit_router as platform_admin_audit_router
+from modules.platform_admin.router import (
+    dashboard_router as platform_admin_dashboard_router,
+)
+from modules.platform_admin.router import health_router as platform_admin_health_router
 from modules.platform_admin.router import plan_router as platform_admin_plan_router
 from modules.platform_admin.router import rbac_router as platform_admin_rbac_router
 from modules.platform_admin.router import router as platform_admin_router
@@ -207,6 +212,21 @@ router.include_router(
 # Phase 12 (T158-T162) — support-access grant lifecycle routes.
 router.include_router(
     platform_admin_support_access_router,
+    prefix="/platform",
+)
+# Phase 13 (T170) — platform audit view.
+router.include_router(
+    platform_admin_audit_router,
+    prefix="/platform",
+)
+# Phase 13 (T171-T173) — platform dashboard aggregates.
+router.include_router(
+    platform_admin_dashboard_router,
+    prefix="/platform",
+)
+# Phase 13 (T174) — platform operational health.
+router.include_router(
+    platform_admin_health_router,
     prefix="/platform",
 )
 

@@ -1276,62 +1276,75 @@
 
 ### Tasks
 
-- [ ] T167 [US-2] [FR-9A-010] Implement the tenant directory endpoint
+- [X] T167 [US-2] [FR-9A-010] Implement the tenant directory endpoint
   - **Files**: `backend/modules/platform_admin/services/tenant_directory_service.py`, `router.py`
   - **Deps**: T064
   - **Acceptance**: `GET /platform/tenants` requires `platform.tenants.read`; search/filter/sort/paginate across **all** `CompanyStatus` values; bounded queries only (no "load all").
+  - **Result (2026-08-23)**: DONE. `TenantDirectoryService.list_tenants()` composes the existing `CompanyRepository.list_all()` (the pre-Epic-9A "SuperAdmin" repository method — extended, not duplicated, with a whitelisted `sort_by`/`sort_order`; the *tenant-side* `require_super_admin()`/`_ROLE_SUPER_ADMIN` route that also called it is deliberately NOT reused for authorization — that legacy tenant-RBAC mechanism is exactly what Epic 9A's `platform.tenants.read` permission-code check supersedes). `page_size` capped at 100 (`Query(..., le=100)`) — bounded, never "load all". `include_deleted=True` default so all `CompanyStatus` values are searchable.
 
-- [ ] T168 [US-2] [FR-9A-020/021] Implement the tenant 360° detail endpoint
+- [X] T168 [US-2] [FR-9A-020/021] Implement the tenant 360° detail endpoint
   - **Files**: `backend/modules/platform_admin/services/tenant_directory_service.py`, `router.py`
   - **Deps**: T167, T120, T108
   - **Acceptance**: Returns identity, status, onboarding info, plan, subscription, entitlements, usage-vs-limits, user count, lifecycle history, platform admin actions, audit events. **Exposes no tenant business transaction record** (FR-9A-021).
+  - **Result (2026-08-23)**: DONE. `get_tenant_detail()` composes Phase 8/9/11's existing resolvers (`PlatformEntitlementService`, `QuotaService`, `OverrideService`) — no duplicated resolution logic. "Platform administrative actions" and "audit/security events" are presented as one combined recent-audit list (bounded, 20 rows) — both are genuinely the same `PlatformAuditEvent` source (BR-9A-022, no parallel audit table), so listing them twice would be an artificial duplication, not extra completeness. Live-verified: response body asserted free of `invoice`/`journal_entry`/`sales_order`/`purchase_order` terms.
 
-- [ ] T169 [US-3] [FR-9A-016] Implement the lifecycle-history endpoint
+- [X] T169 [US-3] [FR-9A-016] Implement the lifecycle-history endpoint
   - **Files**: `backend/modules/platform_admin/router.py`
   - **Deps**: T168, T078
   - **Acceptance**: `GET /platform/tenants/{companyId}/lifecycle-history` shows every transition with actor, timestamp and reason.
+  - **Result (2026-08-23)**: DONE. `get_lifecycle_history()` queries `tenant_lifecycle.suspend`/`tenant_lifecycle.reactivate` separately (via the existing `PlatformAuditRepository.list_filtered()`, one call per action — no repository change needed) and merges/sorts in the service, each bounded by `limit`. Live-verified: a real suspend+reactivate cycle produces exactly those two actions with the correct actor and reason.
 
-- [ ] T170 [US-8] Implement the platform audit endpoint
+- [X] T170 [US-8] Implement the platform audit endpoint
   - **Files**: `backend/modules/platform_admin/router.py`
   - **Deps**: T078, T064
   - **Acceptance**: `GET /platform/audit` requires `platform.audit.read`; supports the full FR-9A-200 filter set; paginated; append-only (no mutation route exists).
+  - **Result (2026-08-23)**: DONE. Wires the already-existing `PlatformAuditQueryService` (built in Phase 6/T78 specifically anticipating this route — its own docstring named `T170` as its future caller) — zero new query logic. **Regression note**: this route's addition required updating a pre-existing Phase-6 security test (`test_audit_immutability.py::test_no_platform_audit_path_declared_at_all_yet`) whose own docstring explicitly pre-authorized this exact update once T170 landed — see Defects Discovered.
 
-- [ ] T171 [US-1] [FR-9A-001] Implement the dashboard aggregate service
+- [X] T171 [US-1] [FR-9A-001] Implement the dashboard aggregate service
   - **Files**: `backend/modules/platform_admin/services/dashboard_service.py`
   - **Deps**: T167, T108, T078
   - **Acceptance**: Tenant counts by status (`GROUP BY`), recent registrations (indexed `LIMIT`), plan/subscription distribution, quota warnings, recent platform actions, health summary. No unbounded aggregation, no per-tenant N+1.
+  - **Result (2026-08-23)**: DONE. Every widget is one bounded, indexed query. `quota_warnings` in particular resolves via a single JOIN across `usage_records`/`subscriptions`/`plan_quotas` rather than iterating companies and calling `QuotaService.resolve()` per tenant — the N+1 this task explicitly forbids. Documented, deliberate simplification: this JOIN does not apply `TenantQuotaOverride` rows (unlike the authoritative Phase 11 `GET /tenants/{companyId}/quotas` endpoint) — acceptable for a dashboard *summary* widget, not for the authoritative per-tenant view.
 
-- [ ] T172 [US-1] [FR-9A-003/004] Implement per-widget state and permission-gated omission
+- [X] T172 [US-1] [FR-9A-003/004] Implement per-widget state and permission-gated omission
   - **Purpose**: "Data unavailable ≠ zero" (spec §22).
   - **Files**: `backend/modules/platform_admin/services/dashboard_service.py`, `router.py`
   - **Deps**: T171
   - **Acceptance**: Each widget independently reports `loading|populated|empty|unavailable`; a failed sub-query renders `unavailable`, **never `0`**; widgets the caller lacks permission for are **omitted** entirely, not shown empty or erroring.
+  - **Result (2026-08-23)**: DONE. `DashboardWidgetState` = `populated|empty|unavailable` — `loading` is documented as a frontend-only pre-response transient that never appears in a synchronous HTTP response (the four-state list in the acceptance text spans both layers). `get_dashboard(held_permissions=...)` builds the widget dict by checking each widget's own required permission before including it — an omitted widget is genuinely absent from the response `dict`, not present with an error/empty marker. Live-verified: holding only `platform.tenants.read` shows exactly 2 widgets; holding every permission shows all 6 permission-gated widgets.
 
-- [ ] T173 [US-1] [FR-9A-005] Gate the AI widget on real data
+- [X] T173 [US-1] [FR-9A-005] Gate the AI widget on real data
   - **Files**: `backend/modules/platform_admin/services/dashboard_service.py`
   - **Deps**: T172, T154
   - **Acceptance**: The AI usage widget appears only once `ai_credit_ledger_entries` has at least one row; otherwise absent (not populated-empty).
+  - **Result (2026-08-23)**: DONE. `_ai_usage_widget()` returns `None` (not a widget with an empty state) when the table has zero rows; `get_dashboard()` only includes the key when both the permission is held AND the widget is non-`None`. Live-verified: a real `AiCreditService.adjust()` call flips the widget from absent to `populated`.
 
-- [ ] T174 [US-11] [FR-9A-240/241] Implement the platform health endpoint
+- [X] T174 [US-11] [FR-9A-240/241] Implement the platform health endpoint
   - **Files**: `backend/modules/platform_admin/services/health_service.py`, `router.py`
   - **Deps**: T064
   - **Acceptance**: Surfaces the existing `/health`, `/health/live`, `/health/ready` checks plus outbox pending/published counts, and **explicitly labels the relay as a logging-only stub** rather than implying real message-bus delivery.
+  - **Result (2026-08-23)**: DONE. `HealthService.get_health()` reuses the exact same database/auth-config check logic `/api/v1/health` already computes (not a divergent second implementation) plus two new read-only `EventOutboxRepository` methods (`count_pending()`/`count_published()` — the repository's write-side "only `create()`" restriction is about the relay's exclusive publish-marking responsibility, not about read-only counting). `relay.status = "logging_only_stub"` with an explicit note that no message-bus is integrated.
 
-- [ ] T175 [P] [FR-9A-243] Test: an unavailable dependency renders as `unavailable` with its check name
+- [X] T175 [P] [FR-9A-243] Test: an unavailable dependency renders as `unavailable` with its check name
   - **Files**: `backend/tests/integration/api/v1/platform_admin/test_dashboard_health.py`
   - **Deps**: T172, T174
   - **Acceptance**: A degraded database check shows `database: degraded`, never a blanket "unknown" and never a fabricated `0`.
+  - **Result (2026-08-23)**: DONE, 8/8 passing (health + dashboard tests in this file). **Naming note**: this codebase's own established `/api/v1/health` convention (reused, not reinvented, per T174) uses `"unavailable"` per-check and `"degraded"` for the top-level `status` — the test asserts against that real, existing vocabulary rather than a literal `"degraded"` string per check. Forced-failure proof via `unittest.mock.patch.object(db_session, "execute", side_effect=OperationalError(...))` (SQLite cannot simulate a genuine connection failure) — confirms `checks["database"] == "unavailable"`, `status == "degraded"`, and the outbox check is also honestly marked `unavailable` rather than silently reporting a fabricated `0`.
 
-- [ ] T176 [P] [FR-9A-120/121] Implement platform export endpoints
+- [X] T176 [P] [FR-9A-120/121] Implement platform export endpoints
   - **Files**: `backend/modules/platform_admin/services/export_service.py`, `router.py`
   - **Deps**: T167, T170
   - **Acceptance**: Tenant directory / subscription / usage / audit export scoped to what the caller's permissions already allow online; **never** includes tenant business transaction records.
+  - **Result (2026-08-23)**: DONE. **Contract note**: a full re-read of `platform-admin-v1.yaml` confirms no `/export` path exists anywhere (the file's own "28 paths" figure has zero room for one) — `platform.tenants.export`/`platform.export.generate` exist in the Phase 5 permission catalogue but were never wired to a route. `ExportService` is therefore service-layer only, no router change — mirrors Phase 11's T149 and Phase 12's T161 precedent exactly (a genuine, tested, permission-checked capability with no HTTP surface). Static AST check proves the service imports nothing from any of the five business modules. 7/7 tests passing.
 
-- [ ] T177 [P] Contract conformance test against `platform-admin-v1.yaml`
+- [X] T177 [P] Contract conformance test against `platform-admin-v1.yaml`
   - **Purpose**: Every declared path exists with the declared method and permission; no undeclared CRUD was invented.
   - **Files**: `backend/tests/integration/api/v1/platform_admin/test_contract_conformance.py`
   - **Deps**: T167–T176, T114, T157, T162, T090, T068, T069
   - **Acceptance**: All **28 contract paths / 33 operations** implemented — including the 6 Administrator/RBAC operations from T068/T069, which are now explicit dependencies. Each operation's declared `x-permission` matches the wired `require_platform_permission` code; every declared HTTP method exists; **no undeclared CRUD was invented** (an endpoint present in code but absent from the contract also fails the test). Any deviation fails.
+  - **Result (2026-08-23)**: DONE, 3/3 passing — reads the real YAML contract file directly (not a hand-duplicated Python copy) and cross-references it against the live FastAPI route table. `require_platform_permission()` (`dependencies.py`) was given a one-line `permission_code` attribute tag specifically so this test can verify the *wired* permission with no second, hand-maintained mapping. Confirms exactly 28 paths / 33 operations, every operation's permission matches, and zero undeclared routes exist anywhere under `/api/v1/platform`. **Path note**: this test needs `specs/` (not mounted in the `erp-system-api-1` Docker container, which only bind-mounts `./backend`) — run via the local venv; needs no database.
+
+**Phase 13 Exit Condition**: T167-T177 all implemented and proven; no Gate assigned to this phase (Phase 13 owns no Gate in the Epic 9A Gate order A→B→E→C→D→F→G). **PASS.** This phase closes out the entire Epic 9A backend contract — T177's own conformance test is the definitive proof: all 28 paths / 33 operations across every phase (4-13) are implemented, correctly permission-gated, and no undeclared route exists anywhere. Migration head remains `061` — no `062` created (this phase adds zero schema). Two genuine findings during implementation: (1) a pre-existing Phase 6 security test (`test_audit_immutability.py`) asserted no `/platform/audit` path existed yet — its own docstring explicitly pre-authorized updating it once T170 landed, so it was updated to assert the route now exists and is GET-only, not left stale; (2) a newly-written Phase 13 dashboard test made a global-absence assertion (`ai_usage` widget absent) that is only true in test isolation, not under the full suite's shared SQLite session once Phase 11's own `test_ai_credits.py` has already inserted `AiCreditLedgerEntry` rows — fixed by removing the flaky cross-file assumption in favor of the dedicated, deterministic `TestDashboardAiWidgetGatedOnRealData` proof. 27 new Phase-13 tests passing (9 tenant-directory/audit + 8 health/dashboard + 7 export + 3 contract-conformance), 249/249 passing across the full Phase 5-13 `platform_admin` suite (real Postgres), plus a 37-test cross-module regression sample (Inventory/CRM/Companies) confirming the shared-file changes (`CompanyRepository.list_all()`, `EventOutboxRepository`, `api/v1/router.py`) caused zero regressions elsewhere. See Phase 13 closure PHR for full evidence.
 
 ---
 

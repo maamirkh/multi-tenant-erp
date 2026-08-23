@@ -208,19 +208,32 @@ class CompanyRepository:
         )
         return list(self.db.execute(stmt).scalars().all())
 
+    _SORTABLE_COLUMNS: dict[str, Any] = {
+        "created_at": Company.created_at,
+        "legal_name": Company.legal_name,
+        "status": Company.status,
+    }
+
     def list_all(
         self,
         filters: dict[str, Any],
         page: int = 1,
         page_size: int = 25,
+        sort_by: str = "created_at",
+        sort_order: str = "desc",
     ) -> tuple[list[Company], int]:
-        """SuperAdmin: return a paginated list of all companies with optional filters.
+        """SuperAdmin / Platform Admin: return a paginated list of all
+        companies with optional filters.
 
         Supported filter keys:
           - ``status`` (str): filter by exact status value
           - ``country`` (str): filter by country ISO code
           - ``search`` (str): case-insensitive substring match on legal_name
           - ``include_deleted`` (bool): include deleted companies (default False)
+
+        ``sort_by`` is restricted to a fixed whitelist (``created_at``,
+        ``legal_name``, ``status``) — never a caller-supplied raw column
+        name, which would otherwise be an injection surface.
         """
         include_deleted = filters.get("include_deleted", False)
         stmt = select(Company)
@@ -240,10 +253,11 @@ class CompanyRepository:
         count_stmt = select(func.count()).select_from(stmt.subquery())
         total: int = self.db.execute(count_stmt).scalar_one()
 
+        sort_column = self._SORTABLE_COLUMNS.get(sort_by, Company.created_at)
+        order_clause = sort_column.asc() if sort_order == "asc" else sort_column.desc()
+
         offset = (page - 1) * page_size
-        rows_stmt = (
-            stmt.order_by(Company.created_at.desc()).offset(offset).limit(page_size)
-        )
+        rows_stmt = stmt.order_by(order_clause).offset(offset).limit(page_size)
         items = list(self.db.execute(rows_stmt).scalars().all())
 
         return items, total
