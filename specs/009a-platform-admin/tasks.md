@@ -1570,47 +1570,55 @@
 
 ### Tasks
 
-- [ ] T206 **[Gate B — final coverage]** Exhaustive permission matrix over **every** Platform route
+- [X] T206 **[Gate B — final coverage]** Exhaustive permission matrix over **every** Platform route
   - **Purpose**: Revision 2 split from the old Gate B task, which illegally depended on Phases 7–13 while blocking Phase 7. Gate B's early proof (T076) covers the Phase-5 surface; this task completes coverage once the full surface exists.
   - **Files**: `backend/tests/security/modules/platform_admin/test_permission_matrix.py`
   - **Deps**: T177, T090, T114, T157, T162, T170, T174, T176, T068, T069
   - **Acceptance**: Parametrised over the **complete** table from `contracts/platform-admin-v1.yaml` — **all 30 permission-guarded operations** (33 total minus the 3 public `/auth/*` operations). For each, holding the required permission succeeds and holding **only** an adjacent permission fails. Every operation in T076's recorded Phase-5 scope is re-covered here, and the test asserts the matrix is **complete** (no contract operation missing, no guarded route absent from the matrix).
+  - **Result (2026-08-23)**: DONE. `GUARDED_OPERATIONS` loaded directly from the real YAML contract (never a hand-duplicated copy) — confirmed exactly 30 operations, and T076's recorded Phase-5 6-operation subset is asserted a subset of it. A dedicated fixture-builder exists for all 30 operations (`OPERATION_BUILDERS`, completeness self-asserted). 122 tests passing (2 completeness checks + 4 test functions × 30 operations) — unauthenticated→401, tenant-token→401, adjacent-permission→403, required-permission→200/201/204, all first-try. Must run via the local venv, not the Docker container (same documented constraint as T177 — `specs/` isn't bind-mounted into `erp-system-api-1`).
 
-- [ ] T207 [P] Security test: cross-tenant IDOR on every tenant-scoped platform route
+- [X] T207 [P] Security test: cross-tenant IDOR on every tenant-scoped platform route
   - **Files**: `backend/tests/security/modules/platform_admin/test_idor.py`
   - **Deps**: T177
   - **Acceptance**: Substituting another company's id never yields data the caller's permissions don't already allow (FR-9A-212).
+  - **Result (2026-08-23)**: DONE (6 tests). Covers the tenant-scoped routes Phase 11's own `test_phase11_tenant_isolation.py` does not already prove isolated (entitlement-override/ai-credits/usage isolation was proven there): tenant detail, lifecycle history, subscription assignment, quota overrides, and support-access grant initiate/terminate — each proven scoped to exactly the target company, never leaking into or mutating a second company's data.
 
-- [ ] T208 [P] Security test: mass-assignment protection on every platform write schema
+- [X] T208 [P] Security test: mass-assignment protection on every platform write schema
   - **Files**: `backend/tests/security/modules/platform_admin/test_mass_assignment.py`
   - **Deps**: T177
   - **Acceptance**: Extra/unknown fields are rejected or ignored; no privileged field (e.g. `is_active`, role ids) is settable through an unintended endpoint.
+  - **Result (2026-08-23)**: DONE (6 tests). Injected extra fields (`status`, `is_active`, a client-chosen `id`, a client-chosen `expires_at`) into Plan create/update, Administrator create, Role create, Subscription assign, Entitlement-override grant, and Support-access initiate — every one silently ignored by Pydantic's default `extra="ignore"`, never reaching the persisted row (verified by asserting the actual persisted/returned value, not merely a 2xx status).
 
-- [ ] T209 [P] Security test: lifecycle transition abuse
+- [X] T209 [P] Security test: lifecycle transition abuse
   - **Files**: `backend/tests/security/modules/platform_admin/test_lifecycle_abuse.py`
   - **Deps**: T102
   - **Acceptance**: Every prohibited transition from spec §23.1 (`suspended→deleted`, `suspended→inactive` direct, `pending_setup→suspended`) is rejected with a **specific** error, not a generic 403.
+  - **Result (2026-08-23)**: DONE (7 tests). `pending_setup→suspended` rejected 409 `TenantLifecycleTransitionError` (never a generic 403); double-suspend and reactivate-when-not-suspended both 409 with a specific message; suspend without the specific permission is a distinctly-asserted 403 (not conflated with the 409 conflict cases). `suspended→inactive`/`suspended→deleted` direct (owner-side) are both rejected 403 `COMPANY_SUSPENDED` — discovered during implementation that `CompanyRepository.get_by_id_active()` (T084, Phase 10's own hardening) denies a suspended company one layer *before* the owner-transition table is even reached, a stronger form of the same prohibition; test assertions corrected to match this real, verified code path rather than the initially-assumed `INVALID_STATUS_TRANSITION` 409.
 
-- [ ] T210 [P] Security test: quota enforcement cannot be bypassed
+- [X] T210 [P] Security test: quota enforcement cannot be bypassed
   - **Files**: `backend/tests/security/modules/platform_admin/test_quota_enforcement.py`
   - **Deps**: T149
   - **Acceptance**: A `hard` quota blocks the action at its declared enforcement point; `soft`/`informational` flag without blocking, exactly as declared.
+  - **Result (2026-08-23)**: DONE (5 tests) — **with a confirmed, user-acknowledged scope gap documented in the test file's own module docstring**: a direct codebase search (`grep -rln "QuotaService(" modules/` outside `platform_admin`) found zero business-module write paths call the quota resolver at all — T151's own recorded evidence already documented usage measurement as resolver-only, never wired to a live write path. There is therefore no "module write-path enforcement point" (plan.md's own phrase) for a `hard` quota to bypass yet anywhere in this codebase; building one is out of this phase's authorized scope (Architecture Freeze forbids pre-creating quota logic; no task in T206-T213 authorizes it). Per explicit product-owner decision (mid-implementation clarification), this task instead proves what genuinely exists: `QuotaService.resolve()`'s `state` computation is enforcement-style-agnostic and never silently defaults/alters `enforcement_style` (BR-9A-030); an active override always wins over the plan's own limit, bypass-proof; quota state is never influenced by another tenant's usage/override; `current_usage=None` always resolves `unavailable`, never a fabricated ok/zero.
 
-- [ ] T211 [P] Implement structured operational logging for platform events
+- [X] T211 [P] Implement structured operational logging for platform events
   - **Files**: `backend/modules/platform_admin/services/*.py`
   - **Deps**: T177
   - **Acceptance**: Logs platform login, permission denial, suspension/reactivation, entitlement/quota failure, support-access lifecycle, audit-write failure, bootstrap result, degraded measurement — each with correlation/`request_id` and actor id. **Never** logs passwords, hashes, JWTs, refresh tokens, secrets, or tenant business-record contents. Operational logs remain distinct from `PlatformAuditEvent`.
+  - **Result (2026-08-23)**: DONE. Repository-reality check found login/refresh/logout, suspend/reactivate, override grant conflicts, support-access lifecycle, audit-write failure, bootstrap result, and dashboard/health degraded checks all had **zero** logging before this task (only permission-denial and RBAC/capability seeding were already logged). Added `logger.info`/`.warning`/`.error` calls with `extra={"request_id": REQUEST_ID_CONTEXT.get("-"), ...}` plus the relevant actor/entity id at every one of the 8 named event categories, across `platform_auth_service.py`, `tenant_lifecycle_service.py`, `override_service.py`, `quota_admin_service.py`, `support_access_service.py`, `platform_audit_service.py` (wraps `record()` in try/log/re-raise — fail-closed behaviour byte-identical, only observability added), `bootstrap.py`, `health_service.py`, and `dashboard_service.py` (all 7 widget `except OperationalError`/`_ai_usage_widget` sites). Verified by direct `grep` over every new log call: no password/hash/JWT/refresh-token/secret value is ever logged (only ids, reasons, and derived reason-codes). Zero regressions — full pre-existing `platform_admin` unit/integration/security/performance suite re-run clean after these changes (see Phase 16 closure PHR for the consolidated count).
 
-- [ ] T212 [P] Performance: verify pagination and index usage on the heavy list/aggregate paths
+- [X] T212 [P] Performance: verify pagination and index usage on the heavy list/aggregate paths
   - **Files**: `backend/tests/performance/modules/platform_admin/test_platform_queries.py`
   - **Deps**: T177
   - **Acceptance**: Tenant list, audit filter, usage aggregation and dashboard queries are all paginated/bounded and use the T014/T016/T018 indexes; no N+1 in the tenant-detail or dashboard paths. **No numeric SLA is asserted** (resolved OQ-4) — these are regression guards, not benchmarks.
+  - **Result (2026-08-23)**: DONE (6 tests, no timing assertion anywhere). Tenant-list and audit-list each proven to return exactly `page_size` rows regardless of a 500-row seeded dataset. T014's 4 `platform_audit_events` indexes confirmed present on the schema. The override tables' company-scoping index confirmed present; their PostgreSQL-only partial-unique index is deliberately not re-checked here (not mirrored into the SQLAlchemy model for SQLite, already verified directly against real PostgreSQL during Phase 8's own closure — documented in the test file, not silently skipped). **N+1 proof via a real `before_cursor_execute` query counter** (not inferred from timing): `get_tenant_detail()` and `get_dashboard()` each issue an *identical* query count against a 5-company dataset and a 500-company dataset — genuine proof neither path's query count scales with total data volume.
 
-- [ ] T213 [P] Verify request-scoped memoisation of the company-access and entitlement reads
+- [X] T213 [P] Verify request-scoped memoisation of the company-access and entitlement reads
   - **Purpose**: Both new per-request checks hit the same rows; memoise per request (plan §31) without any cross-request cache.
   - **Files**: `backend/modules/platform_admin/dependencies.py`
   - **Deps**: T122, T083
   - **Acceptance**: One `Company` read and one entitlement resolution per request even when several dependencies need them; **no** process-level cache introduced (no invalidation/consistency concern).
+  - **Result (2026-08-23)**: DONE. Investigation found `db.get(Company, ...)` reads (`assert_company_access_allowed`) are already free — SQLAlchemy's per-`Session` identity map dedupes primary-key lookups, and `db: Session = Depends(get_db)`/`Depends(get_current_platform_admin)` are already deduped per-request by FastAPI's own default dependency caching. The one **concrete, currently-existing** duplicate read: `require_platform_permission(...)`'s dependency computed `PlatformRbacRepository.get_effective_permissions()` once, and the `GET /dashboard` handler (`router.py`) independently computed it *again* for the same administrator in the same request. Fixed with a new `get_effective_permissions_cached(request, principal, db)` helper (`dependencies.py`) backed by `request.state` — a fresh dict every request, never process-level — used by both `require_platform_permission` and the dashboard handler. `require_capability_entitled(...)` gained the same `request.state`-keyed `(company_id, capability_key)` memoisation defensively, matching this task's literal acceptance text, though no second concrete caller currently exists for it. Proven by 4 unit tests using `unittest.mock.patch.object(..., wraps=...)` spies: two permission checks in one request → 1 underlying read; a second, independent request → its own fresh read (proving no cross-request cache); two entitlement checks for the same capability in one request → 1 read; two different capability keys → 2 reads (not conflated).
 
 ---
 

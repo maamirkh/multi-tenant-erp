@@ -39,6 +39,7 @@ task range, T158-T166) — proven directly by its own unit test instead.
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 from typing import Any
 from uuid import UUID
@@ -46,6 +47,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from core.exceptions.base import NotFoundException, ValidationException
+from core.logging.setup import REQUEST_ID_CONTEXT
 from core.utils.datetime import ensure_utc, utcnow
 from modules.platform_admin.exceptions import SupportAccessExpiredError
 from modules.platform_admin.models.platform_audit_event import PlatformAuditEvent
@@ -56,6 +58,8 @@ from modules.platform_admin.repositories.support_access_repository import (
 from modules.platform_admin.services.platform_audit_service import PlatformAuditService
 
 DEFAULT_GRANT_DURATION_HOURS = 4
+
+logger = logging.getLogger(__name__)
 
 
 def _snapshot(grant: SupportAccessGrant) -> dict[str, Any]:
@@ -116,6 +120,16 @@ class SupportAccessService:
             support_access_grant_id=grant.id,
         )
         self._db.commit()
+        logger.info(
+            "Platform support-access grant initiated",
+            extra={
+                "request_id": REQUEST_ID_CONTEXT.get("-"),
+                "company_id": str(company_id),
+                "platform_administrator_id": str(actor_platform_administrator_id),
+                "grant_id": str(grant.id),
+                "expires_at": expires_at.isoformat(),
+            },
+        )
         return grant
 
     def assert_grant_active(self, grant_id: UUID) -> SupportAccessGrant:
@@ -192,6 +206,15 @@ class SupportAccessService:
             self._db.commit()
 
         if grant.status != "active":
+            logger.warning(
+                "Platform support-access terminate rejected",
+                extra={
+                    "request_id": REQUEST_ID_CONTEXT.get("-"),
+                    "grant_id": str(grant_id),
+                    "status": grant.status,
+                    "platform_administrator_id": str(actor_platform_administrator_id),
+                },
+            )
             raise SupportAccessExpiredError(
                 details={"grant_id": str(grant_id), "status": grant.status}
             )
@@ -212,6 +235,15 @@ class SupportAccessService:
             support_access_grant_id=grant.id,
         )
         self._db.commit()
+        logger.info(
+            "Platform support-access grant terminated",
+            extra={
+                "request_id": REQUEST_ID_CONTEXT.get("-"),
+                "grant_id": str(grant.id),
+                "company_id": str(grant.company_id),
+                "platform_administrator_id": str(actor_platform_administrator_id),
+            },
+        )
         return grant
 
     def record_action(

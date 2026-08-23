@@ -24,6 +24,7 @@ row (both flush-only), then a single service-level `db.commit()`.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -32,11 +33,14 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from core.exceptions.base import NotFoundException
+from core.logging.setup import REQUEST_ID_CONTEXT
 from core.utils.datetime import ensure_utc, utcnow
 from modules.platform_admin.exceptions import QuotaOverrideAlreadyActiveError
 from modules.platform_admin.models.quota import TenantQuotaOverride
 from modules.platform_admin.repositories.quota_repository import QuotaRepository
 from modules.platform_admin.services.platform_audit_service import PlatformAuditService
+
+logger = logging.getLogger(__name__)
 
 
 def _snapshot(override: TenantQuotaOverride) -> dict[str, Any]:
@@ -115,6 +119,18 @@ class QuotaAdminService:
                     actor_platform_administrator_id=actor_platform_administrator_id,
                 )
             else:
+                logger.warning(
+                    "Platform quota override grant rejected — already active",
+                    extra={
+                        "request_id": REQUEST_ID_CONTEXT.get("-"),
+                        "company_id": str(company_id),
+                        "quota_key": quota_key,
+                        "platform_administrator_id": str(
+                            actor_platform_administrator_id
+                        ),
+                        "existing_override_id": str(stale.id),
+                    },
+                )
                 raise QuotaOverrideAlreadyActiveError(
                     details={
                         "company_id": str(company_id),
@@ -142,6 +158,16 @@ class QuotaAdminService:
             after_state=_snapshot(override),
         )
         self._db.commit()
+        logger.info(
+            "Platform quota override granted",
+            extra={
+                "request_id": REQUEST_ID_CONTEXT.get("-"),
+                "company_id": str(company_id),
+                "quota_key": quota_key,
+                "platform_administrator_id": str(actor_platform_administrator_id),
+                "override_id": str(override.id),
+            },
+        )
         return override
 
     def revoke(

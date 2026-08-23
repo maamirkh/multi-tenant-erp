@@ -15,15 +15,19 @@ Every audited task in Phases 3-12 depends on this helper.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from core.logging.setup import REQUEST_ID_CONTEXT
 from modules.platform_admin.models.platform_audit_event import PlatformAuditEvent
 from modules.platform_admin.repositories.platform_audit_repository import (
     PlatformAuditRepository,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class PlatformAuditService:
@@ -63,15 +67,36 @@ class PlatformAuditService:
             support_access_grant_id: Links to an owning support session
                 (Phase 12 onward).
         """
-        return self._repo.record(
-            action=action,
-            target_type=target_type,
-            actor_platform_administrator_id=actor_platform_administrator_id,
-            target_id=target_id,
-            company_id=company_id,
-            reason=reason,
-            before_state=before_state,
-            after_state=after_state,
-            context=context,
-            support_access_grant_id=support_access_grant_id,
-        )
+        try:
+            return self._repo.record(
+                action=action,
+                target_type=target_type,
+                actor_platform_administrator_id=actor_platform_administrator_id,
+                target_id=target_id,
+                company_id=company_id,
+                reason=reason,
+                before_state=before_state,
+                after_state=after_state,
+                context=context,
+                support_access_grant_id=support_access_grant_id,
+            )
+        except Exception:
+            # Fail-closed (ADR-5): logged here for operational visibility,
+            # then always re-raised unchanged so the caller's own
+            # domain-mutation flush/commit is rolled back too — never
+            # swallowed, never partially persisted.
+            logger.error(
+                "Platform audit write failed",
+                extra={
+                    "request_id": REQUEST_ID_CONTEXT.get("-"),
+                    "action": action,
+                    "target_type": target_type,
+                    "actor_platform_administrator_id": (
+                        str(actor_platform_administrator_id)
+                        if actor_platform_administrator_id
+                        else None
+                    ),
+                },
+                exc_info=True,
+            )
+            raise

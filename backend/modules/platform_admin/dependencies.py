@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 from core.config.settings import Settings, get_settings
 from core.database.session import get_db
 from core.exceptions.base import UnauthorizedException
+from core.logging.setup import REQUEST_ID_CONTEXT
 from modules.platform_admin.exceptions import (
     CapabilityNotEntitledError,
     InsufficientPlatformPermissionError,
@@ -136,6 +137,39 @@ def get_current_platform_admin(
     )
 
 
+_PERMISSIONS_CACHE_ATTR = "_platform_effective_permissions_cache"
+_ENTITLEMENT_CACHE_ATTR = "_platform_entitlement_cache"
+
+
+def get_effective_permissions_cached(
+    request: Request, principal: PlatformPrincipal, db: Session
+) -> set[str]:
+    """Request-scoped memoisation (T213, plan.md §31) of
+    ``PlatformRbacRepository.get_effective_permissions()`` — several
+    dependencies/handlers within one request need the same
+    administrator's effective permission set (e.g.
+    ``require_platform_permission`` itself, and the dashboard route's
+    own per-widget gating, ``router.py``'s ``get_dashboard``). Caches on
+    ``request.state`` only — a fresh dict every request, never a
+    process-level cache, so there is no invalidation/consistency
+    concern across requests.
+    """
+    cache: dict[UUID, set[str]] = getattr(request.state, _PERMISSIONS_CACHE_ATTR, None)
+    if cache is None:
+        cache = {}
+        setattr(request.state, _PERMISSIONS_CACHE_ATTR, cache)
+
+    cached = cache.get(principal.platform_administrator_id)
+    if cached is not None:
+        return cached
+
+    effective = PlatformRbacRepository(db).get_effective_permissions(
+        principal.platform_administrator_id
+    )
+    cache[principal.platform_administrator_id] = effective
+    return effective
+
+
 def require_platform_permission(code: str) -> Callable[..., PlatformPrincipal]:
     """Dependency factory: the single server-side enforcement primitive
     every sensitive Platform route uses (BR-9A-008). Holding one
@@ -151,15 +185,16 @@ def require_platform_permission(code: str) -> Callable[..., PlatformPrincipal]:
     """
 
     def _dependency(
+        request: Request,
         principal: PlatformPrincipal = Depends(get_current_platform_admin),
         db: Session = Depends(get_db),
     ) -> PlatformPrincipal:
-        repo = PlatformRbacRepository(db)
-        effective = repo.get_effective_permissions(principal.platform_administrator_id)
+        effective = get_effective_permissions_cached(request, principal, db)
         if code not in effective:
             logger.warning(
                 "Platform permission denied",
                 extra={
+                    "request_id": REQUEST_ID_CONTEXT.get("-"),
                     "platform_administrator_id": str(
                         principal.platform_administrator_id
                     ),
@@ -208,24 +243,50 @@ def require_capability_entitled(capability_key: str) -> Callable[..., None]:
     """
 
     def _dependency(
+        request: Request,
         company_id: UUID,
         db: Session = Depends(get_db),
     ) -> None:
-        override_service = OverrideService(
-            db=db,
-            repo=OverrideRepository(db),
-            audit=PlatformAuditService(db, PlatformAuditRepository(db)),
+        # Request-scoped memoisation (T213, plan.md §31) — never a
+        # cross-request cache (FR-9A-170's "resolved fresh" still holds:
+        # fresh per *request*, not re-resolved per *dependency call*
+        # within the same request).
+        cache: dict[tuple[UUID, str], object] = getattr(
+            request.state, _ENTITLEMENT_CACHE_ATTR, None
         )
-        service = PlatformEntitlementService(
-            db=db,
-            plan_repo=PlanRepository(db),
-            subscription_repo=SubscriptionRepository(db),
-            override_checker=override_service,
-        )
-        result = service.resolve_effective_entitlement(
-            company_id=company_id, capability_key=capability_key
-        )
+        if cache is None:
+            cache = {}
+            setattr(request.state, _ENTITLEMENT_CACHE_ATTR, cache)
+
+        cache_key = (company_id, capability_key)
+        result = cache.get(cache_key)
+        if result is None:
+            override_service = OverrideService(
+                db=db,
+                repo=OverrideRepository(db),
+                audit=PlatformAuditService(db, PlatformAuditRepository(db)),
+            )
+            service = PlatformEntitlementService(
+                db=db,
+                plan_repo=PlanRepository(db),
+                subscription_repo=SubscriptionRepository(db),
+                override_checker=override_service,
+            )
+            result = service.resolve_effective_entitlement(
+                company_id=company_id, capability_key=capability_key
+            )
+            cache[cache_key] = result
+
         if not result.available:
+            logger.warning(
+                "Platform entitlement denied",
+                extra={
+                    "request_id": REQUEST_ID_CONTEXT.get("-"),
+                    "company_id": str(company_id),
+                    "capability_key": capability_key,
+                    "reason": result.reason,
+                },
+            )
             raise CapabilityNotEntitledError(
                 message=(
                     f"The '{capability_key}' capability is not entitled under "

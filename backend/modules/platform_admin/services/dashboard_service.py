@@ -26,6 +26,7 @@ the authoritative per-tenant view remains the Phase 11 endpoint.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from decimal import Decimal
@@ -36,6 +37,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from core.logging.setup import REQUEST_ID_CONTEXT
 from modules.companies.models.company import Company
 from modules.platform_admin.models.ai_credit_ledger import AiCreditLedgerEntry
 from modules.platform_admin.models.plan import Plan
@@ -51,6 +53,15 @@ from modules.platform_admin.services.usage_service import current_month_period
 _RECENT_LIMIT = 10
 _QUOTA_WARNING_LIMIT = 20
 _APPROACHING_RATIO = Decimal("0.80")
+
+logger = logging.getLogger(__name__)
+
+
+def _log_widget_degraded(widget_name: str) -> None:
+    logger.warning(
+        "Platform dashboard widget degraded",
+        extra={"request_id": REQUEST_ID_CONTEXT.get("-"), "widget": widget_name},
+    )
 
 
 class DashboardWidgetState(str, Enum):
@@ -89,6 +100,7 @@ class DashboardService:
                 select(Company.status, func.count()).group_by(Company.status)
             ).all()
         except OperationalError:
+            _log_widget_degraded("tenant_counts_by_status")
             return DashboardWidget(DashboardWidgetState.unavailable, None)
         data = {status: count for status, count in rows}
         state = DashboardWidgetState.populated if data else DashboardWidgetState.empty
@@ -104,6 +116,7 @@ class DashboardService:
                 ).all()
             )
         except OperationalError:
+            _log_widget_degraded("recent_registrations")
             return DashboardWidget(DashboardWidgetState.unavailable, None)
         data = [
             {"id": str(r.id), "legal_name": r.legal_name, "created_at": r.created_at}
@@ -122,6 +135,7 @@ class DashboardService:
                 .group_by(Plan.code)
             ).all()
         except OperationalError:
+            _log_widget_degraded("plan_subscription_distribution")
             return DashboardWidget(DashboardWidgetState.unavailable, None)
         data = {code: count for code, count in rows}
         state = DashboardWidgetState.populated if data else DashboardWidgetState.empty
@@ -160,6 +174,7 @@ class DashboardService:
                 .limit(_QUOTA_WARNING_LIMIT)
             ).all()
         except OperationalError:
+            _log_widget_degraded("quota_warnings")
             return DashboardWidget(DashboardWidgetState.unavailable, None)
         data = [
             {
@@ -177,6 +192,7 @@ class DashboardService:
         try:
             items, _ = self._audit_repo.list_filtered(limit=_RECENT_LIMIT)
         except OperationalError:
+            _log_widget_degraded("recent_platform_actions")
             return DashboardWidget(DashboardWidgetState.unavailable, None)
         state = DashboardWidgetState.populated if items else DashboardWidgetState.empty
         return DashboardWidget(state, items)
@@ -185,6 +201,7 @@ class DashboardService:
         try:
             health = self._health_service.get_health()
         except OperationalError:
+            _log_widget_degraded("health_summary")
             return DashboardWidget(DashboardWidgetState.unavailable, None)
         return DashboardWidget(DashboardWidgetState.populated, health)
 
@@ -197,6 +214,7 @@ class DashboardService:
                 select(func.count()).select_from(AiCreditLedgerEntry)
             ).scalar_one()
         except OperationalError:
+            _log_widget_degraded("ai_usage")
             return None
         if count == 0:
             return None

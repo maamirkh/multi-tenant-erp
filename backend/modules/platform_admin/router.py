@@ -57,6 +57,7 @@ from modules.companies.repositories.company_repository import CompanyRepository
 from modules.platform_admin.dependencies import (
     PlatformPrincipal,
     get_current_platform_admin,
+    get_effective_permissions_cached,
     require_platform_permission,
 )
 from modules.platform_admin.repositories.ai_credit_repository import AiCreditRepository
@@ -1625,9 +1626,11 @@ async def get_dashboard(
     svc: DashboardService = Depends(_dashboard_service),
     db: Session = Depends(get_db),
 ) -> StandardResponse[DashboardResponse]:
-    held_permissions = PlatformRbacRepository(db).get_effective_permissions(
-        current.platform_administrator_id
-    )
+    # T213: reuses the same request-scoped cache
+    # `require_platform_permission("platform.dashboard.view")` (this
+    # route's own `dependencies=[]` entry) already populated — one
+    # `get_effective_permissions()` DB read per request, not two.
+    held_permissions = get_effective_permissions_cached(request, current, db)
     widgets = svc.get_dashboard(held_permissions=held_permissions)
     return StandardResponse(
         data=DashboardResponse(

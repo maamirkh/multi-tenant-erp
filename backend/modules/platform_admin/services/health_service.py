@@ -18,6 +18,7 @@ real message-bus delivery is occurring.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -27,6 +28,9 @@ from sqlalchemy.orm import Session
 
 from core.config.settings import Settings
 from core.events.outbox import EventOutboxRepository
+from core.logging.setup import REQUEST_ID_CONTEXT
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -61,6 +65,10 @@ class HealthService:
         except OperationalError:
             checks["database"] = "unavailable"
             overall = "degraded"
+            logger.warning(
+                "Platform health check degraded",
+                extra={"request_id": REQUEST_ID_CONTEXT.get("-"), "check": "database"},
+            )
 
         try:
             jwt_ok = (
@@ -74,6 +82,13 @@ class HealthService:
         except Exception:  # noqa: BLE001
             checks["auth_config"] = "unavailable"
             overall = "degraded"
+            logger.warning(
+                "Platform health check degraded",
+                extra={
+                    "request_id": REQUEST_ID_CONTEXT.get("-"),
+                    "check": "auth_config",
+                },
+            )
 
         try:
             outbox_pending = self._outbox_repo.count_pending()
@@ -84,6 +99,10 @@ class HealthService:
             overall = "degraded"
             outbox_pending = 0
             outbox_published = 0
+            logger.warning(
+                "Platform health check degraded",
+                extra={"request_id": REQUEST_ID_CONTEXT.get("-"), "check": "outbox"},
+            )
 
         return PlatformHealth(
             status=overall,

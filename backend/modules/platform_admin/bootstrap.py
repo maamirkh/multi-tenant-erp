@@ -181,6 +181,14 @@ def main() -> int:
     finally:
         db.close()
 
+    # Never logs the email/password hash — only the operator-facing
+    # result, which itself never contains either (see bootstrap_platform_owner).
+    log = logger.info if exit_code == 0 else logger.error
+    log(
+        "Platform Owner bootstrap result",
+        extra={"exit_code": exit_code, "message": message},
+    )
+
     print(message)
     return exit_code
 

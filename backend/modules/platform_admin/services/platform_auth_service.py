@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from core.auth.exceptions import AuthenticationException
 from core.config.settings import Settings
+from core.logging.setup import REQUEST_ID_CONTEXT
 from core.utils.datetime import utcnow
 from modules.auth.repositories.user_credential_repository import (
     UserCredentialRepository,
@@ -96,16 +97,19 @@ class PlatformAuthService:
         user = self._user_repo.find_by_email(normalised_email)
 
         if user is None:
+            self._log_login_failed(normalised_email, "no_user")
             raise AuthenticationException()
 
         credentials = self._cred_repo.get_by_user_id(user.id)
         if not self._password_svc.verify_password(password, credentials.password_hash):
+            self._log_login_failed(normalised_email, "bad_password")
             raise AuthenticationException()
 
         administrator = self._admin_repo.get_by_user_id(user.id)
         if administrator is None or not administrator.is_active:
             # A real tenant user, correct password, but no active Platform
             # authority — same generic response as the two cases above.
+            self._log_login_failed(normalised_email, "no_active_administrator")
             raise AuthenticationException()
 
         administrator.last_login_at = utcnow()
@@ -134,12 +138,34 @@ class PlatformAuthService:
 
         self._db.commit()
 
+        logger.info(
+            "Platform login succeeded",
+            extra={
+                "request_id": REQUEST_ID_CONTEXT.get("-"),
+                "platform_administrator_id": str(administrator.id),
+                "session_id": str(session.id),
+            },
+        )
+
         expire_seconds = self._settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60
         return PlatformLoginResult(
             access_token=access_token,
             refresh_token=refresh_token,
             token_type="bearer",
             expires_in=expire_seconds,
+        )
+
+    def _log_login_failed(self, normalised_email: str, reason: str) -> None:
+        # Internal/operator-only — never exposed in the HTTP response,
+        # which stays generic for every case (anti-enumeration, T049).
+        # Never logs the password itself.
+        logger.warning(
+            "Platform login failed",
+            extra={
+                "request_id": REQUEST_ID_CONTEXT.get("-"),
+                "email": normalised_email,
+                "reason": reason,
+            },
         )
 
     # ------------------------------------------------------------------
@@ -163,6 +189,13 @@ class PlatformAuthService:
         """
         claims = self._jwt_svc.decode_token(raw_refresh_token)
         if claims.get("typ") != "platform_refresh":
+            logger.warning(
+                "Platform refresh failed",
+                extra={
+                    "request_id": REQUEST_ID_CONTEXT.get("-"),
+                    "reason": "wrong_token_type",
+                },
+            )
             raise AuthenticationException(
                 message="Invalid or malformed Platform authentication token."
             )
@@ -170,16 +203,39 @@ class PlatformAuthService:
         old_hash = _sha256(raw_refresh_token)
         old_token = self._refresh_repo.find_by_token_hash(old_hash)
         if old_token is None or old_token.is_revoked:
+            logger.warning(
+                "Platform refresh failed",
+                extra={
+                    "request_id": REQUEST_ID_CONTEXT.get("-"),
+                    "reason": "token_unknown_or_revoked",
+                },
+            )
             raise AuthenticationException(
                 message="Refresh token is invalid or has been revoked."
             )
 
         session = self._session_repo.get_by_id(old_token.session_id)
         if session is None or session.is_revoked:
+            logger.warning(
+                "Platform refresh failed",
+                extra={
+                    "request_id": REQUEST_ID_CONTEXT.get("-"),
+                    "reason": "session_revoked",
+                    "session_id": str(old_token.session_id),
+                },
+            )
             raise AuthenticationException(message="Platform session has been revoked.")
 
         administrator = self._admin_repo.get_by_id(session.platform_administrator_id)
         if administrator is None or not administrator.is_active:
+            logger.warning(
+                "Platform refresh failed",
+                extra={
+                    "request_id": REQUEST_ID_CONTEXT.get("-"),
+                    "reason": "administrator_inactive",
+                    "session_id": str(session.id),
+                },
+            )
             raise AuthenticationException(
                 message="Platform Administrator account is not active."
             )
@@ -222,3 +278,10 @@ class PlatformAuthService:
         self._refresh_repo.revoke_all_for_session(session_id)
         self._session_repo.revoke(session_id)
         self._db.commit()
+        logger.info(
+            "Platform logout succeeded",
+            extra={
+                "request_id": REQUEST_ID_CONTEXT.get("-"),
+                "session_id": str(session_id),
+            },
+        )

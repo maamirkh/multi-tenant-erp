@@ -19,6 +19,7 @@ stay refused for this company even after the status is restored
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime
 from uuid import UUID
@@ -26,6 +27,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from core.events.outbox import EventOutboxRepository
+from core.logging.setup import REQUEST_ID_CONTEXT
 from modules.companies.events import CompanySuspendedEvent, CompanySuspensionLiftedEvent
 from modules.companies.exceptions import CompanyNotFoundError
 from modules.companies.models.company import Company
@@ -37,6 +39,8 @@ from modules.platform_admin.services.platform_audit_service import PlatformAudit
 _SUSPENDABLE_STATUSES = frozenset(
     {CompanyStatus.active.value, CompanyStatus.inactive.value}
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _new_correlation_id() -> str:
@@ -90,6 +94,15 @@ class TenantLifecycleService:
             raise CompanyNotFoundError()
 
         if company.status not in _SUSPENDABLE_STATUSES:
+            logger.warning(
+                "Platform tenant suspend rejected",
+                extra={
+                    "request_id": REQUEST_ID_CONTEXT.get("-"),
+                    "company_id": str(company_id),
+                    "current_status": company.status,
+                    "platform_administrator_id": str(actor_platform_administrator_id),
+                },
+            )
             raise TenantLifecycleTransitionError(
                 f"Cannot suspend a company with status '{company.status}'. "
                 "Only 'active' or 'inactive' companies may be suspended."
@@ -125,6 +138,15 @@ class TenantLifecycleService:
             after_state=_lifecycle_snapshot(company),
         )
         self._db.commit()
+        logger.info(
+            "Platform tenant suspended",
+            extra={
+                "request_id": REQUEST_ID_CONTEXT.get("-"),
+                "company_id": str(company.id),
+                "platform_administrator_id": str(actor_platform_administrator_id),
+                "pre_suspension_status": pre_suspension_status,
+            },
+        )
         return company
 
     def reactivate(
@@ -149,6 +171,15 @@ class TenantLifecycleService:
             raise CompanyNotFoundError()
 
         if company.status != CompanyStatus.suspended.value:
+            logger.warning(
+                "Platform tenant reactivate rejected",
+                extra={
+                    "request_id": REQUEST_ID_CONTEXT.get("-"),
+                    "company_id": str(company_id),
+                    "current_status": company.status,
+                    "platform_administrator_id": str(actor_platform_administrator_id),
+                },
+            )
             raise TenantLifecycleTransitionError(
                 "Company is not currently suspended; nothing to reactivate."
             )
@@ -158,6 +189,14 @@ class TenantLifecycleService:
             # Defensive fallback (plan.md §9.3): the DB CHECK constraint
             # makes this unreachable in practice, but reactivation must
             # fail closed rather than ever guess a restore target.
+            logger.error(
+                "Platform tenant reactivate found no pre_suspension_status",
+                extra={
+                    "request_id": REQUEST_ID_CONTEXT.get("-"),
+                    "company_id": str(company_id),
+                    "platform_administrator_id": str(actor_platform_administrator_id),
+                },
+            )
             raise TenantLifecycleTransitionError(
                 "Cannot reactivate: no recorded pre-suspension status for "
                 "this company. This indicates data corruption and requires "
@@ -188,4 +227,13 @@ class TenantLifecycleService:
             after_state=_lifecycle_snapshot(company),
         )
         self._db.commit()
+        logger.info(
+            "Platform tenant reactivated",
+            extra={
+                "request_id": REQUEST_ID_CONTEXT.get("-"),
+                "company_id": str(company.id),
+                "platform_administrator_id": str(actor_platform_administrator_id),
+                "restored_status": restored_status,
+            },
+        )
         return company
