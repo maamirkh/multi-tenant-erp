@@ -13,6 +13,12 @@
 # testing
 /coverage
 
+# playwright (T219-T221 real-browser E2E — generated run artifacts only)
+/test-results/
+/playwright-report/
+/e2e-results.json
+/blob-report/
+
 # next.js
 /.next/
 /out/

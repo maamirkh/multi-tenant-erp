@@ -92,10 +92,22 @@ export function PlatformAuthProvider({
   const hydrateStartedRef = useRef(false);
 
   useEffect(() => {
+    // hydrateStartedRef (not a per-invocation `cancelled` closure flag)
+    // is the only guard here, and deliberately so: React Strict Mode's
+    // dev-only synchronous mount->cleanup->remount double-invocation
+    // reuses this same ref, so the guard below ensures hydrate() (and
+    // therefore acquirePlatformRefreshLock()) runs at most once per real
+    // component lifetime — never twice, which matters because the
+    // refresh token is single-use/rotating. A `cancelled` flag set by
+    // that synthetic first-invocation's cleanup would incorrectly
+    // poison the one-and-only in-flight hydrate() call's eventual state
+    // updates (setIsAuthenticated/setIsLoading), permanently stranding
+    // the component actually left mounted on its initial isLoading=true
+    // — this was a real, reproduced bug (T219 E2E), not a hypothetical.
+    // React 18+ already no-ops setState calls after a genuine unmount,
+    // so no extra guard is needed for that case either.
     if (hydrateStartedRef.current) return;
     hydrateStartedRef.current = true;
-
-    let cancelled = false;
 
     async function hydrate(): Promise<void> {
       const storedRefreshToken = getPlatformRefreshToken();
@@ -113,25 +125,16 @@ export function PlatformAuthProvider({
         // window, rather than racing two independent refresh calls
         // against a single-use rotating refresh token.
         await acquirePlatformRefreshLock();
-        if (cancelled) return;
         setIsAuthenticated(true);
       } catch {
-        if (!cancelled) {
-          clearPlatformTokens();
-          setIsAuthenticated(false);
-        }
+        clearPlatformTokens();
+        setIsAuthenticated(false);
       } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
+        setIsLoading(false);
       }
     }
 
     void hydrate();
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   // --- platform-session-expired event (never the tenant session-expired) ---

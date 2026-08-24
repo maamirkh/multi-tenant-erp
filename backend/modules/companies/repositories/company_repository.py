@@ -22,7 +22,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from modules.companies.models.company import Company
@@ -228,7 +228,9 @@ class CompanyRepository:
         Supported filter keys:
           - ``status`` (str): filter by exact status value
           - ``country`` (str): filter by country ISO code
-          - ``search`` (str): case-insensitive substring match on legal_name
+          - ``search`` (str): case-insensitive substring match on
+            legal_name or slug (the Platform Tenants page's own
+            placeholder text promises "name or slug" search — T192)
           - ``include_deleted`` (bool): include deleted companies (default False)
 
         ``sort_by`` is restricted to a fixed whitelist (``created_at``,
@@ -248,7 +250,13 @@ class CompanyRepository:
             stmt = stmt.where(Company.country == country)
 
         if search := filters.get("search"):
-            stmt = stmt.where(func.lower(Company.legal_name).contains(search.lower()))
+            search_lower = search.lower()
+            stmt = stmt.where(
+                or_(
+                    func.lower(Company.legal_name).contains(search_lower),
+                    func.lower(Company.slug).contains(search_lower),
+                )
+            )
 
         count_stmt = select(func.count()).select_from(stmt.subquery())
         total: int = self.db.execute(count_stmt).scalar_one()
