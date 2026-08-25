@@ -3,7 +3,8 @@
 Phase 2 (Configuration & Plans): Configuration and Plan/Template endpoint
 groups, plus the module admin status/enable/disable group. Phase 3
 (Contract Persistence) adds the Contracts and Eligibility endpoint
-groups. Endpoint groups are added incrementally in later phases,
+groups. Phase 4 (Schedule Engine) adds the Quote/Preview endpoint group.
+Endpoint groups are added incrementally in later phases,
 mirroring ``modules/crm/router.py``'s own incremental-growth convention.
 Not yet mounted into ``api/v1/router.py`` — mounting (with
 ``dependencies=[Depends(get_current_company_member)]`` only, no blanket
@@ -23,6 +24,8 @@ Endpoints:
     POST   /plans                      — create a plan template
     PATCH  /plans/{planId}             — edit a plan template
     POST   /plans/{planId}/deactivate  — deactivate a plan template
+
+    POST /quotes                       — generate a non-persisting quote/preview
 
     GET  /contracts                    — list contracts (paginated)
     GET  /contracts/{contractId}       — get full contract detail
@@ -59,6 +62,7 @@ from modules.installments.dependencies import (
     get_installment_contract_service,
     get_installment_eligibility_service,
     get_installment_plan_template_service,
+    get_installment_quote_service,
     get_installments_feature_flag_service,
 )
 from modules.installments.exceptions import InstallmentNotFoundError
@@ -78,6 +82,10 @@ from modules.installments.schemas.plan_template import (
     InstallmentPlanTemplateRead,
     InstallmentPlanTemplateUpdate,
 )
+from modules.installments.schemas.schedule import (
+    InstallmentQuotePreviewRead,
+    InstallmentQuoteRequest,
+)
 from modules.installments.services.configuration_service import (
     InstallmentConfigurationService,
 )
@@ -94,6 +102,7 @@ from modules.installments.services.permission_check import (
 from modules.installments.services.plan_template_service import (
     InstallmentPlanTemplateService,
 )
+from modules.installments.services.quote_service import InstallmentQuoteService
 from modules.users_roles.constants import ADMIN_RANK
 from modules.users_roles.dependencies import require_rank
 
@@ -288,6 +297,32 @@ async def deactivate_plan_template(
     return StandardResponse(
         data=InstallmentPlanTemplateRead.model_validate(template),
         message="Plan template deactivated.",
+        meta=_meta(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Quote / Preview (plan.md §16.1: installments.contract.create, ORIGINATION)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/quotes",
+    response_model=StandardResponse[InstallmentQuotePreviewRead],
+    summary="Generate a deterministic, non-persisting installment quote/preview",
+)
+async def preview_quote(
+    body: InstallmentQuoteRequest,
+    company_id: UUID = Path(..., description="Company identifier"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentQuoteService = Depends(get_installment_quote_service),
+) -> StandardResponse[InstallmentQuotePreviewRead]:
+    _require_permission(db, company_id, current_user, "installments.contract.create")
+    preview = svc.preview(company_id, **body.model_dump())
+    return StandardResponse(
+        data=InstallmentQuotePreviewRead.model_validate(preview),
+        message="Installment quote preview generated.",
         meta=_meta(),
     )
 

@@ -27,6 +27,7 @@ from modules.installments.repositories.feature_flag import (
 from modules.installments.repositories.plan_template import (
     InstallmentPlanTemplateRepository,
 )
+from modules.installments.repositories.schedule import InstallmentScheduleRepository
 from modules.installments.repositories.sequence import InstallmentSequenceRepository
 from modules.installments.services.accounting_gateway import (
     AccountingIntegrationGateway,
@@ -45,6 +46,7 @@ from modules.installments.services.feature_flag_service import (
 from modules.installments.services.plan_template_service import (
     InstallmentPlanTemplateService,
 )
+from modules.installments.services.quote_service import InstallmentQuoteService
 from modules.installments.services.sales_read_gateway import (
     SalesCustomerReadGateway,
     SalesInvoiceReadGateway,
@@ -89,6 +91,12 @@ def get_installment_sequence_repo(
     db: Session = Depends(get_db),
 ) -> InstallmentSequenceRepository:
     return InstallmentSequenceRepository(db)
+
+
+def get_installment_schedule_repo(
+    db: Session = Depends(get_db),
+) -> InstallmentScheduleRepository:
+    return InstallmentScheduleRepository(db)
 
 
 # ---------------------------------------------------------------------------
@@ -187,4 +195,20 @@ def get_installment_contract_service(
         sequence_repo=sequence_repo,
         eligibility_service=eligibility_service,
         accounting_gateway=accounting_gateway,
+    )
+
+
+def get_installment_quote_service(
+    eligibility_service: InstallmentEligibilityService = Depends(
+        get_installment_eligibility_service
+    ),
+    invoice_gateway: SalesInvoiceReadGateway = Depends(get_sales_invoice_read_gateway),
+    configuration_service: InstallmentConfigurationService = Depends(
+        get_installment_configuration_service
+    ),
+) -> InstallmentQuoteService:
+    return InstallmentQuoteService(
+        eligibility_service=eligibility_service,
+        invoice_gateway=invoice_gateway,
+        configuration_service=configuration_service,
     )

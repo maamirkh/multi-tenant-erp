@@ -12,6 +12,10 @@ from modules.installments.models.configuration import InstallmentConfiguration
 from modules.installments.models.contract import InstallmentContract
 from modules.installments.models.feature_flag import InstallmentsFeatureFlag
 from modules.installments.models.plan_template import InstallmentPlanTemplate
+from modules.installments.models.schedule import (
+    InstallmentScheduleLine,
+    InstallmentScheduleVersion,
+)
 from modules.installments.models.sequence import InstallmentSequence
 
 __all__ = [
@@ -19,6 +23,8 @@ __all__ = [
     "InstallmentConfiguration",
     "InstallmentContract",
     "InstallmentPlanTemplate",
+    "InstallmentScheduleLine",
+    "InstallmentScheduleVersion",
     "InstallmentSequence",
     "InstallmentsFeatureFlag",
 ]
