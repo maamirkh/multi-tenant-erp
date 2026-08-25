@@ -1,10 +1,11 @@
 """Installments module API router.
 
 Phase 2 (Configuration & Plans): Configuration and Plan/Template endpoint
-groups, plus the module admin status/enable/disable group. Endpoint
-groups are added incrementally in later phases, mirroring
-``modules/crm/router.py``'s own incremental-growth convention. Not yet
-mounted into ``api/v1/router.py`` — mounting (with
+groups, plus the module admin status/enable/disable group. Phase 3
+(Contract Persistence) adds the Contracts and Eligibility endpoint
+groups. Endpoint groups are added incrementally in later phases,
+mirroring ``modules/crm/router.py``'s own incremental-growth convention.
+Not yet mounted into ``api/v1/router.py`` — mounting (with
 ``dependencies=[Depends(get_current_company_member)]`` only, no blanket
 entitlement dependency, per plan.md §15.2) is tasks.md T190 (Phase 11).
 
@@ -22,6 +23,12 @@ Endpoints:
     POST   /plans                      — create a plan template
     PATCH  /plans/{planId}             — edit a plan template
     POST   /plans/{planId}/deactivate  — deactivate a plan template
+
+    GET  /contracts                    — list contracts (paginated)
+    GET  /contracts/{contractId}       — get full contract detail
+    POST /contracts                    — create a DRAFT contract
+
+    GET  /eligibility?sales_invoice_id= — evaluate installment-offer eligibility
 
     GET  /status   (admin_router)      — module toggle status
     POST /enable   (admin_router)      — enable the module
@@ -49,6 +56,8 @@ from core.schemas.response import ResponseMeta, StandardResponse
 from core.utils.datetime import utcnow
 from modules.installments.dependencies import (
     get_installment_configuration_service,
+    get_installment_contract_service,
+    get_installment_eligibility_service,
     get_installment_plan_template_service,
     get_installments_feature_flag_service,
 )
@@ -58,6 +67,12 @@ from modules.installments.schemas.configuration import (
     InstallmentConfigurationRead,
     InstallmentConfigurationUpsert,
 )
+from modules.installments.schemas.contract import (
+    InstallmentContractCreate,
+    InstallmentContractRead,
+    InstallmentContractSummary,
+)
+from modules.installments.schemas.eligibility import EligibilityResultRead
 from modules.installments.schemas.plan_template import (
     InstallmentPlanTemplateCreate,
     InstallmentPlanTemplateRead,
@@ -65,6 +80,10 @@ from modules.installments.schemas.plan_template import (
 )
 from modules.installments.services.configuration_service import (
     InstallmentConfigurationService,
+)
+from modules.installments.services.contract_service import InstallmentContractService
+from modules.installments.services.eligibility_service import (
+    InstallmentEligibilityService,
 )
 from modules.installments.services.feature_flag_service import (
     InstallmentsFeatureFlagService,
@@ -269,6 +288,114 @@ async def deactivate_plan_template(
     return StandardResponse(
         data=InstallmentPlanTemplateRead.model_validate(template),
         message="Plan template deactivated.",
+        meta=_meta(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Contracts (plan.md §16.1: installments.contract.view/READ,
+# installments.contract.create/ORIGINATION)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/contracts",
+    response_model=PaginatedResponse[InstallmentContractSummary],
+    summary="List/search contracts",
+)
+async def list_contracts(
+    company_id: UUID = Path(..., description="Company identifier"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentContractService = Depends(get_installment_contract_service),
+) -> PaginatedResponse[InstallmentContractSummary]:
+    _require_permission(db, company_id, current_user, "installments.contract.view")
+    items, total = svc.list(company_id, skip=(page - 1) * page_size, limit=page_size)
+    pages = math.ceil(total / page_size) if total > 0 else 0
+    return PaginatedResponse(
+        data=PaginatedData(
+            items=[InstallmentContractSummary.model_validate(c) for c in items],
+            total=total,
+            page=page,
+            page_size=page_size,
+            pages=pages,
+        ),
+        message=f"{total} contract(s) found.",
+        meta=_meta(),
+    )
+
+
+@router.get(
+    "/contracts/{contractId}",
+    response_model=StandardResponse[InstallmentContractRead],
+    summary="Get full contract detail",
+)
+async def get_contract(
+    company_id: UUID = Path(..., description="Company identifier"),
+    contract_id: UUID = Path(..., alias="contractId"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentContractService = Depends(get_installment_contract_service),
+) -> StandardResponse[InstallmentContractRead]:
+    _require_permission(db, company_id, current_user, "installments.contract.view")
+    contract = svc.get(company_id, contract_id)
+    return StandardResponse(
+        data=InstallmentContractRead.model_validate(contract),
+        message="Contract retrieved.",
+        meta=_meta(),
+    )
+
+
+@router.post(
+    "/contracts",
+    response_model=StandardResponse[InstallmentContractRead],
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a DRAFT contract (from template or custom terms)",
+)
+async def create_contract(
+    body: InstallmentContractCreate,
+    company_id: UUID = Path(..., description="Company identifier"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentContractService = Depends(get_installment_contract_service),
+) -> StandardResponse[InstallmentContractRead]:
+    _require_permission(db, company_id, current_user, "installments.contract.create")
+    contract = svc.create_draft(
+        company_id=company_id,
+        actor_id=current_user.user_id,
+        **body.model_dump(),
+    )
+    return StandardResponse(
+        data=InstallmentContractRead.model_validate(contract),
+        message="Installment contract created.",
+        meta=_meta(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Eligibility (plan.md §16.1: installments.contract.create, ORIGINATION)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/eligibility",
+    response_model=StandardResponse[EligibilityResultRead],
+    summary="Evaluate customer/invoice eligibility for an installment offer",
+)
+async def check_eligibility(
+    company_id: UUID = Path(..., description="Company identifier"),
+    sales_invoice_id: UUID = Query(..., description="Sales invoice to evaluate"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentEligibilityService = Depends(get_installment_eligibility_service),
+) -> StandardResponse[EligibilityResultRead]:
+    _require_permission(db, company_id, current_user, "installments.contract.create")
+    result = svc.check_invoice_eligibility(company_id, sales_invoice_id)
+    return StandardResponse(
+        data=EligibilityResultRead.model_validate(result),
+        message="Invoice/customer eligible for an installment offer.",
         meta=_meta(),
     )
 

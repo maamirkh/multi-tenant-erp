@@ -145,6 +145,30 @@ class AccountsReceivableService:
         ledger = self.get_customer_ledger(company_id, customer_id)
         return self._ledgers.get_open_transactions(company_id, ledger.id)
 
+    def find_transaction_by_source_document(
+        self, company_id: UUID, source_document_type: str, source_document_id: UUID
+    ) -> ARTransaction | None:
+        """Read-only lookup by originating source document — the public
+        counterpart to ``ARTransactionRepository.find_by_source_document()``,
+        added for external module integration gateways (e.g. Installments'
+        ``AccountingIntegrationGateway``, plan.md §12) that need a live
+        outstanding-amount read for a specific document without importing
+        Accounting's repository layer directly."""
+        return self._transactions.find_by_source_document(
+            company_id, source_document_type, source_document_id
+        )
+
+    def get_transaction_by_id(
+        self, company_id: UUID, ar_transaction_id: UUID
+    ) -> ARTransaction | None:
+        """Read-only lookup by id, returning ``None`` rather than raising —
+        the public counterpart to ``_get_transaction()`` for external module
+        integration gateways (e.g. Installments' ``AccountingIntegrationGateway``)
+        that need to distinguish "not found" from an exception."""
+        return self._transactions.get_by_id_or_none(
+            id=ar_transaction_id, company_id=company_id
+        )
+
     # ------------------------------------------------------------------
     # Sales integration (T141/T142) — GL posting + ARTransaction creation
     # in ONE atomic transaction, via PostingEngine's staging primitives.

@@ -1,0 +1,84 @@
+"""Pydantic schemas for Installments Contract create/read/summary.
+
+Spec ref: specs/010-installments/contracts/installments-api.yaml
+`/contracts`.
+"""
+
+from __future__ import annotations
+
+from datetime import date, datetime
+from decimal import Decimal
+from uuid import UUID
+
+from pydantic import Field
+
+from modules.installments.schemas.base import InstallmentsBaseSchema
+
+
+class InstallmentContractCreate(InstallmentsBaseSchema):
+    """Request body for ``POST /contracts`` — create a DRAFT contract
+    from custom terms (or informationally linked to a plan template via
+    ``plan_template_id``, never dereferenced for calculation)."""
+
+    sales_invoice_id: UUID
+    down_payment_amount: Decimal = Field(..., ge=0)
+    installment_count: int = Field(..., gt=0)
+    frequency: str
+    first_due_date: date
+    maturity_date: date
+    markup_amount: Decimal = Field(Decimal("0"), ge=0)
+    plan_template_id: UUID | None = None
+    branch_id: UUID | None = None
+    contract_date: date | None = None
+
+
+class InstallmentContractRead(InstallmentsBaseSchema):
+    """Response body for full contract detail (``GET /contracts/{id}``,
+    ``POST /contracts``)."""
+
+    id: UUID
+    company_id: UUID
+    contract_number: str
+    branch_id: UUID | None
+    customer_id: UUID
+    sales_invoice_id: UUID
+    plan_template_id: UUID | None
+    contract_date: date
+    principal_amount: Decimal
+    down_payment_amount: Decimal
+    markup_amount: Decimal
+    contractual_total: Decimal
+    installment_count: int
+    frequency: str
+    first_due_date: date
+    maturity_date: date
+    currency_code: str
+    status: str
+    terms_snapshot: dict
+    active_schedule_version_id: UUID | None
+    submitted_by: UUID | None
+    submitted_at: datetime | None
+    approved_by: UUID | None
+    approved_at: datetime | None
+    activated_at: datetime | None
+    closed_at: datetime | None
+    defaulted_at: datetime | None
+    cancelled_at: datetime | None
+    written_off_at: datetime | None
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class InstallmentContractSummary(InstallmentsBaseSchema):
+    """Response body for list rows (``GET /contracts``) — a lighter
+    projection than full detail."""
+
+    id: UUID
+    contract_number: str
+    customer_id: UUID
+    sales_invoice_id: UUID
+    status: str
+    contractual_total: Decimal
+    currency_code: str
+    created_at: datetime
