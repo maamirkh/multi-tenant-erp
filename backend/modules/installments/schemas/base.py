@@ -20,3 +20,10 @@ class InstallmentsBaseSchema(BaseModel):
     """
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class InstallmentsStatusRead(InstallmentsBaseSchema):
+    """Whether the Installments module is currently enabled for a
+    company. Mirrors ``CrmStatusRead`` exactly."""
+
+    enabled: bool

@@ -30,6 +30,12 @@ from sqlalchemy.orm import Session
 
 from modules.crm.repositories.feature_flag_repository import CrmFeatureFlagRepository
 from modules.crm.services.feature_flag_service import CrmFeatureFlagService
+from modules.installments.repositories.feature_flag import (
+    InstallmentsFeatureFlagRepository,
+)
+from modules.installments.services.feature_flag_service import (
+    InstallmentsFeatureFlagService,
+)
 
 
 class ModuleEnablementProvider(Protocol):
@@ -48,6 +54,22 @@ class CrmModuleEnablementProvider:
     def __init__(self, db: Session) -> None:
         self._service = CrmFeatureFlagService(
             db=db, flag_repo=CrmFeatureFlagRepository(db)
+        )
+
+    def is_enabled(self, company_id: UUID) -> bool:
+        return self._service.is_enabled(company_id)
+
+
+class InstallmentsModuleEnablementProvider:
+    """Installments has exactly one module-wide master flag
+    (``feature.installments.enabled``) — read via the existing
+    ``InstallmentsFeatureFlagService`` (the same one
+    ``InstallmentAccessPolicy.authorize()`` will use, plan.md §15.2/§15.4).
+    Never writes."""
+
+    def __init__(self, db: Session) -> None:
+        self._service = InstallmentsFeatureFlagService(
+            flag_repo=InstallmentsFeatureFlagRepository(db)
         )
 
     def is_enabled(self, company_id: UUID) -> bool:
@@ -81,6 +103,8 @@ def get_module_enablement_provider(
     (one of the five seeded module-grain ``Capability`` keys, T124)."""
     if capability_key == "crm":
         return CrmModuleEnablementProvider(db)
+    if capability_key == "installments":
+        return InstallmentsModuleEnablementProvider(db)
     if capability_key in _DEFAULT_RULE_MODULES:
         return _DEFAULT_PROVIDER
     raise ValueError(f"No ModuleEnablementProvider registered for {capability_key!r}.")
