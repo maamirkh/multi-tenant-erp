@@ -1,0 +1,200 @@
+"""Installments module domain exceptions.
+
+Each exception subclasses the appropriate ``core/exceptions/base.py``
+class (``NotFoundException``, ``ConflictException``, ``ForbiddenException``,
+``ValidationException``) so the global FastAPI exception handler converts
+it to a typed ``ErrorResponse`` automatically — zero new exception-handler
+registration required, matching the Accounting/CRM/Inventory/Sales/
+Purchase convention. Where plan.md mandates a specific machine-readable
+``code`` distinct from the base class's default (e.g. ``FEATURE_DISABLED``,
+``PERIOD_LOCKED``), it is set explicitly after calling ``super().__init__()``
+— the base classes' constructors intentionally do not accept a ``code``
+override themselves.
+
+No imports from SQLAlchemy, FastAPI, or Starlette — this module is pure
+Python.
+
+Spec ref: specs/010-installments/plan.md §22 (Failure/Recovery Design).
+"""
+
+from __future__ import annotations
+
+from core.exceptions.base import (
+    ConflictException,
+    ForbiddenException,
+    NotFoundException,
+    ValidationException,
+)
+
+# ── Not Found (404) ─────────────────────────────────────────────────────────
+
+
+class InstallmentNotFoundError(NotFoundException):
+    """Raised when a referenced Installments entity does not exist for this
+    company (BR-INST-015) — identical response whether the entity truly
+    doesn't exist or belongs to another tenant (cross-tenant lookups must
+    be indistinguishable from non-existence, FR-INST-372)."""
+
+    def __init__(self, entity_type: str, entity_id: str | None = None) -> None:
+        super().__init__(
+            message=f"{entity_type} '{entity_id}' not found.",
+            details={"entity_type": entity_type, "entity_id": entity_id},
+        )
+
+
+# ── Forbidden (403) ──────────────────────────────────────────────────────────
+
+
+class InstallmentSelfApprovalNotAllowedError(ForbiddenException):
+    """Raised when a contract's submitter attempts to approve or reject
+    their own contract (plan.md §16.2) — applied identically to both
+    ``approve()`` and ``reject()`` from day one, explicitly avoiding the
+    documented Accounting/Payment history of forgetting the mirror
+    action."""
+
+    def __init__(self, contract_id: str | None = None) -> None:
+        super().__init__(
+            message=(
+                f"Installment contract '{contract_id or '?'}' cannot be "
+                "approved or rejected by its own submitter."
+            ),
+            details={"contract_id": contract_id},
+        )
+        self.code = "SELF_APPROVAL_NOT_ALLOWED"
+
+
+class InstallmentsNotEntitledError(ForbiddenException):
+    """Raised when an ``ORIGINATION``-class operation is attempted while
+    the Installments module is disabled for this tenant
+    (``InstallmentAccessPolicy.authorize()``, plan.md §15.2, FR-INST-353).
+    Servicing/read operations on already-existing contracts are never
+    blocked by this (FR-INST-356) — this exception is raised only for the
+    ORIGINATION operation class.
+    """
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(
+            message=message
+            or "The Installments module is not enabled for this company.",
+            details={"feature_key": "feature.installments.enabled"},
+        )
+        self.code = "FEATURE_DISABLED"
+
+
+# ── Conflict (409) ───────────────────────────────────────────────────────────
+
+
+class InstallmentIllegalTransitionError(ConflictException):
+    """Raised when a lifecycle transition is not permitted by
+    ``_LEGAL_TRANSITIONS`` (plan.md §9.2) — there is no generic
+    ``set_status()``/``update_status()`` method anywhere in the public
+    service interface (FR-INST-106); every mutation goes through a named
+    business-action method that raises this on an illegal transition."""
+
+    def __init__(self, current_status: str, target_status: str) -> None:
+        super().__init__(
+            message=(
+                f"Invalid installment contract status transition: "
+                f"{current_status!r} -> {target_status!r}."
+            ),
+            details={"current_status": current_status, "target_status": target_status},
+        )
+
+
+class InstallmentConcurrentModificationError(ConflictException):
+    """Raised when an optimistic-lock conditional update
+    (``UPDATE ... WHERE version = :expected``) affects zero rows — a
+    concurrent writer already changed the contract (plan.md §19). The
+    losing request never silently overwrites (FR-INST-382)."""
+
+    def __init__(self, contract_id: str | None = None) -> None:
+        super().__init__(
+            message=(
+                f"Installment contract '{contract_id or '?'}' was modified "
+                "concurrently; reload and retry."
+            ),
+            details={"contract_id": contract_id},
+        )
+
+
+class InstallmentOutstandingBalanceRemainsError(ConflictException):
+    """Raised by ``InstallmentOutstandingService.assert_zero_outstanding()``
+    (plan.md §9.3) when a contract cannot transition to ``COMPLETED``
+    because an authoritative outstanding obligation remains — either
+    unpaid schedule lines (``kind="SCHEDULE"``) or an open, unwaived
+    late-charge ``ARTransaction`` (``kind="LATE_CHARGE"``, BR-INST-010).
+    The triggering collection/settlement itself still succeeds and
+    commits; only the contract-level ``COMPLETED`` transition is
+    withheld."""
+
+    def __init__(
+        self,
+        kind: str,
+        contract_id: str | None = None,
+        ar_transaction_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message=(
+                f"Installment contract '{contract_id or '?'}' has an "
+                f"outstanding {kind.lower()} obligation and cannot be "
+                "completed."
+            ),
+            details={
+                "kind": kind,
+                "contract_id": contract_id,
+                "ar_transaction_id": ar_transaction_id,
+            },
+        )
+
+
+class InstallmentIdempotencyConflictError(ConflictException):
+    """Raised by ``InstallmentIdempotencyService`` (plan.md §20.2/§20.3)
+    when a duplicate request cannot be resolved as a clean replay.
+    ``code`` defaults to ``IDEMPOTENCY_PAYLOAD_MISMATCH`` (the normal
+    outcome: same key, different request payload); pass
+    ``code="IDEMPOTENCY_UNEXPECTED_STATE"`` only for the purely defensive
+    branch of observing another session's still-``IN_PROGRESS`` row,
+    which is not a documented, expected response under normal
+    operation."""
+
+    def __init__(
+        self,
+        message: str = "Idempotency key reused with a different request payload.",
+        code: str = "IDEMPOTENCY_PAYLOAD_MISMATCH",
+        idempotency_key: str | None = None,
+    ) -> None:
+        super().__init__(
+            message=message,
+            details={"idempotency_key": idempotency_key},
+        )
+        self.code = code
+
+
+# ── Validation (422) ─────────────────────────────────────────────────────────
+
+
+class InstallmentFiscalPeriodLockedError(ValidationException):
+    """Raised when a ``PostingValidationError`` from Accounting indicates
+    the target fiscal period is locked/closed (plan.md §22) — mapped to a
+    specific, documented ``PERIOD_LOCKED`` code rather than a generic
+    validation error."""
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(
+            message=message or "The target fiscal period is locked.",
+        )
+        self.code = "PERIOD_LOCKED"
+
+
+class DegenerateScheduleError(ValidationException):
+    """Raised by ``ScheduleEngine.generate()`` when the final installment
+    line would be zero or negative (spec §28 edge case) — raised before
+    any persistence; activation never partially proceeds."""
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(
+            message=message
+            or "The generated schedule's final installment would be zero "
+            "or negative.",
+        )
+        self.code = "DEGENERATE_SCHEDULE"
