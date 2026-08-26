@@ -128,6 +128,7 @@ class TestInstallmentContractServiceIDOR:
             sequence_repo=None,  # not exercised by get()
             eligibility_service=None,  # not exercised by get()
             accounting_gateway=None,  # not exercised by get()
+            configuration_service=None,  # not exercised by get()
         )
 
         # Genuinely non-existent id.

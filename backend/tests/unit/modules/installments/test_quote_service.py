@@ -12,7 +12,7 @@ verification.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
@@ -32,6 +32,14 @@ class _FakeInvoice:
 @dataclass
 class _FakeConfig:
     rounding_policy: str
+    allowed_frequencies: list[str] = field(
+        default_factory=lambda: ["WEEKLY", "MONTHLY", "QUARTERLY"]
+    )
+    min_term: int = 1
+    max_term: int = 1000
+    min_down_payment_pct: Decimal | None = None
+    min_down_payment_amount: Decimal | None = None
+    max_financed_amount: Decimal | None = None
 
 
 class _FakeEligibilityService:
@@ -159,7 +167,33 @@ class TestQuotePreviewComposition:
         """A client-supplied frequency the engine rejects (a ValueError,
         by design a pure-function input-contract violation) must surface
         as a documented 422 at this client-facing boundary, never an
-        unhandled 500."""
+        unhandled 500. Uses an unconfigured tenant (no
+        ``InstallmentConfiguration`` row) so ``InstallmentTermsPolicyValidator``
+        no-ops and it is genuinely ``ScheduleEngine``'s own ValueError
+        translation being exercised here, not the (separately tested)
+        policy-bounds check."""
+        svc = _make_service(
+            eligible_amount=Decimal("900"),
+            invoice_amount=Decimal("1000"),
+            rounding_policy=None,
+        )
+        with pytest.raises(ValidationException) as exc_info:
+            svc.preview(
+                uuid.uuid4(),
+                sales_invoice_id=uuid.uuid4(),
+                down_payment_amount=Decimal("0"),
+                installment_count=2,
+                frequency="DAILY",
+                first_due_date=date(2026, 1, 1),
+            )
+        assert exc_info.value.code == "INVALID_SCHEDULE_TERMS"
+
+    def test_disallowed_frequency_rejected_by_policy_validator_when_configured(
+        self,
+    ) -> None:
+        """When a tenant HAS a configuration row, a disallowed frequency
+        is now caught earlier by ``InstallmentTermsPolicyValidator``
+        (TERMS_POLICY_VIOLATION), before ever reaching ``ScheduleEngine``."""
         svc = _make_service(
             eligible_amount=Decimal("900"),
             invoice_amount=Decimal("1000"),
@@ -174,7 +208,7 @@ class TestQuotePreviewComposition:
                 frequency="DAILY",
                 first_due_date=date(2026, 1, 1),
             )
-        assert exc_info.value.code == "INVALID_SCHEDULE_TERMS"
+        assert exc_info.value.code == "TERMS_POLICY_VIOLATION"
 
     def test_ineligible_invoice_propagates_the_eligibility_error(self) -> None:
         svc = InstallmentQuoteService(

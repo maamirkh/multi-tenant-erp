@@ -198,3 +198,18 @@ class DegenerateScheduleError(ValidationException):
             "or negative.",
         )
         self.code = "DEGENERATE_SCHEDULE"
+
+
+class InstallmentTermsPolicyViolationError(ValidationException):
+    """Raised by ``InstallmentTermsPolicyValidator.validate()`` (plan.md
+    §10.6) when proposed installment terms fall outside the tenant's
+    configured ``InstallmentConfiguration`` policy bounds (FR-INST-011).
+    ``details["violations"]`` names every violated field, not just the
+    first one encountered."""
+
+    def __init__(self, violations: dict[str, str]) -> None:
+        super().__init__(
+            message="Proposed installment terms violate configured policy bounds.",
+            details={"violations": violations},
+        )
+        self.code = "TERMS_POLICY_VIOLATION"

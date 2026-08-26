@@ -25,8 +25,14 @@ from modules.installments.repositories.sequence import InstallmentSequenceReposi
 from modules.installments.services.accounting_gateway import (
     AccountingIntegrationGateway,
 )
+from modules.installments.services.configuration_service import (
+    InstallmentConfigurationService,
+)
 from modules.installments.services.eligibility_service import (
     InstallmentEligibilityService,
+)
+from modules.installments.services.terms_policy_validator import (
+    InstallmentTermsPolicyValidator,
 )
 
 
@@ -77,11 +83,13 @@ class InstallmentContractService:
         sequence_repo: InstallmentSequenceRepository,
         eligibility_service: InstallmentEligibilityService,
         accounting_gateway: AccountingIntegrationGateway,
+        configuration_service: InstallmentConfigurationService,
     ) -> None:
         self._repo = repo
         self._sequences = sequence_repo
         self._eligibility = eligibility_service
         self._accounting = accounting_gateway
+        self._configuration = configuration_service
 
     def create_draft(
         self,
@@ -116,6 +124,11 @@ class InstallmentContractService:
                 covers this invoice (BR-INST-042) — the service-layer
                 pre-check; the DB partial unique index is the real
                 backstop against a concurrent race (T053).
+            InstallmentTermsPolicyViolationError: proposed terms fall
+                outside the effective ``InstallmentConfiguration``'s
+                policy bounds (FR-INST-011, plan.md §10.6) — the same
+                check ``InstallmentQuoteService.preview()`` applies, so a
+                caller cannot bypass it by skipping ``/quotes``.
         """
         eligibility = self._eligibility.check_invoice_eligibility(
             company_id, sales_invoice_id
@@ -137,6 +150,16 @@ class InstallmentContractService:
         financed_principal = eligibility.outstanding_amount - down_payment_amount
         contractual_total = financed_principal + markup_amount
         effective_contract_date = contract_date or date.today()
+
+        config = self._configuration.get_effective_config(company_id, branch_id)
+        InstallmentTermsPolicyValidator.validate(
+            config,
+            frequency=frequency,
+            installment_count=installment_count,
+            principal_amount=eligibility.outstanding_amount,
+            down_payment_amount=down_payment_amount,
+            financed_amount=financed_principal,
+        )
 
         contract_number = self._sequences.generate_next_number(company_id)
 

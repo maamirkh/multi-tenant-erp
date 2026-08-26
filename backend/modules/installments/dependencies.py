@@ -189,12 +189,16 @@ def get_installment_contract_service(
     accounting_gateway: AccountingIntegrationGateway = Depends(
         get_accounting_integration_gateway
     ),
+    configuration_service: InstallmentConfigurationService = Depends(
+        get_installment_configuration_service
+    ),
 ) -> InstallmentContractService:
     return InstallmentContractService(
         repo=repo,
         sequence_repo=sequence_repo,
         eligibility_service=eligibility_service,
         accounting_gateway=accounting_gateway,
+        configuration_service=configuration_service,
     )
 
 

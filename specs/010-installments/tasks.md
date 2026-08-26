@@ -5,6 +5,8 @@
 
 **[CORRECTED — targeted correction pass]** This tasks.md was re-audited and corrected across six defect areas found in the first draft: (1) the `installment_configurations` uniqueness constraint was insufficient for PostgreSQL NULL semantics; (2) the high-risk-command idempotency graph had gaps (reversal/cancellation/write-off missing explicit `T090`-equivalent wiring, and "default" was implementable before its idempotency prerequisite existed); (3) Phase 3's eligibility/draft-creation tasks read live Accounting AR data with no defined module boundary; (4) three Phase 6 failure-injection tests referenced Installments-side entities that don't exist until later phases; (5) one dependency pointed at a model instead of the service that implements the method actually being called; (6) one dependency was self-referential/non-executable, and a full mechanical `[P]`-safety audit found and fixed 15 additional same-file parallel-marking errors. Fixing these required inserting 6 new tasks and removing 1 (a Phase-5 endpoint moved to Phase 10), so **every task from `T046` onward was renumbered** relative to the first draft — this renumbering was performed mechanically (scripted, not by hand) and the entire resulting dependency graph was validated to contain zero dangling references, zero self-references, and zero forward references (a task depending on a numerically later one).
 
+**[CORRECTED — Correction 7, post-Phase-4 targeted gap closure]** Phase 4's closure review discovered that FR-INST-011 ("contracts created ... with fully custom terms within the tenant's configured policy bounds") had no task anywhere in this document assigning ownership of validating `frequency`/`installment_count`/`down_payment_amount`/`financed_amount` against the effective `InstallmentConfiguration` — neither Phase 3's `create_draft()` (T049) nor Phase 4's `preview()` (T069) enforced it, and both are already implemented/committed. Closed by inserting a new **Phase 4.5** (five tasks, `T073A`–`T073E`) between the already-closed Phase 4 and Phase 5, using suffixed IDs specifically so **no already-completed task (T001–T073) or already-numbered future task (T074 onward) is renumbered** — every existing dependency reference in Phases 5–15 remains valid unchanged. Phase 3/Phase 4's own exit-gate proofs are not reopened; Phase 4.5 is a strictly additive precondition retrofitted onto their already-proven call sites. See `plan.md` §10.6 for the ownership rationale.
+
 **Organization**: This tasks.md preserves `plan.md` §36's 15-phase implementation sequence **exactly**, per explicit instruction — phases are NOT flattened or reorganized around spec.md's user stories. Where a task's completion materially advances a specific user story (US-1..US-8, spec.md §8), that is noted inline as `(→ USn)` for traceability, but phase boundaries and dependency order are authoritative. Tests are included as first-class work inside each phase (not deferred to one final phase), per explicit instruction, with Phase 15 providing final cross-cutting/E2E/regression closure.
 
 **Format**: `- [ ] [TaskID] [P?] Description with file path — Depends on: ... (→ USn / FR-INST-xxx)`
@@ -127,6 +129,22 @@
 - [x] T073 [P] Repository test: `InstallmentScheduleLine` append-only persistence and unique `(schedule_version_id, sequence)` in `backend/tests/integration/repositories/installments/test_schedule_persistence.py` — Depends on: T068
 
 **PHASE 4 EXIT GATE**: `ScheduleEngine` is 100% unit-tested with zero DB/HTTP dependency; quote preview is provably non-mutating and non-audited; schedule persistence is structurally immutable (no update path exists in code).
+
+---
+
+## Phase 4.5: Installment Terms Policy Validation **[NEW — Correction 7, retrofit gate]**
+
+**Purpose**: Close the confirmed FR-INST-011 gap — "installment contracts ... created ... with fully custom terms within the tenant's configured policy bounds" had no assigned implementation task. Retrofits the two already-completed call sites (Phase 3's `create_draft()`, Phase 4's `preview()`) with **one** shared validator; does not reopen either phase's own exit-gate proof. See plan.md §10.6.
+
+Task IDs are suffixed (`T073A`–`T073E`) specifically so no existing task number — completed or not-yet-started — is renumbered.
+
+- [x] T073A [P] `InstallmentTermsPolicyValidator.validate(config, *, frequency, installment_count, down_payment_amount, financed_amount)` in `backend/modules/installments/services/terms_policy_validator.py` — the single, reusable, stateless implementation of FR-INST-011's policy-bounds check: `frequency` must be a member of `InstallmentConfiguration.allowed_frequencies`; `installment_count` must be within `[min_term, max_term]`; `down_payment_amount` must satisfy whichever of `min_down_payment_pct`/`min_down_payment_amount` is configured (T029 already guarantees at most one is set); `financed_amount` must not exceed `max_financed_amount` when configured. Raises the new `InstallmentTermsPolicyViolationError` (added to `exceptions.py` in this same task — subclasses `ValidationException`, `code="TERMS_POLICY_VIOLATION"`, `details` names the specific violated field(s)) — never a bare `ValueError`/unhandled 500. `config is None` (tenant has no configuration row yet) means "no bounds configured," not "everything forbidden" — the validator is a no-op in that case — Depends on: T029, T017
+- [x] T073B Retrofit `InstallmentQuoteService.preview()` (T069) to call `InstallmentTermsPolicyValidator.validate()` — using the same effective-configuration lookup `preview()` already performs for `rounding_policy`, no second config read — before invoking `ScheduleEngine.generate()`, propagating `InstallmentTermsPolicyViolationError` as the OpenAPI-documented `/quotes` `422` response — in `backend/modules/installments/services/quote_service.py` — Depends on: T073A, T069
+- [x] T073C Retrofit `InstallmentContractService.create_draft()` (T049) to call the **same** `InstallmentTermsPolicyValidator.validate()` (imported, never reimplemented) before constructing/persisting the `InstallmentContract` row, so direct contract creation cannot bypass the policy check enforced at quote time — in `backend/modules/installments/services/contract_service.py` — Depends on: T073A, T049
+- [x] T073D [P] Unit tests for `InstallmentTermsPolicyValidator` in `backend/tests/unit/modules/installments/test_terms_policy_validator.py`: valid terms pass; disallowed frequency rejected; `installment_count` below configured `min_term` rejected; `installment_count` above configured `max_term` rejected; `down_payment_amount` below the configured minimum (both `min_down_payment_pct` and `min_down_payment_amount` variants) rejected; `financed_amount` exceeding `max_financed_amount` rejected; a branch-specific override (`InstallmentConfigurationService.get_effective_config(company_id, branch_id)`) is honored over the company-level default row when both exist for the same company — Depends on: T073A
+- [x] T073E [P] Regression/structural test proving single-validator reuse (no duplicated policy logic) in `backend/tests/unit/modules/installments/test_terms_policy_enforced_everywhere.py`: (1) identical disallowed terms are rejected identically by both `InstallmentQuoteService.preview()` and `InstallmentContractService.create_draft()`, raising the same `InstallmentTermsPolicyViolationError`/`code`; (2) a structural `inspect.getsource()` check confirms `contract_service.py` contains no independently-reimplemented bounds comparison (no second `allowed_frequencies`/`min_term`/`max_term`/`min_down_payment`/`max_financed_amount` check outside a call into `InstallmentTermsPolicyValidator`); (3) calling `InstallmentContractService.create_draft()` directly with out-of-policy terms (bypassing `/quotes`/the router entirely) still raises — proving the check is service-layer-enforced, not merely front-end or router-level — Depends on: T073B, T073C
+
+**PHASE 4.5 EXIT GATE**: `InstallmentTermsPolicyValidator` is the single implementation of FR-INST-011's policy-bounds check; both `preview()` and `create_draft()` call it — never a second copy; a direct `create_draft()` call that bypasses `/quotes` entirely is still rejected for out-of-policy terms; branch-override-vs-company-fallback resolution is proven; an unconfigured tenant is never wrongly blocked.
 
 ---
 
@@ -486,6 +504,7 @@ Phase 6 (Accounting Integration) ← HARD GATE ────┘   command before 
 - Phase 1: T013, T017, T018, T019, T020 (T013 is the sole safe starting point for `constants.py`; T014/T015 are now explicitly sequential *after* T013 within that same file — not part of this batch)
 - Phase 2: T021–T024 (four distinct model files)
 - Phase 4: T057, T059, T061–T066 (T057 stands alone as the first `schedule_engine.py` task; T059 is a genuinely different file, `business_date.py`; T058/T060 are now sequential within `schedule_engine.py` — not part of this batch; T061–T066 are six independent unit-test files against the completed `ScheduleEngine`)
+- Phase 4.5: T073A alone (sole starting point — T073B/T073C each depend on it and separately edit already-existing files `quote_service.py`/`contract_service.py`, never parallel with each other or with T073A); T073D is parallel-safe with T073B/T073C (independent new test file, depends only on T073A); T073E is sequential last (depends on both T073B and T073C)
 - Phase 6.4: T109–T112 (four independent regression-test files)
 - Phase 6.5: T114–T117 (four independent forced-failure test files, now correctly Layer-A/Accounting-only in scope)
 - Phase 11: T192 (starts the now-sequential entitlement-continuity cluster alone), T200–T203 (four independent, explicitly-distinct-file security tests)
@@ -506,9 +525,10 @@ Tasks **not** marked `[P]` within the same phase either modify the same file (e.
 |---|---|
 | §9.1 Configuration | T021, T025, T029, T036, T039 |
 | §9.2 Plans/Templates | T022, T026, T030, T037, T040 |
+| §9.2 Custom-terms policy bounds (FR-INST-011) | **T073A-T073E** [NEW — Correction 7] |
 | §9.3 Eligibility | T047, T052, T055 |
-| §9.4 Quote/Preview | T057-T066, T069, T071 |
-| §9.5 Contract data | T043-T049, T053-T056 |
+| §9.4 Quote/Preview | T057-T066, T069, T071, **T073A, T073B** [NEW — Correction 7, policy-bounds retrofit] |
+| §9.5 Contract data | T043-T049, T053-T056, **T073A, T073C** [NEW — Correction 7, policy-bounds retrofit] |
 | §9.6 Notifications | T107 (outbox events), Phase 8/9/10 event-staging steps |
 | §9.7 Documents | T206, T210, T212 |
 | §9.8 Search/Views | T044, T051, T129 |

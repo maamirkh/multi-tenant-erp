@@ -70,6 +70,14 @@ class _FakeAccountingGateway:
         return self.outstanding_amount
 
 
+class _FakeConfigurationService:
+    def __init__(self, config=None) -> None:
+        self._config = config
+
+    def get_effective_config(self, company_id, branch_id=None):
+        return self._config
+
+
 def _build_service(
     db_session: Session,
     *,
@@ -93,6 +101,7 @@ def _build_service(
         sequence_repo=InstallmentSequenceRepository(db_session),
         eligibility_service=eligibility_service,
         accounting_gateway=accounting_gateway,
+        configuration_service=_FakeConfigurationService(config=None),
     )
 
 

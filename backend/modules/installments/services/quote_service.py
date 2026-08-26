@@ -29,6 +29,9 @@ from modules.installments.services.eligibility_service import (
 )
 from modules.installments.services.sales_read_gateway import SalesInvoiceReadGateway
 from modules.installments.services.schedule_engine import ScheduleEngine
+from modules.installments.services.terms_policy_validator import (
+    InstallmentTermsPolicyValidator,
+)
 
 _DEFAULT_ROUNDING_POLICY = "ROUND_HALF_UP"
 
@@ -93,6 +96,17 @@ class InstallmentQuoteService:
             config.rounding_policy if config is not None else _DEFAULT_ROUNDING_POLICY
         )
 
+        financed_principal = eligibility.outstanding_amount - down_payment_amount
+
+        InstallmentTermsPolicyValidator.validate(
+            config,
+            frequency=frequency,
+            installment_count=installment_count,
+            principal_amount=eligibility.outstanding_amount,
+            down_payment_amount=down_payment_amount,
+            financed_amount=financed_principal,
+        )
+
         try:
             result = ScheduleEngine.generate(
                 principal=eligibility.outstanding_amount,
@@ -121,7 +135,7 @@ class InstallmentQuoteService:
             invoice_amount=invoice.total_amount,
             eligible_amount=eligibility.outstanding_amount,
             down_payment_amount=down_payment_amount,
-            financed_principal=eligibility.outstanding_amount - down_payment_amount,
+            financed_principal=financed_principal,
             markup_amount=markup_amount,
             contractual_total=result.contractual_total,
             installment_count=installment_count,
