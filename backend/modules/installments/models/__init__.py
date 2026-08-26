@@ -11,6 +11,7 @@ from modules.installments.models.audit import InstallmentAuditLog
 from modules.installments.models.configuration import InstallmentConfiguration
 from modules.installments.models.contract import InstallmentContract
 from modules.installments.models.feature_flag import InstallmentsFeatureFlag
+from modules.installments.models.idempotency import InstallmentIdempotencyKey
 from modules.installments.models.plan_template import InstallmentPlanTemplate
 from modules.installments.models.schedule import (
     InstallmentScheduleLine,
@@ -22,6 +23,7 @@ __all__ = [
     "InstallmentAuditLog",
     "InstallmentConfiguration",
     "InstallmentContract",
+    "InstallmentIdempotencyKey",
     "InstallmentPlanTemplate",
     "InstallmentScheduleLine",
     "InstallmentScheduleVersion",
