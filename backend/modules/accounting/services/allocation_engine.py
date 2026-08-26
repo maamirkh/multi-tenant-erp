@@ -42,6 +42,7 @@ than three separate ones (derivation in the module's PHR).
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -79,6 +80,19 @@ _ADVANCE_TYPES = frozenset(
 )
 
 
+@dataclass
+class StagedAllocation:
+    """Flush-only result of ``stage_allocation()`` (plan.md §12.3.1).
+    Every write (``PaymentAllocationLine``, target-transaction outstanding/
+    status, credit-transaction outstanding/status, ``payment.status=
+    "ALLOCATED"``) is already flushed into the session; any staged FX-
+    adjustment journal entries are held, uncommitted, in
+    ``staged_entries``. Pass to ``finalize_allocation()`` to commit."""
+
+    results: list[PaymentAllocationLine]
+    staged_entries: list[tuple[Any, str, datetime]] = field(default_factory=list)
+
+
 class AllocationEngine:
     """Domain service allocating a Payment's balance against AR/AP transactions."""
 
@@ -110,6 +124,10 @@ class AllocationEngine:
         """Allocate a payment's available balance against one or more AR/AP
         transactions.
 
+        Thin, backward-compatible wrapper of ``stage_allocation()`` +
+        ``finalize_allocation()`` (plan.md §12.3.1) — identical behavior/
+        return type for every existing standalone caller.
+
         Args:
             allocation_lines: each dict has ``transaction_id`` (UUID),
                 ``amount_foreign`` (Decimal, > 0, in the transaction's own
@@ -117,6 +135,25 @@ class AllocationEngine:
                 + ``discount_account_id`` (required if discount_amount > 0),
                 and optional ``release_account_id`` (required when the
                 payment's ``payment_type`` is ADVANCE_RECEIPT/ADVANCE_PAYMENT).
+        """
+        staged = self.stage_allocation(
+            company_id, payment_id, allocation_lines, actor_id
+        )
+        return self.finalize_allocation(staged, actor_id)
+
+    def stage_allocation(
+        self,
+        company_id: UUID,
+        payment_id: UUID,
+        allocation_lines: list[dict[str, Any]],
+        actor_id: UUID | None,
+    ) -> StagedAllocation:
+        """Stage an allocation — flush only, no commit (plan.md §12.3.1).
+        Replicates ``allocate()``'s per-line loop; every write already
+        uses ``db.add()``/``db.flush()`` directly (no hidden repository
+        ``.update()`` commits). Stops before the final
+        ``finalize_and_publish()``/bare-commit block — call
+        ``finalize_allocation()`` to commit.
         """
         payment = self._payments.get_by_id_or_none(id=payment_id, company_id=company_id)
         if payment is None:
@@ -258,18 +295,33 @@ class AllocationEngine:
         payment.status = "ALLOCATED"
         self.db.add(payment)
 
-        if staged_entries:
-            self._engine.finalize_and_publish(*staged_entries[0], actor_id)
-            for entry, journal_number, posted_at in staged_entries[1:]:
+        return StagedAllocation(results=results, staged_entries=staged_entries)
+
+    def finalize_allocation(
+        self, staged: StagedAllocation, actor_id: UUID | None
+    ) -> list[PaymentAllocationLine]:
+        """The sole commit point(s) for ``stage_allocation()`` — replicates
+        the pre-extraction final block exactly: one ``finalize_and_publish()``
+        per staged FX-adjustment entry, or a bare ``db.commit()`` if none
+        were staged (plan.md §12.3.1). Every business-relevant write
+        (Accounting's and the caller's) is already flushed before the
+        *first* of these calls, so that first call is the true atomicity
+        boundary — documented honestly, not oversimplified, per plan.md
+        §12.3.1: any further calls in this loop commit an already-durable
+        state and only add their own FX-adjustment entry's journal-
+        numbering/event-publish bookkeeping.
+        """
+        if staged.staged_entries:
+            for entry, journal_number, posted_at in staged.staged_entries:
                 self._engine.finalize_and_publish(
                     entry, journal_number, posted_at, actor_id
                 )
         else:
             self.db.commit()
 
-        for line in results:
+        for line in staged.results:
             self.db.refresh(line)
-        return results
+        return staged.results
 
     # ------------------------------------------------------------------
     # Internal helpers

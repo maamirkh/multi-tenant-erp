@@ -14,8 +14,14 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from core.database.session import get_db
-from modules.accounting.dependencies import get_ar_service
+from modules.accounting.dependencies import (
+    get_allocation_engine,
+    get_ar_service,
+    get_payment_service,
+)
+from modules.accounting.services.allocation_engine import AllocationEngine
 from modules.accounting.services.ar_service import AccountsReceivableService
+from modules.accounting.services.payment_service import PaymentService
 from modules.installments.repositories.audit import InstallmentAuditLogRepository
 from modules.installments.repositories.configuration import (
     InstallmentConfigurationRepository,
@@ -42,6 +48,9 @@ from modules.installments.services.eligibility_service import (
 )
 from modules.installments.services.feature_flag_service import (
     InstallmentsFeatureFlagService,
+)
+from modules.installments.services.outstanding_service import (
+    InstallmentOutstandingService,
 )
 from modules.installments.services.plan_template_service import (
     InstallmentPlanTemplateService,
@@ -118,17 +127,39 @@ def get_sales_customer_read_gateway(
 
 def get_accounting_integration_gateway(
     ar_service: AccountsReceivableService = Depends(get_ar_service),
+    payment_service: PaymentService = Depends(get_payment_service),
+    allocation_engine: AllocationEngine = Depends(get_allocation_engine),
 ) -> AccountingIntegrationGateway:
-    """Reuses Accounting's own ``get_ar_service`` DI factory unchanged,
-    never a new Accounting endpoint or a cached financial value —
-    mirrors ``modules.crm.dependencies.get_customer_360_service``'s
-    identical convention."""
-    return AccountingIntegrationGateway(ar_service=ar_service)
+    """Reuses Accounting's own ``get_ar_service``/``get_payment_service``/
+    ``get_allocation_engine`` DI factories unchanged, never a new
+    Accounting endpoint or a cached financial value — mirrors
+    ``modules.crm.dependencies.get_customer_360_service``'s identical
+    convention. All three share the same request-scoped ``Session``
+    (each factory ultimately depends on ``get_db``), which is what
+    makes the staged/finalize atomicity across them possible."""
+    return AccountingIntegrationGateway(
+        ar_service=ar_service,
+        payment_service=payment_service,
+        allocation_engine=allocation_engine,
+    )
 
 
 # ---------------------------------------------------------------------------
 # Service factories
 # ---------------------------------------------------------------------------
+
+
+def get_installment_outstanding_service(
+    schedule_repo: InstallmentScheduleRepository = Depends(
+        get_installment_schedule_repo
+    ),
+    accounting_gateway: AccountingIntegrationGateway = Depends(
+        get_accounting_integration_gateway
+    ),
+) -> InstallmentOutstandingService:
+    return InstallmentOutstandingService(
+        schedule_repo=schedule_repo, accounting_gateway=accounting_gateway
+    )
 
 
 def get_installment_configuration_service(

@@ -30,8 +30,14 @@ class TestAccountingIntegrationGatewayImportBoundary:
         assert "from modules.accounting.repositories" not in source
 
     def test_imports_accounting_services_only(self) -> None:
+        """[Phase 6, T107] Loosened from an exact single-line import
+        match to two substring checks so this test survives Phase 6's
+        multi-name import from the same module (isort/black legitimately
+        wraps ``ar_service``'s import across several names now that
+        ``StagedAdjustment``/``StagedWriteOff`` joined
+        ``AccountsReceivableService``) without weakening the check's
+        actual intent: that the AR service is imported from Accounting's
+        service layer, never its models/repositories."""
         source = inspect.getsource(mod)
-        assert (
-            "from modules.accounting.services.ar_service import "
-            "AccountsReceivableService" in source
-        )
+        assert "from modules.accounting.services.ar_service import" in source
+        assert "AccountsReceivableService" in source
