@@ -192,6 +192,7 @@ def get_installment_contract_service(
     configuration_service: InstallmentConfigurationService = Depends(
         get_installment_configuration_service
     ),
+    audit_service: InstallmentAuditService = Depends(get_installment_audit_service),
 ) -> InstallmentContractService:
     return InstallmentContractService(
         repo=repo,
@@ -199,6 +200,7 @@ def get_installment_contract_service(
         eligibility_service=eligibility_service,
         accounting_gateway=accounting_gateway,
         configuration_service=configuration_service,
+        audit_service=audit_service,
     )
 
 

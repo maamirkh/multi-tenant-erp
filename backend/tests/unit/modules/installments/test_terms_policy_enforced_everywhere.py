@@ -133,6 +133,7 @@ class TestSingleValidatorReuse:
             eligibility_service=eligibility_service,
             accounting_gateway=accounting_gateway,
             configuration_service=config_service,
+            audit_service=None,  # not exercised — validation raises first
         )
 
         with pytest.raises(InstallmentTermsPolicyViolationError) as quote_exc:
@@ -172,6 +173,7 @@ class TestSingleValidatorReuse:
             eligibility_service=eligibility_service,
             accounting_gateway=accounting_gateway,
             configuration_service=_FakeConfigurationService(_FakeConfig()),
+            audit_service=None,  # not exercised — validation raises first
         )
 
         with pytest.raises(InstallmentTermsPolicyViolationError):

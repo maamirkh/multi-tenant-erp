@@ -22,8 +22,10 @@ from sqlalchemy.orm import Session
 
 from core.exceptions.base import ConflictException, ValidationException
 from modules.installments.exceptions import InstallmentNotFoundError
+from modules.installments.repositories.audit import InstallmentAuditLogRepository
 from modules.installments.repositories.contract import InstallmentContractRepository
 from modules.installments.repositories.sequence import InstallmentSequenceRepository
+from modules.installments.services.audit_service import InstallmentAuditService
 from modules.installments.services.contract_service import InstallmentContractService
 from modules.installments.services.eligibility_service import (
     InstallmentEligibilityService,
@@ -102,6 +104,9 @@ def _build_service(
         eligibility_service=eligibility_service,
         accounting_gateway=accounting_gateway,
         configuration_service=_FakeConfigurationService(config=None),
+        audit_service=InstallmentAuditService(
+            db=db_session, audit_repo=InstallmentAuditLogRepository(db_session)
+        ),
     )
 
 

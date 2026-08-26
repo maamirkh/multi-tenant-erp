@@ -1,8 +1,15 @@
 """InstallmentContractService — the Installments aggregate-root service.
 
-Phase 3 implements only ``create_draft()`` — the DRAFT-creation path.
-Named lifecycle-transition methods (``submit()``, ``approve()``, etc.)
-are Phase 5's scope; this file intentionally does not pre-create them.
+Phase 3 implements ``create_draft()`` — the DRAFT-creation path. Phase 5
+adds the named lifecycle-transition methods (``submit()``, ``approve()``,
+``reject()``, ``cancel()``, ``mark_defaulted()``) — each asserts
+``_LEGAL_TRANSITIONS`` before mutating and audits the mutation; there is
+no generic ``set_status()``/``update_status()`` anywhere (FR-INST-106).
+
+``activate()``, ``complete()``, ``cure()``, ``writeoff()``, and the
+idempotency-protected external "default"/"cancel-with-financial-activity"
+commands are later phases' scope (Phase 7/Phase 10) and are not
+pre-created here.
 
 Spec ref: specs/010-installments/plan.md §9 (Lifecycle), §13 (Sales
 Integration).
@@ -17,14 +24,21 @@ from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
 
-from core.exceptions.base import ConflictException
-from modules.installments.exceptions import InstallmentNotFoundError
+from core.exceptions.base import ConflictException, ValidationException
+from core.utils.datetime import utcnow
+from modules.installments.constants import _LEGAL_TRANSITIONS
+from modules.installments.exceptions import (
+    InstallmentIllegalTransitionError,
+    InstallmentNotFoundError,
+    InstallmentSelfApprovalNotAllowedError,
+)
 from modules.installments.models.contract import InstallmentContract
 from modules.installments.repositories.contract import InstallmentContractRepository
 from modules.installments.repositories.sequence import InstallmentSequenceRepository
 from modules.installments.services.accounting_gateway import (
     AccountingIntegrationGateway,
 )
+from modules.installments.services.audit_service import InstallmentAuditService
 from modules.installments.services.configuration_service import (
     InstallmentConfigurationService,
 )
@@ -34,6 +48,15 @@ from modules.installments.services.eligibility_service import (
 from modules.installments.services.terms_policy_validator import (
     InstallmentTermsPolicyValidator,
 )
+
+
+def _assert_transition(current_status: str, target_status: str) -> None:
+    """Raises ``InstallmentIllegalTransitionError`` unless ``target_status``
+    is a legal successor of ``current_status`` per ``_LEGAL_TRANSITIONS``
+    (plan.md §9.2). Mirrors ``SalesOrder``'s ``_assert_invoice_transition()``
+    idiom — the only place transition legality is decided."""
+    if target_status not in _LEGAL_TRANSITIONS.get(current_status, frozenset()):
+        raise InstallmentIllegalTransitionError(current_status, target_status)
 
 
 def build_terms_snapshot(
@@ -84,12 +107,14 @@ class InstallmentContractService:
         eligibility_service: InstallmentEligibilityService,
         accounting_gateway: AccountingIntegrationGateway,
         configuration_service: InstallmentConfigurationService,
+        audit_service: InstallmentAuditService,
     ) -> None:
         self._repo = repo
         self._sequences = sequence_repo
         self._eligibility = eligibility_service
         self._accounting = accounting_gateway
         self._configuration = configuration_service
+        self._audit = audit_service
 
     def create_draft(
         self,
@@ -229,3 +254,293 @@ class InstallmentContractService:
         self, company_id: UUID, skip: int = 0, limit: int = 20
     ) -> tuple[list[InstallmentContract], int]:
         return self._repo.list(company_id, skip=skip, limit=limit)
+
+    def _get_or_404(self, company_id: UUID, contract_id: UUID) -> InstallmentContract:
+        contract = self._repo.get_by_id_or_none(contract_id, company_id)
+        if contract is None:
+            raise InstallmentNotFoundError("InstallmentContract", str(contract_id))
+        return contract
+
+    def submit(
+        self, company_id: UUID, contract_id: UUID, actor_id: UUID | None
+    ) -> InstallmentContract:
+        """``DRAFT → PENDING_APPROVAL``, or directly ``DRAFT → APPROVED``
+        if the effective configuration has no ``approval_threshold_amount``
+        or the contract's ``contractual_total`` is below it (FR-INST-101).
+
+        Raises:
+            InstallmentIllegalTransitionError: ``contract.status`` is not
+                ``DRAFT``.
+        """
+        contract = self._get_or_404(company_id, contract_id)
+
+        # "APPROVED" is reachable in _LEGAL_TRANSITIONS from BOTH "DRAFT"
+        # (this method's own no-threshold fast path) and "PENDING_APPROVAL"
+        # (approve()'s target) — a bare graph-membership check would let
+        # submit() be called a second time on an already-submitted
+        # contract and silently fast-track it to APPROVED. submit() owns
+        # exactly one edge: DRAFT -> {PENDING_APPROVAL, APPROVED}; require
+        # the current status explicitly rather than relying on reachability
+        # alone.
+        if contract.status != "DRAFT":
+            raise InstallmentIllegalTransitionError(contract.status, "PENDING_APPROVAL")
+
+        config = self._configuration.get_effective_config(
+            company_id, contract.branch_id
+        )
+        threshold = config.approval_threshold_amount if config is not None else None
+        requires_approval = (
+            threshold is not None and contract.contractual_total >= threshold
+        )
+        target_status = "PENDING_APPROVAL" if requires_approval else "APPROVED"
+
+        now = utcnow()
+        fields: dict[str, Any] = {
+            "status": target_status,
+            "submitted_by": actor_id,
+            "submitted_at": now,
+        }
+        if not requires_approval:
+            fields["approved_at"] = now
+
+        updated = self._repo.update_with_version_check(
+            contract_id=contract.id,
+            company_id=company_id,
+            expected_version=contract.version,
+            **fields,
+        )
+        self._audit.record(
+            company_id,
+            "InstallmentContract",
+            contract.id,
+            action="SUBMITTED",
+            actor_id=actor_id,
+            before={"status": contract.status},
+            after={"status": target_status},
+            reason=(
+                None
+                if requires_approval
+                else "Auto-approved: contractual_total below the configured "
+                "approval threshold"
+            ),
+        )
+        self._repo.db.commit()
+        return updated
+
+    def approve(
+        self, company_id: UUID, contract_id: UUID, approver_id: UUID | None
+    ) -> InstallmentContract:
+        """``PENDING_APPROVAL → APPROVED``. The approver must be distinct
+        from the submitter (FR-INST-102, plan.md §16.2).
+
+        Raises:
+            InstallmentSelfApprovalNotAllowedError: ``approver_id`` is the
+                same actor who submitted the contract.
+            InstallmentIllegalTransitionError: ``contract.status`` is not
+                ``PENDING_APPROVAL``.
+        """
+        contract = self._get_or_404(company_id, contract_id)
+
+        # "APPROVED" is also reachable from "DRAFT" in _LEGAL_TRANSITIONS
+        # (submit()'s own no-threshold fast path) — approve() owns exactly
+        # the PENDING_APPROVAL -> APPROVED edge; a bare graph-membership
+        # check would let approve() be called directly on a still-DRAFT
+        # contract, where submitted_by is None and the self-approval check
+        # below would be silently meaningless. Require the specific
+        # predecessor status explicitly.
+        if contract.status != "PENDING_APPROVAL":
+            raise InstallmentIllegalTransitionError(contract.status, "APPROVED")
+
+        if (
+            contract.submitted_by is not None
+            and approver_id is not None
+            and contract.submitted_by == approver_id
+        ):
+            raise InstallmentSelfApprovalNotAllowedError(str(contract_id))
+
+        updated = self._repo.update_with_version_check(
+            contract_id=contract.id,
+            company_id=company_id,
+            expected_version=contract.version,
+            status="APPROVED",
+            approved_by=approver_id,
+            approved_at=utcnow(),
+        )
+        self._audit.record(
+            company_id,
+            "InstallmentContract",
+            contract.id,
+            action="APPROVED",
+            actor_id=approver_id,
+            before={"status": contract.status},
+            after={"status": "APPROVED"},
+        )
+        self._repo.db.commit()
+        return updated
+
+    def reject(
+        self,
+        company_id: UUID,
+        contract_id: UUID,
+        reason: str,
+        rejecter_id: UUID | None,
+    ) -> InstallmentContract:
+        """``PENDING_APPROVAL → DRAFT``. ``REJECTED`` is never a persisted
+        status — this is recorded only as an ``InstallmentAuditLog(action=
+        "REJECTED")`` row (FR-INST-102, ADR-INST-11), which remains
+        permanently visible even after the contract is resubmitted. Same
+        distinct-approver check as ``approve()``, applied symmetrically
+        from day one (plan.md §16.2).
+
+        Raises:
+            ValidationException: ``reason`` is empty.
+            InstallmentSelfApprovalNotAllowedError: ``rejecter_id`` is the
+                same actor who submitted the contract.
+            InstallmentIllegalTransitionError: ``contract.status`` is not
+                ``PENDING_APPROVAL``.
+        """
+        if not reason or not reason.strip():
+            raise ValidationException(
+                message="A reason is required to reject an installment contract."
+            )
+
+        contract = self._get_or_404(company_id, contract_id)
+
+        if (
+            contract.submitted_by is not None
+            and rejecter_id is not None
+            and contract.submitted_by == rejecter_id
+        ):
+            raise InstallmentSelfApprovalNotAllowedError(str(contract_id))
+
+        _assert_transition(contract.status, "DRAFT")
+
+        updated = self._repo.update_with_version_check(
+            contract_id=contract.id,
+            company_id=company_id,
+            expected_version=contract.version,
+            status="DRAFT",
+        )
+        self._audit.record(
+            company_id,
+            "InstallmentContract",
+            contract.id,
+            action="REJECTED",
+            actor_id=rejecter_id,
+            before={"status": contract.status},
+            after={"status": "DRAFT"},
+            reason=reason,
+        )
+        self._repo.db.commit()
+        return updated
+
+    def cancel(
+        self,
+        company_id: UUID,
+        contract_id: UUID,
+        reason: str,
+        actor_id: UUID | None,
+    ) -> InstallmentContract:
+        """Cancel a contract. Legality varies by stage (plan.md §15.3):
+        ``DRAFT``/``PENDING_APPROVAL``/``APPROVED``/``ACTIVE`` may all
+        transition to ``CANCELLED`` per ``_LEGAL_TRANSITIONS``.
+
+        This phase implements only the free (no-financial-activity) path.
+        An ``ACTIVE`` contract with financial activity must delegate to a
+        reversal workflow that cannot exist before collections/allocations
+        do (Phase 7) or before the idempotency primitive does (Phase 5.5)
+        — that branch, and this method's ``idempotency_key`` parameter,
+        are completed by Phase 10's T169. No contract can reach ``ACTIVE``
+        at all yet (``activate()`` is Phase 7's T124), so every path
+        reachable today is necessarily the free path.
+
+        Raises:
+            ValidationException: ``reason`` is empty.
+            InstallmentNotFoundError: contract not found for this tenant.
+            InstallmentIllegalTransitionError: the current status has no
+                legal path to ``CANCELLED``.
+        """
+        if not reason or not reason.strip():
+            raise ValidationException(
+                message="A reason is required to cancel an installment contract."
+            )
+
+        contract = self._get_or_404(company_id, contract_id)
+
+        _assert_transition(contract.status, "CANCELLED")
+
+        updated = self._repo.update_with_version_check(
+            contract_id=contract.id,
+            company_id=company_id,
+            expected_version=contract.version,
+            status="CANCELLED",
+            cancelled_at=utcnow(),
+        )
+        self._audit.record(
+            company_id,
+            "InstallmentContract",
+            contract.id,
+            action="CANCELLED",
+            actor_id=actor_id,
+            before={"status": contract.status},
+            after={"status": "CANCELLED"},
+            reason=reason,
+        )
+        self._repo.db.commit()
+        return updated
+
+    def mark_defaulted(
+        self,
+        company_id: UUID,
+        contract_id: UUID,
+        reason: str,
+        actor_id: UUID | None,
+    ) -> InstallmentContract:
+        """``ACTIVE → DEFAULTED`` — the pure internal state-machine
+        primitive only (plan.md §9, tasks.md T078).
+
+        **Internal only**: this method is not idempotency-protected, is
+        not reachable via any router endpoint, and MUST NOT be called
+        from ``router.py``. It performs zero Accounting calls and does
+        **not** commit — it stages the transition and audit row (flush
+        only) and returns; the externally-callable, idempotency-protected
+        "default" command that calls this and then commits is Phase 10's
+        ``default_command()`` (cannot exist before Phase 5.5's idempotency
+        primitive).
+
+        Raises:
+            ValidationException: ``reason`` is empty.
+            InstallmentNotFoundError: contract not found for this tenant.
+            InstallmentIllegalTransitionError: ``contract.status`` is not
+                ``ACTIVE``.
+        """
+        if not reason or not reason.strip():
+            raise ValidationException(
+                message="A reason is required to mark an installment "
+                "contract defaulted."
+            )
+
+        contract = self._get_or_404(company_id, contract_id)
+
+        _assert_transition(contract.status, "DEFAULTED")
+
+        updated = self._repo.update_with_version_check(
+            contract_id=contract.id,
+            company_id=company_id,
+            expected_version=contract.version,
+            status="DEFAULTED",
+            defaulted_at=utcnow(),
+        )
+        self._audit.record(
+            company_id,
+            "InstallmentContract",
+            contract.id,
+            action="DEFAULTED",
+            actor_id=actor_id,
+            before={"status": contract.status},
+            after={"status": "DEFAULTED"},
+            reason=reason,
+        )
+        # No commit — internal primitive only; the idempotency-protected
+        # orchestration wrapper (Phase 10) commits as its own final step.
+        return updated

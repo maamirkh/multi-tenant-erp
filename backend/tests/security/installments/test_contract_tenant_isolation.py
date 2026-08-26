@@ -129,6 +129,7 @@ class TestInstallmentContractServiceIDOR:
             eligibility_service=None,  # not exercised by get()
             accounting_gateway=None,  # not exercised by get()
             configuration_service=None,  # not exercised by get()
+            audit_service=None,  # not exercised by get()
         )
 
         # Genuinely non-existent id.

@@ -4,7 +4,8 @@ Phase 2 (Configuration & Plans): Configuration and Plan/Template endpoint
 groups, plus the module admin status/enable/disable group. Phase 3
 (Contract Persistence) adds the Contracts and Eligibility endpoint
 groups. Phase 4 (Schedule Engine) adds the Quote/Preview endpoint group.
-Endpoint groups are added incrementally in later phases,
+Phase 5 (Contract Lifecycle) adds the Submission/Approval/Rejection
+endpoint group. Endpoint groups are added incrementally in later phases,
 mirroring ``modules/crm/router.py``'s own incremental-growth convention.
 Not yet mounted into ``api/v1/router.py`` — mounting (with
 ``dependencies=[Depends(get_current_company_member)]`` only, no blanket
@@ -30,6 +31,10 @@ Endpoints:
     GET  /contracts                    — list contracts (paginated)
     GET  /contracts/{contractId}       — get full contract detail
     POST /contracts                    — create a DRAFT contract
+
+    POST /contracts/{contractId}/submit  — DRAFT -> PENDING_APPROVAL|APPROVED
+    POST /contracts/{contractId}/approve — PENDING_APPROVAL -> APPROVED
+    POST /contracts/{contractId}/reject  — PENDING_APPROVAL -> DRAFT
 
     GET  /eligibility?sales_invoice_id= — evaluate installment-offer eligibility
 
@@ -74,6 +79,7 @@ from modules.installments.schemas.configuration import (
 from modules.installments.schemas.contract import (
     InstallmentContractCreate,
     InstallmentContractRead,
+    InstallmentContractRejectRequest,
     InstallmentContractSummary,
 )
 from modules.installments.schemas.eligibility import EligibilityResultRead
@@ -405,6 +411,80 @@ async def create_contract(
     return StandardResponse(
         data=InstallmentContractRead.model_validate(contract),
         message="Installment contract created.",
+        meta=_meta(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Submission / Approval / Rejection (plan.md §16.1: installments.contract
+# .create for submit, installments.contract.approve for approve/reject,
+# operation class ORIGINATION). ``cancel()``/``mark_defaulted()`` exist on
+# the service (Phase 5) but are not wired to any endpoint here — cancel's
+# endpoint is Phase 10's T174 (idempotency-protected), and
+# mark_defaulted() is internal-only, never reachable from router.py.
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/contracts/{contractId}/submit",
+    response_model=StandardResponse[InstallmentContractRead],
+    summary="DRAFT -> PENDING_APPROVAL (or directly -> APPROVED if no threshold applies)",
+)
+async def submit_contract(
+    company_id: UUID = Path(..., description="Company identifier"),
+    contract_id: UUID = Path(..., alias="contractId"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentContractService = Depends(get_installment_contract_service),
+) -> StandardResponse[InstallmentContractRead]:
+    _require_permission(db, company_id, current_user, "installments.contract.create")
+    contract = svc.submit(company_id, contract_id, current_user.user_id)
+    return StandardResponse(
+        data=InstallmentContractRead.model_validate(contract),
+        message="Installment contract submitted.",
+        meta=_meta(),
+    )
+
+
+@router.post(
+    "/contracts/{contractId}/approve",
+    response_model=StandardResponse[InstallmentContractRead],
+    summary="PENDING_APPROVAL -> APPROVED",
+)
+async def approve_contract(
+    company_id: UUID = Path(..., description="Company identifier"),
+    contract_id: UUID = Path(..., alias="contractId"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentContractService = Depends(get_installment_contract_service),
+) -> StandardResponse[InstallmentContractRead]:
+    _require_permission(db, company_id, current_user, "installments.contract.approve")
+    contract = svc.approve(company_id, contract_id, current_user.user_id)
+    return StandardResponse(
+        data=InstallmentContractRead.model_validate(contract),
+        message="Installment contract approved.",
+        meta=_meta(),
+    )
+
+
+@router.post(
+    "/contracts/{contractId}/reject",
+    response_model=StandardResponse[InstallmentContractRead],
+    summary="PENDING_APPROVAL -> DRAFT (rejection is an event, not a persisted status)",
+)
+async def reject_contract(
+    body: InstallmentContractRejectRequest,
+    company_id: UUID = Path(..., description="Company identifier"),
+    contract_id: UUID = Path(..., alias="contractId"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentContractService = Depends(get_installment_contract_service),
+) -> StandardResponse[InstallmentContractRead]:
+    _require_permission(db, company_id, current_user, "installments.contract.approve")
+    contract = svc.reject(company_id, contract_id, body.reason, current_user.user_id)
+    return StandardResponse(
+        data=InstallmentContractRead.model_validate(contract),
+        message="Installment contract rejected.",
         meta=_meta(),
     )
 

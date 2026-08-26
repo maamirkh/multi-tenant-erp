@@ -15,6 +15,29 @@ from pydantic import Field
 from modules.installments.schemas.base import InstallmentsBaseSchema
 
 
+class InstallmentContractRejectRequest(InstallmentsBaseSchema):
+    """Request body for ``POST /contracts/{id}/reject`` — ``reason`` is
+    mandatory (FR-INST-102)."""
+
+    reason: str = Field(..., min_length=1)
+
+
+class InstallmentContractCancelRequest(InstallmentsBaseSchema):
+    """Request body for ``POST /contracts/{id}/cancel`` — ``reason`` is
+    mandatory. Not yet wired to a router endpoint (Phase 10's T174)."""
+
+    reason: str = Field(..., min_length=1)
+
+
+class InstallmentContractDefaultRequest(InstallmentsBaseSchema):
+    """Request body for the future ``POST /contracts/{id}/default`` —
+    ``reason`` is mandatory. Not yet wired to a router endpoint (Phase
+    10's T167; the underlying ``mark_defaulted()`` primitive this phase
+    adds is internal-only and not reachable from any endpoint yet)."""
+
+    reason: str = Field(..., min_length=1)
+
+
 class InstallmentContractCreate(InstallmentsBaseSchema):
     """Request body for ``POST /contracts`` — create a DRAFT contract
     from custom terms (or informationally linked to a plan template via
