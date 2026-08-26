@@ -181,8 +181,18 @@ class TestStageAdjustmentAtomicity:
             ar_transaction = verify_session.get(ARTransaction, ar_transaction_id)
             assert ar_transaction is None
 
+            # Strict absence, not "absent or zero-balance": this
+            # customer's CustomerLedger is created fresh by
+            # get_or_create_ledger() as stage_adjustment()'s first step
+            # (customer_id is always a brand-new uuid4() in this test) —
+            # if get_or_create_ledger() ever regresses to a
+            # committing repository call again, this ledger row would
+            # survive rollback (with a zero balance, since only the
+            # later recompute would be rolled back) and this assertion
+            # would catch it, whereas a looser "is None or balance==0"
+            # check would not.
             ledger = verify_session.get(CustomerLedger, ledger_id)
-            assert ledger is None or ledger.total_outstanding_base == Decimal("0")
+            assert ledger is None
 
             placeholder = verify_session.get(Account, placeholder_account_id)
             assert placeholder is None

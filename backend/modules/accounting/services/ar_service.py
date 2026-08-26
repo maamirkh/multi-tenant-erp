@@ -149,12 +149,23 @@ class AccountsReceivableService:
     def get_or_create_ledger(
         self, company_id: UUID, customer_id: UUID
     ) -> CustomerLedger:
+        """Flush only — never commits (fixed post-Phase-6-verification: the
+        previous ``self._ledgers.create(...)`` call inherited
+        ``BaseRepository.create()``'s internal ``db.commit()``, which
+        committed a new ledger — and anything else already flushed in the
+        same session — before any caller-side validation could run,
+        breaking every staged/finalize method that calls this as its
+        first step. Mirrors ``PaymentService._get_or_create_customer_ledger()``'s
+        already-correct flush-only pattern). The caller commits together
+        with the rest of its own unit of work.
+        """
         ledger = self._ledgers.find_by_customer(company_id, customer_id)
         if ledger is not None:
             return ledger
-        return self._ledgers.create(
-            CustomerLedger(company_id=company_id, customer_id=customer_id)
-        )
+        new_ledger = CustomerLedger(company_id=company_id, customer_id=customer_id)
+        self.db.add(new_ledger)
+        self.db.flush()
+        return new_ledger
 
     def get_customer_ledger(
         self, company_id: UUID, customer_id: UUID
