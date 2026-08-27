@@ -11,18 +11,17 @@ exists for it), and late-charge outstanding is a live read of
 Accounting's own ``ARTransaction`` via ``AccountingIntegrationGateway``,
 never cached or re-derived.
 
-**Documented, correct-by-omission extension points** (not stubs — both
-branches are exactly right for what can exist in the schema today):
+**[Phase 7 extension applied]** ``InstallmentAllocationReference`` (T118)
+now exists, so schedule outstanding correctly subtracts net allocated
+amounts (non-reversal minus reversal) per line, via
+``InstallmentAllocationReferenceRepository.get_net_allocated_by_line()``
+— no longer the raw ``scheduled_amount`` sum a pre-Phase-7 caller would
+have seen.
 
-- Phase 7 will introduce ``InstallmentAllocationReference``, at which
-  point schedule-line amounts already collected against must be
-  subtracted here. Until then, no collection flow exists anywhere in the
-  codebase, so the full ``scheduled_amount`` sum is always the correct
-  (and fail-closed, never fail-open) outstanding figure.
-- Phase 8 will introduce ``InstallmentLateCharge``. Until then, no late
-  charge can exist, so "no open late-charge AR" is trivially and
-  correctly true by omission — there is nothing to check yet, not a
-  missing check.
+**Documented, correct-by-omission extension point remaining**: Phase 8
+will introduce ``InstallmentLateCharge``. Until then, no late charge can
+exist, so "no open late-charge AR" is trivially and correctly true by
+omission — there is nothing to check yet, not a missing check.
 """
 
 from __future__ import annotations
@@ -31,6 +30,9 @@ from decimal import Decimal
 from uuid import UUID
 
 from modules.installments.exceptions import InstallmentOutstandingBalanceRemainsError
+from modules.installments.repositories.allocation_reference import (
+    InstallmentAllocationReferenceRepository,
+)
 from modules.installments.repositories.schedule import InstallmentScheduleRepository
 from modules.installments.services.accounting_gateway import (
     AccountingIntegrationGateway,
@@ -45,9 +47,11 @@ class InstallmentOutstandingService:
         self,
         schedule_repo: InstallmentScheduleRepository,
         accounting_gateway: AccountingIntegrationGateway,
+        allocation_ref_repo: InstallmentAllocationReferenceRepository | None = None,
     ) -> None:
         self._schedule_repo = schedule_repo
         self._accounting_gateway = accounting_gateway
+        self._allocation_refs = allocation_ref_repo
 
     def assert_zero_outstanding(self, company_id: UUID, contract_id: UUID) -> None:
         """Raise ``InstallmentOutstandingBalanceRemainsError`` if the
@@ -56,9 +60,9 @@ class InstallmentOutstandingService:
 
         Checks, in order:
         1. Schedule outstanding — the sum of every active schedule
-           line's ``scheduled_amount`` (Phase 7 will subtract amounts
-           already allocated via ``InstallmentAllocationReference``; no
-           such rows can exist yet, so the raw sum is correct today).
+           line's ``scheduled_amount`` minus its net allocated amount
+           (``InstallmentAllocationReference``, non-reversal minus
+           reversal, T118).
         2. Late-charge outstanding — Phase 8 will check every linked,
            non-waived ``InstallmentLateCharge``'s live
            ``ARTransaction.outstanding_amount``/``status`` via the
@@ -68,8 +72,22 @@ class InstallmentOutstandingService:
         version = self._schedule_repo.get_active_version(company_id, contract_id)
         if version is not None:
             lines = self._schedule_repo.get_lines(company_id, version.id)
+            active_lines = [
+                line
+                for line in lines
+                if line.waived_at is None and line.voided_at is None
+            ]
+            net_allocated: dict[UUID, Decimal] = {}
+            if self._allocation_refs is not None:
+                net_allocated = self._allocation_refs.get_net_allocated_by_line(
+                    company_id, [line.id for line in active_lines]
+                )
             schedule_outstanding = sum(
-                (line.scheduled_amount for line in lines), Decimal("0")
+                (
+                    line.scheduled_amount - net_allocated.get(line.id, Decimal("0"))
+                    for line in active_lines
+                ),
+                Decimal("0"),
             )
             if schedule_outstanding > Decimal("0"):
                 raise InstallmentOutstandingBalanceRemainsError(

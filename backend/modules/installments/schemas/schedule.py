@@ -6,7 +6,7 @@ Spec ref: specs/010-installments/contracts/installments-api.yaml
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -46,3 +46,27 @@ class InstallmentQuotePreviewRead(InstallmentsBaseSchema):
     final_installment_amount: Decimal
     expected_completion_date: date
     currency_code: str
+
+
+class InstallmentScheduleLineRead(InstallmentsBaseSchema):
+    """One schedule line (tasks.md T129). Due-state derivation
+    (``UPCOMING``/``DUE``/``PARTIALLY_PAID``/``PAID``/``OVERDUE``) is
+    Phase 8's ``DueStateCalculator`` (T138) — not yet available in this
+    phase, deliberately not pulled forward here."""
+
+    sequence: int
+    due_date: date
+    scheduled_amount: Decimal
+    waived_at: datetime | None
+    voided_at: datetime | None
+
+
+class InstallmentScheduleRead(InstallmentsBaseSchema):
+    """Response body for ``GET /contracts/{id}/schedule`` and
+    ``GET /contracts/{id}/schedule/versions/{v}`` (tasks.md T129)."""
+
+    contract_id: UUID
+    version_number: int
+    status: str
+    generated_at: datetime
+    lines: list[InstallmentScheduleLineRead]

@@ -51,7 +51,7 @@ from __future__ import annotations
 import math
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Path, Query, status
+from fastapi import APIRouter, Depends, Header, Path, Query, status
 from sqlalchemy.orm import Session
 
 from core.auth.dependencies import require_authenticated
@@ -63,6 +63,7 @@ from core.schemas.pagination import PaginatedData, PaginatedResponse
 from core.schemas.response import ResponseMeta, StandardResponse
 from core.utils.datetime import utcnow
 from modules.installments.dependencies import (
+    get_installment_collection_service,
     get_installment_configuration_service,
     get_installment_contract_service,
     get_installment_eligibility_service,
@@ -72,6 +73,11 @@ from modules.installments.dependencies import (
 )
 from modules.installments.exceptions import InstallmentNotFoundError
 from modules.installments.schemas.base import InstallmentsStatusRead
+from modules.installments.schemas.collection import (
+    InstallmentCollectionCreate,
+    InstallmentCollectionResultRead,
+    InstallmentCollectionReverseRequest,
+)
 from modules.installments.schemas.configuration import (
     InstallmentConfigurationRead,
     InstallmentConfigurationUpsert,
@@ -91,6 +97,10 @@ from modules.installments.schemas.plan_template import (
 from modules.installments.schemas.schedule import (
     InstallmentQuotePreviewRead,
     InstallmentQuoteRequest,
+    InstallmentScheduleRead,
+)
+from modules.installments.services.collection_service import (
+    InstallmentCollectionService,
 )
 from modules.installments.services.configuration_service import (
     InstallmentConfigurationService,
@@ -485,6 +495,168 @@ async def reject_contract(
     return StandardResponse(
         data=InstallmentContractRead.model_validate(contract),
         message="Installment contract rejected.",
+        meta=_meta(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Activation / Collections / Reversals (Phase 7, plan.md §16.1:
+# installments.contract.activate/ORIGINATION,
+# installments.collection.create/SERVICING,
+# installments.collection.reverse/SERVICING). All three are idempotency-
+# protected (plan.md §20) via the client-supplied ``Idempotency-Key``
+# header.
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/contracts/{contractId}/activate",
+    response_model=StandardResponse[InstallmentContractRead],
+    summary="APPROVED -> ACTIVE (generates the authoritative schedule; "
+    "requires down payment if configured)",
+)
+async def activate_contract(
+    company_id: UUID = Path(..., description="Company identifier"),
+    contract_id: UUID = Path(..., alias="contractId"),
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentContractService = Depends(get_installment_contract_service),
+) -> StandardResponse[InstallmentContractRead]:
+    _require_permission(db, company_id, current_user, "installments.contract.activate")
+    contract = svc.activate(
+        company_id, contract_id, idempotency_key, current_user.user_id
+    )
+    return StandardResponse(
+        data=InstallmentContractRead.model_validate(contract),
+        message="Installment contract activated.",
+        meta=_meta(),
+    )
+
+
+@router.post(
+    "/contracts/{contractId}/collections",
+    response_model=StandardResponse[InstallmentCollectionResultRead],
+    status_code=status.HTTP_201_CREATED,
+    summary="Record a collection (exact/partial/multi-installment/advance), "
+    "oldest-due-first allocation",
+)
+async def record_collection(
+    body: InstallmentCollectionCreate,
+    company_id: UUID = Path(..., description="Company identifier"),
+    contract_id: UUID = Path(..., alias="contractId"),
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentCollectionService = Depends(get_installment_collection_service),
+) -> StandardResponse[InstallmentCollectionResultRead]:
+    # FR-INST-356: permitted even when Installments entitlement is
+    # disabled — servicing continuity for existing contracts.
+    _require_permission(db, company_id, current_user, "installments.collection.create")
+    result = svc.record_collection(
+        company_id,
+        contract_id,
+        amount=body.amount,
+        payment_method=body.payment_method,
+        idempotency_key=idempotency_key,
+        actor_id=current_user.user_id,
+        bank_account_id=body.bank_account_id,
+        cash_account_id=body.cash_account_id,
+    )
+    return StandardResponse(
+        data=InstallmentCollectionResultRead.model_validate(result),
+        message="Installment collection recorded.",
+        meta=_meta(),
+    )
+
+
+@router.post(
+    "/collections/{collectionId}/reverse",
+    response_model=StandardResponse[InstallmentCollectionResultRead],
+    summary="Reverse a previously recorded collection",
+)
+async def reverse_collection(
+    body: InstallmentCollectionReverseRequest,
+    company_id: UUID = Path(..., description="Company identifier"),
+    collection_id: UUID = Path(..., alias="collectionId"),
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentCollectionService = Depends(get_installment_collection_service),
+) -> StandardResponse[InstallmentCollectionResultRead]:
+    _require_permission(db, company_id, current_user, "installments.collection.reverse")
+    result = svc.reverse_collection(
+        company_id,
+        collection_id,
+        reason=body.reason,
+        idempotency_key=idempotency_key,
+        actor_id=current_user.user_id,
+    )
+    return StandardResponse(
+        data=InstallmentCollectionResultRead.model_validate(result),
+        message="Installment collection reversed.",
+        meta=_meta(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Schedules (plan.md §16.1: installments.contract.view, READ)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/contracts/{contractId}/schedule",
+    response_model=StandardResponse[InstallmentScheduleRead],
+    summary="Current (active) schedule version and lines",
+)
+async def get_active_schedule(
+    company_id: UUID = Path(..., description="Company identifier"),
+    contract_id: UUID = Path(..., alias="contractId"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentContractService = Depends(get_installment_contract_service),
+) -> StandardResponse[InstallmentScheduleRead]:
+    _require_permission(db, company_id, current_user, "installments.contract.view")
+    contract, version, lines = svc.get_active_schedule(company_id, contract_id)
+    return StandardResponse(
+        data=InstallmentScheduleRead(
+            contract_id=contract.id,
+            version_number=version.version_number,
+            status=version.status,
+            generated_at=version.generated_at,
+            lines=list(lines),
+        ),
+        message="Active installment schedule retrieved.",
+        meta=_meta(),
+    )
+
+
+@router.get(
+    "/contracts/{contractId}/schedule/versions/{versionNumber}",
+    response_model=StandardResponse[InstallmentScheduleRead],
+    summary="A specific (possibly superseded) schedule version",
+)
+async def get_schedule_version(
+    company_id: UUID = Path(..., description="Company identifier"),
+    contract_id: UUID = Path(..., alias="contractId"),
+    version_number: int = Path(..., alias="versionNumber"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentContractService = Depends(get_installment_contract_service),
+) -> StandardResponse[InstallmentScheduleRead]:
+    _require_permission(db, company_id, current_user, "installments.contract.view")
+    contract, version, lines = svc.get_schedule_version(
+        company_id, contract_id, version_number
+    )
+    return StandardResponse(
+        data=InstallmentScheduleRead(
+            contract_id=contract.id,
+            version_number=version.version_number,
+            status=version.status,
+            generated_at=version.generated_at,
+            lines=list(lines),
+        ),
+        message="Installment schedule version retrieved.",
         meta=_meta(),
     )
 

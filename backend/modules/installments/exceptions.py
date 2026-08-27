@@ -147,6 +147,64 @@ class InstallmentOutstandingBalanceRemainsError(ConflictException):
         )
 
 
+class InstallmentOverCollectionError(ConflictException):
+    """Raised by ``InstallmentCollectionService.record_collection()``
+    when the requested amount exceeds the contract's total live
+    outstanding balance (BR-INST-011: total allocated amount can never
+    exceed the contractual total). Raised *before* any staging occurs —
+    computed from the same live schedule-line outstanding figures
+    ``InstallmentAllocationPolicy.allocate_oldest_first()`` itself would
+    use, under the same ``FOR UPDATE`` lock that makes Scenario J's
+    concurrent-collection guarantee hold."""
+
+    def __init__(
+        self,
+        amount: str,
+        total_outstanding: str,
+        contract_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message=(
+                f"Collection amount '{amount}' exceeds installment contract "
+                f"'{contract_id or '?'}' total outstanding balance "
+                f"'{total_outstanding}'."
+            ),
+            details={
+                "amount": amount,
+                "total_outstanding": total_outstanding,
+                "contract_id": contract_id,
+            },
+        )
+        self.code = "OVER_COLLECTION"
+
+
+class InstallmentActivationFailedError(ConflictException):
+    """Raised by ``InstallmentContractService.activate()`` when the down
+    payment posting or the BR-INST-005 schedule-reconciliation check
+    fails — no state change is committed anywhere for either failure
+    (plan.md §21's frozen commit-ownership sequence)."""
+
+    def __init__(self, message: str, contract_id: str | None = None) -> None:
+        super().__init__(
+            message=message,
+            details={"contract_id": contract_id},
+        )
+        self.code = "ACTIVATION_FAILED"
+
+
+class InstallmentReversalNotAllowedError(ConflictException):
+    """Raised by ``InstallmentCollectionService.reverse_collection()``
+    when the referenced collection does not belong to this contract, or
+    has already been fully reversed."""
+
+    def __init__(self, message: str, collection_id: str | None = None) -> None:
+        super().__init__(
+            message=message,
+            details={"collection_id": collection_id},
+        )
+        self.code = "REVERSAL_NOT_ALLOWED"
+
+
 class InstallmentIdempotencyConflictError(ConflictException):
     """Raised by ``InstallmentIdempotencyService`` (plan.md §20.2/§20.3)
     when a duplicate request cannot be resolved as a clean replay.

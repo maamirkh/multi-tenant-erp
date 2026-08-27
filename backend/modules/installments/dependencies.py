@@ -14,6 +14,7 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from core.database.session import get_db
+from core.events.outbox import EventOutboxRepository
 from modules.accounting.dependencies import (
     get_allocation_engine,
     get_ar_service,
@@ -22,6 +23,9 @@ from modules.accounting.dependencies import (
 from modules.accounting.services.allocation_engine import AllocationEngine
 from modules.accounting.services.ar_service import AccountsReceivableService
 from modules.accounting.services.payment_service import PaymentService
+from modules.installments.repositories.allocation_reference import (
+    InstallmentAllocationReferenceRepository,
+)
 from modules.installments.repositories.audit import InstallmentAuditLogRepository
 from modules.installments.repositories.configuration import (
     InstallmentConfigurationRepository,
@@ -39,6 +43,9 @@ from modules.installments.services.accounting_gateway import (
     AccountingIntegrationGateway,
 )
 from modules.installments.services.audit_service import InstallmentAuditService
+from modules.installments.services.collection_service import (
+    InstallmentCollectionService,
+)
 from modules.installments.services.configuration_service import (
     InstallmentConfigurationService,
 )
@@ -48,6 +55,9 @@ from modules.installments.services.eligibility_service import (
 )
 from modules.installments.services.feature_flag_service import (
     InstallmentsFeatureFlagService,
+)
+from modules.installments.services.idempotency_service import (
+    InstallmentIdempotencyService,
 )
 from modules.installments.services.outstanding_service import (
     InstallmentOutstandingService,
@@ -108,6 +118,24 @@ def get_installment_schedule_repo(
     return InstallmentScheduleRepository(db)
 
 
+def get_installment_allocation_reference_repo(
+    db: Session = Depends(get_db),
+) -> InstallmentAllocationReferenceRepository:
+    return InstallmentAllocationReferenceRepository(db)
+
+
+def get_event_outbox_repo(
+    db: Session = Depends(get_db),
+) -> EventOutboxRepository:
+    return EventOutboxRepository(db)
+
+
+def get_installment_idempotency_service(
+    db: Session = Depends(get_db),
+) -> InstallmentIdempotencyService:
+    return InstallmentIdempotencyService(db)
+
+
 # ---------------------------------------------------------------------------
 # Cross-module read-only gateway factories
 # ---------------------------------------------------------------------------
@@ -156,9 +184,14 @@ def get_installment_outstanding_service(
     accounting_gateway: AccountingIntegrationGateway = Depends(
         get_accounting_integration_gateway
     ),
+    allocation_ref_repo: InstallmentAllocationReferenceRepository = Depends(
+        get_installment_allocation_reference_repo
+    ),
 ) -> InstallmentOutstandingService:
     return InstallmentOutstandingService(
-        schedule_repo=schedule_repo, accounting_gateway=accounting_gateway
+        schedule_repo=schedule_repo,
+        accounting_gateway=accounting_gateway,
+        allocation_ref_repo=allocation_ref_repo,
     )
 
 
@@ -224,6 +257,13 @@ def get_installment_contract_service(
         get_installment_configuration_service
     ),
     audit_service: InstallmentAuditService = Depends(get_installment_audit_service),
+    schedule_repo: InstallmentScheduleRepository = Depends(
+        get_installment_schedule_repo
+    ),
+    idempotency_service: InstallmentIdempotencyService = Depends(
+        get_installment_idempotency_service
+    ),
+    outbox_repo: EventOutboxRepository = Depends(get_event_outbox_repo),
 ) -> InstallmentContractService:
     return InstallmentContractService(
         repo=repo,
@@ -232,6 +272,49 @@ def get_installment_contract_service(
         accounting_gateway=accounting_gateway,
         configuration_service=configuration_service,
         audit_service=audit_service,
+        schedule_repo=schedule_repo,
+        idempotency_service=idempotency_service,
+        outbox_repo=outbox_repo,
+    )
+
+
+def get_installment_collection_service(
+    db: Session = Depends(get_db),
+    contract_repo: InstallmentContractRepository = Depends(
+        get_installment_contract_repo
+    ),
+    schedule_repo: InstallmentScheduleRepository = Depends(
+        get_installment_schedule_repo
+    ),
+    allocation_ref_repo: InstallmentAllocationReferenceRepository = Depends(
+        get_installment_allocation_reference_repo
+    ),
+    accounting_gateway: AccountingIntegrationGateway = Depends(
+        get_accounting_integration_gateway
+    ),
+    outstanding_service: InstallmentOutstandingService = Depends(
+        get_installment_outstanding_service
+    ),
+    idempotency_service: InstallmentIdempotencyService = Depends(
+        get_installment_idempotency_service
+    ),
+    audit_service: InstallmentAuditService = Depends(get_installment_audit_service),
+    outbox_repo: EventOutboxRepository = Depends(get_event_outbox_repo),
+    contract_service: InstallmentContractService = Depends(
+        get_installment_contract_service
+    ),
+) -> InstallmentCollectionService:
+    return InstallmentCollectionService(
+        db=db,
+        contract_repo=contract_repo,
+        schedule_repo=schedule_repo,
+        allocation_ref_repo=allocation_ref_repo,
+        accounting_gateway=accounting_gateway,
+        outstanding_service=outstanding_service,
+        idempotency_service=idempotency_service,
+        audit_service=audit_service,
+        outbox_repo=outbox_repo,
+        contract_service=contract_service,
     )
 
 

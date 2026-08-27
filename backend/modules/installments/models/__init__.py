@@ -7,6 +7,9 @@ table — mirrors ``modules/crm/models/__init__.py``'s exact convention.
 Import order follows dependency order (parent before child tables).
 """
 
+from modules.installments.models.allocation_reference import (
+    InstallmentAllocationReference,
+)
 from modules.installments.models.audit import InstallmentAuditLog
 from modules.installments.models.configuration import InstallmentConfiguration
 from modules.installments.models.contract import InstallmentContract
@@ -20,6 +23,7 @@ from modules.installments.models.schedule import (
 from modules.installments.models.sequence import InstallmentSequence
 
 __all__ = [
+    "InstallmentAllocationReference",
     "InstallmentAuditLog",
     "InstallmentConfiguration",
     "InstallmentContract",

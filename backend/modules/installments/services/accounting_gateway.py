@@ -94,6 +94,24 @@ class AccountingIntegrationGateway:
         plan.md §9.3) — not consumed by Phase 3 itself."""
         return self._ar_service.get_transaction_by_id(company_id, ar_transaction_id)
 
+    def get_invoice_ar_transaction_id(
+        self, company_id: UUID, sales_invoice_id: UUID
+    ) -> UUID | None:
+        """Live read of the id of the ``ARTransaction`` Accounting created
+        for a Sales invoice, or ``None`` if none exists yet. Used starting
+        Phase 7 (``activate()``/``record_collection()``) to build the
+        ``allocation_lines`` payload for down-payment/collection
+        allocation — the down payment and every subsequent collection are
+        all allocated against this SAME original invoice ``ARTransaction``
+        (Accounting has no per-schedule-line concept of its own; Installments'
+        own ``InstallmentAllocationReference`` rows are what explain how
+        this one Accounting balance is further sub-divided across
+        schedule lines, plan.md §12.3.1)."""
+        transaction = self._ar_service.find_transaction_by_source_document(
+            company_id, "SalesInvoice", sales_invoice_id
+        )
+        return transaction.id if transaction is not None else None
+
     # ------------------------------------------------------------------
     # Money-mutating staged/finalize operations (Phase 6, T107)
     # ------------------------------------------------------------------
