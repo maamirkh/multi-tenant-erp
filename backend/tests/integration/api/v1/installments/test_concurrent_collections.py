@@ -10,8 +10,12 @@ import threading
 import uuid
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
+from modules.accounting.models.ar import ARTransaction
+from modules.accounting.models.gl import JournalEntry
+from modules.accounting.models.payments import Payment
 from modules.installments.exceptions import (
     InstallmentActivationFailedError,
     InstallmentOverCollectionError,
@@ -103,5 +107,66 @@ class TestConcurrentFullAmountCollections:
             # exists (BR-INST-011) — not two, not zero.
             assert len(refs) == 1
             assert refs[0].allocated_amount == Decimal("500.00")
+            winning_payment_id = refs[0].accounting_payment_id
+
+            # Exactly-once Accounting effect, not merely one Installments
+            # reference row — authoritative filters (company_id +
+            # customer_id, and the specific winning payment id from the
+            # reference row above) so unrelated fixture data in the same
+            # throwaway database cannot produce a false positive.
+            payments = (
+                verify_session.execute(
+                    select(Payment)
+                    .where(Payment.company_id == company_id)
+                    .where(Payment.party_id == ctx["customer_id"])
+                )
+                .scalars()
+                .all()
+            )
+            assert (
+                len(payments) == 1
+            ), f"expected exactly 1 Payment, found {len(payments)}"
+            assert payments[0].id == winning_payment_id
+            assert payments[0].amount_foreign == Decimal("500.00")
+
+            winning_payment_journal_entry_id = payments[0].journal_entry_id
+            journal_entries_for_payment = (
+                verify_session.execute(
+                    select(JournalEntry)
+                    .where(JournalEntry.company_id == company_id)
+                    .where(JournalEntry.id == winning_payment_journal_entry_id)
+                )
+                .scalars()
+                .all()
+            )
+            assert len(journal_entries_for_payment) == 1
+
+            # Exactly one credit ARTransaction sourced from this specific
+            # winning Payment (the invoice's own ARTransaction is a
+            # separate, pre-existing row from fixture setup — filtered
+            # out here by source_document_type).
+            credit_ar_transactions = (
+                verify_session.execute(
+                    select(ARTransaction)
+                    .where(ARTransaction.company_id == company_id)
+                    .where(ARTransaction.source_document_type == "Payment")
+                    .where(ARTransaction.source_document_id == winning_payment_id)
+                )
+                .scalars()
+                .all()
+            )
+            assert len(credit_ar_transactions) == 1
+
+            # No duplicate Payment/JournalEntry exists anywhere for this
+            # company at all — the loser genuinely created zero financial
+            # rows, not merely zero allocation-reference rows.
+            all_payments_for_company = (
+                verify_session.execute(
+                    select(Payment).where(Payment.company_id == company_id)
+                )
+                .scalars()
+                .all()
+            )
+            assert len(all_payments_for_company) == 1
         finally:
             verify_session.close()
