@@ -20,6 +20,9 @@ from modules.installments.exceptions import (
     InstallmentActivationFailedError,
     InstallmentOverCollectionError,
 )
+from modules.installments.models.allocation_reference import (
+    InstallmentAllocationReference,
+)
 from modules.installments.repositories.allocation_reference import (
     InstallmentAllocationReferenceRepository,
 )
@@ -168,5 +171,59 @@ class TestConcurrentFullAmountCollections:
                 .all()
             )
             assert len(all_payments_for_company) == 1
+
+            # Fully unconditional, company-wide exactly-once proof — none
+            # of the four queries below filter by the winning row's own
+            # id, so a second row left behind by a genuinely broken lock
+            # (rather than a cleanly rolled-back loser) cannot hide from
+            # them. The only filters are company_id plus the smallest
+            # authoritative Phase-7 type/source criteria needed to
+            # exclude the fixture's own pre-existing invoice rows
+            # (transaction_type="INVOICE"/source_document_type=
+            # "SalesInvoice" for the ARTransaction, posting_source="SALES"
+            # for its JournalEntry) — never the winning payment/journal id.
+            all_refs_for_company = (
+                verify_session.execute(
+                    select(InstallmentAllocationReference).where(
+                        InstallmentAllocationReference.company_id == company_id
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert (
+                len(all_refs_for_company) == 1
+            ), f"expected exactly 1 InstallmentAllocationReference, found {len(all_refs_for_company)}"
+
+            all_payment_journal_entries = (
+                verify_session.execute(
+                    select(JournalEntry)
+                    .where(JournalEntry.company_id == company_id)
+                    .where(JournalEntry.posting_source == "PAYMENT")
+                )
+                .scalars()
+                .all()
+            )
+            assert (
+                len(all_payment_journal_entries) == 1
+            ), f"expected exactly 1 payment-sourced JournalEntry, found {len(all_payment_journal_entries)}"
+            assert all_payment_journal_entries[0].id == winning_payment_journal_entry_id
+
+            all_payment_ar_transactions = (
+                verify_session.execute(
+                    select(ARTransaction)
+                    .where(ARTransaction.company_id == company_id)
+                    .where(ARTransaction.transaction_type == "PAYMENT")
+                    .where(ARTransaction.source_document_type == "Payment")
+                )
+                .scalars()
+                .all()
+            )
+            assert (
+                len(all_payment_ar_transactions) == 1
+            ), f"expected exactly 1 payment-sourced ARTransaction, found {len(all_payment_ar_transactions)}"
+            assert (
+                all_payment_ar_transactions[0].source_document_id == winning_payment_id
+            )
         finally:
             verify_session.close()
