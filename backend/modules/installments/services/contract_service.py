@@ -102,12 +102,22 @@ def build_terms_snapshot(
     first_due_date: date,
     maturity_date: date,
     currency_code: str,
+    grace_period_days: int = 0,
+    late_charge_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Pure function — a self-sufficient JSONB explanation of the full
     obligation (FR-INST-041), readable independently of whatever the
     originating Sales invoice, plan template, or tenant configuration
     look like later (those may change or be deleted; this snapshot never
-    does)."""
+    does).
+
+    ``grace_period_days``/``late_charge_policy`` capture the effective
+    ``InstallmentConfiguration`` policy in force at contract creation
+    (FR-INST-172, BR-INST-009) — Phase 8's due-state/late-charge
+    calculations read these frozen values, never live configuration, so
+    a later tenant policy change can never retroactively alter an
+    already-created contract's overdue/late-charge behavior.
+    """
     return {
         "sales_invoice_id": str(sales_invoice_id),
         "customer_id": str(customer_id),
@@ -122,6 +132,8 @@ def build_terms_snapshot(
         "first_due_date": first_due_date.isoformat(),
         "maturity_date": maturity_date.isoformat(),
         "currency_code": currency_code,
+        "grace_period_days": grace_period_days,
+        "late_charge_policy": late_charge_policy,
     }
 
 
@@ -236,6 +248,8 @@ class InstallmentContractService:
             first_due_date=first_due_date,
             maturity_date=maturity_date,
             currency_code=eligibility.currency_code,
+            grace_period_days=config.grace_period_days if config else 0,
+            late_charge_policy=config.late_charge_policy if config else None,
         )
 
         contract = InstallmentContract(

@@ -34,6 +34,9 @@ from modules.installments.repositories.contract import InstallmentContractReposi
 from modules.installments.repositories.feature_flag import (
     InstallmentsFeatureFlagRepository,
 )
+from modules.installments.repositories.late_charge import (
+    InstallmentLateChargeRepository,
+)
 from modules.installments.repositories.plan_template import (
     InstallmentPlanTemplateRepository,
 )
@@ -50,6 +53,9 @@ from modules.installments.services.configuration_service import (
     InstallmentConfigurationService,
 )
 from modules.installments.services.contract_service import InstallmentContractService
+from modules.installments.services.delinquency_service import (
+    InstallmentDelinquencyService,
+)
 from modules.installments.services.eligibility_service import (
     InstallmentEligibilityService,
 )
@@ -124,6 +130,12 @@ def get_installment_allocation_reference_repo(
     return InstallmentAllocationReferenceRepository(db)
 
 
+def get_installment_late_charge_repo(
+    db: Session = Depends(get_db),
+) -> InstallmentLateChargeRepository:
+    return InstallmentLateChargeRepository(db)
+
+
 def get_event_outbox_repo(
     db: Session = Depends(get_db),
 ) -> EventOutboxRepository:
@@ -187,11 +199,15 @@ def get_installment_outstanding_service(
     allocation_ref_repo: InstallmentAllocationReferenceRepository = Depends(
         get_installment_allocation_reference_repo
     ),
+    late_charge_repo: InstallmentLateChargeRepository = Depends(
+        get_installment_late_charge_repo
+    ),
 ) -> InstallmentOutstandingService:
     return InstallmentOutstandingService(
         schedule_repo=schedule_repo,
         accounting_gateway=accounting_gateway,
         allocation_ref_repo=allocation_ref_repo,
+        late_charge_repo=late_charge_repo,
     )
 
 
@@ -303,6 +319,9 @@ def get_installment_collection_service(
     contract_service: InstallmentContractService = Depends(
         get_installment_contract_service
     ),
+    late_charge_repo: InstallmentLateChargeRepository = Depends(
+        get_installment_late_charge_repo
+    ),
 ) -> InstallmentCollectionService:
     return InstallmentCollectionService(
         db=db,
@@ -315,6 +334,39 @@ def get_installment_collection_service(
         audit_service=audit_service,
         outbox_repo=outbox_repo,
         contract_service=contract_service,
+        late_charge_repo=late_charge_repo,
+    )
+
+
+def get_installment_delinquency_service(
+    db: Session = Depends(get_db),
+    contract_repo: InstallmentContractRepository = Depends(
+        get_installment_contract_repo
+    ),
+    schedule_repo: InstallmentScheduleRepository = Depends(
+        get_installment_schedule_repo
+    ),
+    allocation_ref_repo: InstallmentAllocationReferenceRepository = Depends(
+        get_installment_allocation_reference_repo
+    ),
+    late_charge_repo: InstallmentLateChargeRepository = Depends(
+        get_installment_late_charge_repo
+    ),
+    accounting_gateway: AccountingIntegrationGateway = Depends(
+        get_accounting_integration_gateway
+    ),
+    audit_service: InstallmentAuditService = Depends(get_installment_audit_service),
+    outbox_repo: EventOutboxRepository = Depends(get_event_outbox_repo),
+) -> InstallmentDelinquencyService:
+    return InstallmentDelinquencyService(
+        db=db,
+        contract_repo=contract_repo,
+        schedule_repo=schedule_repo,
+        allocation_ref_repo=allocation_ref_repo,
+        late_charge_repo=late_charge_repo,
+        accounting_gateway=accounting_gateway,
+        audit_service=audit_service,
+        outbox_repo=outbox_repo,
     )
 
 

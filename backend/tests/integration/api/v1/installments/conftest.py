@@ -56,6 +56,9 @@ from modules.installments.repositories.allocation_reference import (
 )
 from modules.installments.repositories.audit import InstallmentAuditLogRepository
 from modules.installments.repositories.contract import InstallmentContractRepository
+from modules.installments.repositories.late_charge import (
+    InstallmentLateChargeRepository,
+)
 from modules.installments.repositories.schedule import InstallmentScheduleRepository
 from modules.installments.services.accounting_gateway import (
     AccountingIntegrationGateway,
@@ -65,6 +68,9 @@ from modules.installments.services.collection_service import (
     InstallmentCollectionService,
 )
 from modules.installments.services.contract_service import InstallmentContractService
+from modules.installments.services.delinquency_service import (
+    InstallmentDelinquencyService,
+)
 from modules.installments.services.idempotency_service import (
     InstallmentIdempotencyService,
 )
@@ -111,10 +117,12 @@ def build_collection_service(db_session: Session) -> InstallmentCollectionServic
     schedule_repo = InstallmentScheduleRepository(db_session)
     contract_repo = InstallmentContractRepository(db_session)
     allocation_ref_repo = InstallmentAllocationReferenceRepository(db_session)
+    late_charge_repo = InstallmentLateChargeRepository(db_session)
     outstanding_service = InstallmentOutstandingService(
         schedule_repo=schedule_repo,
         accounting_gateway=gateway,
         allocation_ref_repo=allocation_ref_repo,
+        late_charge_repo=late_charge_repo,
     )
     audit_service = InstallmentAuditService(
         db=db_session, audit_repo=InstallmentAuditLogRepository(db_session)
@@ -141,6 +149,30 @@ def build_collection_service(db_session: Session) -> InstallmentCollectionServic
         audit_service=audit_service,
         outbox_repo=EventOutboxRepository(db_session),
         contract_service=contract_service,
+        late_charge_repo=late_charge_repo,
+    )
+
+
+def build_delinquency_service(db_session: Session) -> InstallmentDelinquencyService:
+    ar_service = build_ar_service(db_session, with_sales_sync=False)
+    payment_service = build_payment_service(db_session)
+    allocation_engine = build_allocation_engine(db_session)
+    gateway = AccountingIntegrationGateway(
+        ar_service=ar_service,
+        payment_service=payment_service,
+        allocation_engine=allocation_engine,
+    )
+    return InstallmentDelinquencyService(
+        db=db_session,
+        contract_repo=InstallmentContractRepository(db_session),
+        schedule_repo=InstallmentScheduleRepository(db_session),
+        allocation_ref_repo=InstallmentAllocationReferenceRepository(db_session),
+        late_charge_repo=InstallmentLateChargeRepository(db_session),
+        accounting_gateway=gateway,
+        audit_service=InstallmentAuditService(
+            db=db_session, audit_repo=InstallmentAuditLogRepository(db_session)
+        ),
+        outbox_repo=EventOutboxRepository(db_session),
     )
 
 
@@ -150,6 +182,8 @@ def build_active_contract_with_schedule(
     installment_count: int = 3,
     installment_amount: Decimal = Decimal("100.00"),
     down_payment_amount: Decimal = Decimal("0"),
+    grace_period_days: int = 0,
+    late_charge_policy: dict | None = None,
 ) -> dict:
     """Build a fully self-contained, real-Postgres-backed ACTIVE
     installment contract with an active schedule version, ready for
@@ -193,6 +227,14 @@ def build_active_contract_with_schedule(
             account_code="1000",
             account_name="Bank",
             account_type="ASSET",
+        )
+    )
+    late_fee_account = account_repo.create(
+        Account(
+            company_id=company_id,
+            account_code="4100",
+            account_name="Late Fee Income",
+            account_type="REVENUE",
         )
     )
     bank_account = BankAccountRepository(db_session).create(
@@ -261,6 +303,13 @@ def build_active_contract_with_schedule(
             actor_id=None,
         )
 
+    effective_late_charge_policy = None
+    if late_charge_policy is not None:
+        effective_late_charge_policy = dict(late_charge_policy)
+        effective_late_charge_policy.setdefault(
+            "contra_account_id", str(late_fee_account.id)
+        )
+
     contract_repo = InstallmentContractRepository(db_session)
     contract = InstallmentContract(
         company_id=company_id,
@@ -278,7 +327,11 @@ def build_active_contract_with_schedule(
         maturity_date=today,
         currency_code="USD",
         status="ACTIVE",
-        terms_snapshot={"note": "Phase 7 collection-test fixture"},
+        terms_snapshot={
+            "note": "Phase 7/8 collection/delinquency-test fixture",
+            "grace_period_days": grace_period_days,
+            "late_charge_policy": effective_late_charge_policy,
+        },
     )
     contract = contract_repo.create(contract)
 
@@ -317,6 +370,7 @@ def build_active_contract_with_schedule(
         "schedule_version": version,
         "schedule_lines": lines,
         "bank_account": bank_account,
+        "late_fee_account": late_fee_account,
         "ar_account": ar_account,
         "revenue_account": revenue_account,
         "today": today,

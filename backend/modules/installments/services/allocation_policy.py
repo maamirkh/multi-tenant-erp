@@ -28,16 +28,26 @@ from uuid import UUID
 
 @dataclass(frozen=True)
 class OutstandingLine:
-    """One schedule line's live outstanding amount — the input shape
+    """One outstanding obligation's live figure — the input shape
     ``allocate_oldest_first()`` consumes. The caller (``record_collection()``)
     computes ``outstanding_amount`` from
-    ``scheduled_amount - net_allocated_amount`` before calling this
-    function; this module has no knowledge of how that figure was
-    derived."""
+    ``scheduled_amount - net_allocated_amount`` (schedule lines) or from
+    a live ``ARTransaction.outstanding_amount`` read (late charges,
+    Phase 8) before calling this function; this module has no knowledge
+    of how that figure was derived.
+
+    ``ar_transaction_id`` is ``None`` for an ordinary schedule-line
+    obligation (the caller resolves it to the contract's originating
+    invoice transaction) or set to a specific ``InstallmentLateCharge``'s
+    own ``DEBIT_NOTE`` ``ARTransaction`` id (plan.md §11.3/§12.1) — the
+    late charge is an ordinary, independently-allocatable AR obligation,
+    collectible via this exact same oldest-first policy with no
+    special-case branch here."""
 
     schedule_line_id: UUID
     due_date: date
     outstanding_amount: Decimal
+    ar_transaction_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -50,6 +60,7 @@ class AllocationInstruction:
     schedule_line_id: UUID
     amount: Decimal
     allocation_order: int
+    ar_transaction_id: UUID | None = None
 
 
 class InstallmentAllocationPolicy:
@@ -108,6 +119,7 @@ class InstallmentAllocationPolicy:
                     schedule_line_id=line.schedule_line_id,
                     amount=amount,
                     allocation_order=order,
+                    ar_transaction_id=line.ar_transaction_id,
                 )
             )
             remaining -= amount

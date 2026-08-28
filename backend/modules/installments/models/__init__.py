@@ -15,6 +15,7 @@ from modules.installments.models.configuration import InstallmentConfiguration
 from modules.installments.models.contract import InstallmentContract
 from modules.installments.models.feature_flag import InstallmentsFeatureFlag
 from modules.installments.models.idempotency import InstallmentIdempotencyKey
+from modules.installments.models.late_charge import InstallmentLateCharge
 from modules.installments.models.plan_template import InstallmentPlanTemplate
 from modules.installments.models.schedule import (
     InstallmentScheduleLine,
@@ -28,6 +29,7 @@ __all__ = [
     "InstallmentConfiguration",
     "InstallmentContract",
     "InstallmentIdempotencyKey",
+    "InstallmentLateCharge",
     "InstallmentPlanTemplate",
     "InstallmentScheduleLine",
     "InstallmentScheduleVersion",

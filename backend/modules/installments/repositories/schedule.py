@@ -85,3 +85,15 @@ class InstallmentScheduleRepository:
             .order_by(InstallmentScheduleLine.sequence)
         )
         return list(self.db.execute(stmt).scalars().all())
+
+    def get_line_by_id(
+        self, company_id: UUID, schedule_line_id: UUID
+    ) -> InstallmentScheduleLine | None:
+        """Tenant-scoped lookup of a single schedule line by id (Phase 8,
+        T142) — used by ``InstallmentDelinquencyService.apply_late_charge()``
+        to resolve the line a late charge targets."""
+        stmt = select(InstallmentScheduleLine).where(
+            InstallmentScheduleLine.company_id == company_id,
+            InstallmentScheduleLine.id == schedule_line_id,
+        )
+        return self.db.execute(stmt).scalars().one_or_none()

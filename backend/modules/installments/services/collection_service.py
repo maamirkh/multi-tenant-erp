@@ -40,6 +40,9 @@ from modules.installments.repositories.allocation_reference import (
     InstallmentAllocationReferenceRepository,
 )
 from modules.installments.repositories.contract import InstallmentContractRepository
+from modules.installments.repositories.late_charge import (
+    InstallmentLateChargeRepository,
+)
 from modules.installments.repositories.schedule import InstallmentScheduleRepository
 from modules.installments.services.accounting_gateway import (
     AccountingIntegrationGateway,
@@ -81,6 +84,7 @@ class InstallmentCollectionService:
         audit_service: InstallmentAuditService,
         outbox_repo: EventOutboxRepository,
         contract_service: InstallmentContractService,
+        late_charge_repo: InstallmentLateChargeRepository | None = None,
     ) -> None:
         self.db = db
         self._contracts = contract_repo
@@ -92,29 +96,60 @@ class InstallmentCollectionService:
         self._audit = audit_service
         self._outbox = outbox_repo
         self._contract_service = contract_service
+        self._late_charges = late_charge_repo
 
     def _outstanding_lines(
         self, company_id: UUID, contract_id: UUID
     ) -> list[OutstandingLine]:
         version = self._schedule.get_active_version(company_id, contract_id)
-        if version is None:
-            return []
-        lines = self._schedule.get_lines(company_id, version.id)
-        active_lines = [
-            line for line in lines if line.waived_at is None and line.voided_at is None
-        ]
-        net_allocated = self._allocation_refs.get_net_allocated_by_line(
-            company_id, [line.id for line in active_lines]
-        )
-        outstanding = [
-            OutstandingLine(
-                schedule_line_id=line.id,
-                due_date=line.due_date,
-                outstanding_amount=line.scheduled_amount
-                - net_allocated.get(line.id, Decimal("0")),
+        outstanding: list[OutstandingLine] = []
+        if version is not None:
+            lines = self._schedule.get_lines(company_id, version.id)
+            active_lines = [
+                line
+                for line in lines
+                if line.waived_at is None and line.voided_at is None
+            ]
+            net_allocated = self._allocation_refs.get_net_allocated_by_line(
+                company_id, [line.id for line in active_lines]
             )
-            for line in active_lines
-        ]
+            outstanding.extend(
+                OutstandingLine(
+                    schedule_line_id=line.id,
+                    due_date=line.due_date,
+                    outstanding_amount=line.scheduled_amount
+                    - net_allocated.get(line.id, Decimal("0")),
+                )
+                for line in active_lines
+            )
+
+        # Open late-charge AR (Phase 8) is an ordinary, independently-
+        # allocatable obligation, collectible via this same oldest-first
+        # policy with no special-case branch (plan.md §11.3) — each
+        # charge's own DEBIT_NOTE ARTransaction id is carried through so
+        # the resulting allocation targets it directly, not the
+        # originating invoice's transaction.
+        if self._late_charges is not None:
+            for charge in self._late_charges.list_for_contract(company_id, contract_id):
+                if (
+                    charge.waived_at is not None
+                    or charge.accounting_ar_transaction_id is None
+                ):
+                    continue
+                ar_transaction = self._accounting.get_ar_transaction(
+                    company_id, charge.accounting_ar_transaction_id
+                )
+                if ar_transaction is None or ar_transaction.status == "WRITTEN_OFF":
+                    continue
+                outstanding.append(
+                    OutstandingLine(
+                        schedule_line_id=charge.schedule_line_id,
+                        due_date=charge.overdue_occurrence_date,
+                        outstanding_amount=ar_transaction.outstanding_amount,
+                        ar_transaction_id=charge.accounting_ar_transaction_id,
+                    )
+                )
+
         return [line for line in outstanding if line.outstanding_amount > 0]
 
     def record_collection(
@@ -180,18 +215,26 @@ class InstallmentCollectionService:
             amount, outstanding_lines
         )
 
-        ar_transaction_id = self._accounting.get_invoice_ar_transaction_id(
+        invoice_ar_transaction_id = self._accounting.get_invoice_ar_transaction_id(
             company_id, contract.sales_invoice_id
         )
-        if ar_transaction_id is None:
+        if invoice_ar_transaction_id is None:
             raise InstallmentActivationFailedError(
                 "No Accounting AR transaction found for the originating "
                 "sales invoice; cannot record the collection.",
                 str(contract_id),
             )
 
+        # Each instruction targets its own AR transaction — an ordinary
+        # schedule-line instruction targets the originating invoice's
+        # transaction (ar_transaction_id is None, resolved here); a
+        # late-charge instruction (Phase 8) already carries its own
+        # DEBIT_NOTE transaction id from _outstanding_lines() above.
         allocation_lines_payload = [
-            {"transaction_id": ar_transaction_id, "amount_foreign": instr.amount}
+            {
+                "transaction_id": instr.ar_transaction_id or invoice_ar_transaction_id,
+                "amount_foreign": instr.amount,
+            }
             for instr in instructions
         ]
 

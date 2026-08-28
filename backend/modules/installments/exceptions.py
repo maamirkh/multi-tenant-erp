@@ -205,6 +205,60 @@ class InstallmentReversalNotAllowedError(ConflictException):
         self.code = "REVERSAL_NOT_ALLOWED"
 
 
+class InstallmentLateChargeAlreadyAppliedError(ConflictException):
+    """Raised by ``InstallmentDelinquencyService.apply_late_charge()``
+    when a late charge already exists for this exact
+    ``(schedule_line_id, overdue_occurrence_date)`` pair (FR-INST-171:
+    never applied more than once for the same overdue occurrence). The
+    service-layer pre-check; the DB unique constraint (migration 066) is
+    the real backstop against a concurrent race."""
+
+    def __init__(self, schedule_line_id: str, overdue_occurrence_date: str) -> None:
+        super().__init__(
+            message=(
+                f"A late charge already exists for schedule line "
+                f"'{schedule_line_id}' and occurrence date "
+                f"'{overdue_occurrence_date}'."
+            ),
+            details={
+                "schedule_line_id": schedule_line_id,
+                "overdue_occurrence_date": overdue_occurrence_date,
+            },
+        )
+        self.code = "LATE_CHARGE_ALREADY_APPLIED"
+
+
+class InstallmentLateChargePolicyDisabledError(ConflictException):
+    """Raised by ``InstallmentDelinquencyService.apply_late_charge()``
+    when the contract's frozen terms-snapshot late-charge policy
+    (FR-INST-172, captured at activation — independent of later tenant
+    configuration changes, BR-INST-009) is absent or not enabled
+    (FR-INST-170: a tenant that does not enable late charges MUST see no
+    late-charge behavior whatsoever)."""
+
+    def __init__(self, contract_id: str | None = None) -> None:
+        super().__init__(
+            message=(
+                f"Installment contract '{contract_id or '?'}' has no "
+                "enabled late-charge policy."
+            ),
+            details={"contract_id": contract_id},
+        )
+        self.code = "LATE_CHARGE_POLICY_DISABLED"
+
+
+class InstallmentLateChargeAlreadyWaivedError(ConflictException):
+    """Raised by ``InstallmentDelinquencyService.waive_late_charge()``
+    when the referenced late charge has already been waived."""
+
+    def __init__(self, late_charge_id: str | None = None) -> None:
+        super().__init__(
+            message=f"Late charge '{late_charge_id or '?'}' has already been waived.",
+            details={"late_charge_id": late_charge_id},
+        )
+        self.code = "LATE_CHARGE_ALREADY_WAIVED"
+
+
 class InstallmentIdempotencyConflictError(ConflictException):
     """Raised by ``InstallmentIdempotencyService`` (plan.md §20.2/§20.3)
     when a duplicate request cannot be resolved as a clean replay.

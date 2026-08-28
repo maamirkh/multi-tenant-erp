@@ -44,4 +44,5 @@ def test_repository_only_exposes_the_documented_read_and_create_methods() -> Non
         "get_active_version",
         "get_version",
         "get_lines",
+        "get_line_by_id",
     }
