@@ -1,0 +1,305 @@
+openapi: 3.0.3
+info:
+  title: Installments API (Epic 10) — Planning-Stage Contract Sketch
+  version: "0.1.0-planning"
+  description: >
+    Conceptual endpoint contract for /sp.tasks decomposition. Not an implementation
+    artifact — schemas are named/shaped, not exhaustively typed. Mounted under the
+    platform's existing /api/v1/companies/{company_id}/installments prefix. Every
+    response uses the platform's existing StandardResponse/PaginatedResponse/
+    ErrorResponse envelopes (see core/schemas/response.py, core/schemas/pagination.py) —
+    not redefined here.
+servers:
+  - url: /api/v1/companies/{company_id}/installments
+    variables:
+      company_id:
+        default: ""
+
+security:
+  - bearerAuth: []
+
+paths:
+  /config:
+    get:
+      summary: Get effective installment configuration (company + branch override)
+      x-permission: installments.config.manage
+      x-operation-class: ADMIN
+      responses:
+        "200": { description: StandardResponse<InstallmentConfiguration> }
+        "404": { description: no configuration yet (defaults apply) }
+    put:
+      summary: Update tenant-level (or branch-override) installment configuration
+      x-permission: installments.config.manage
+      x-operation-class: ADMIN
+      x-idempotent: false
+      responses:
+        "200": { description: StandardResponse<InstallmentConfiguration> }
+        "422": { description: validation error (e.g. min_term > max_term) }
+
+  /plans:
+    get:
+      summary: List installment plan templates
+      x-permission: installments.contract.view
+      x-operation-class: READ
+      responses: { "200": { description: PaginatedResponse<InstallmentPlanTemplate> } }
+    post:
+      summary: Create a plan template
+      x-permission: installments.plan.manage
+      x-operation-class: ORIGINATION
+      responses:
+        "201": { description: StandardResponse<InstallmentPlanTemplate> }
+        "409": { description: name conflict }
+
+  /plans/{planId}:
+    patch:
+      summary: Edit a plan template (never mutates contracts already created from it)
+      x-permission: installments.plan.manage
+      x-operation-class: ORIGINATION
+      responses: { "200": { description: StandardResponse<InstallmentPlanTemplate> } }
+
+  /plans/{planId}/deactivate:
+    post:
+      summary: Deactivate a template (blocks new use only)
+      x-permission: installments.plan.manage
+      x-operation-class: ORIGINATION
+      responses: { "200": { description: StandardResponse<InstallmentPlanTemplate> } }
+
+  /eligibility:
+    get:
+      summary: Evaluate customer/invoice eligibility for an installment offer
+      x-permission: installments.contract.create
+      x-operation-class: ORIGINATION
+      parameters:
+        - { name: sales_invoice_id, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: StandardResponse<EligibilityResult> }
+        "422": { description: ineligible, with documented reason code }
+
+  /quotes:
+    post:
+      summary: Generate a deterministic, non-persisting installment quote/preview
+      x-permission: installments.contract.create
+      x-operation-class: ORIGINATION
+      x-idempotent: false
+      x-side-effects: none (not even an audit event — ordinary read, per FR-INST-032)
+      responses:
+        "200": { description: StandardResponse<InstallmentQuotePreview> }
+        "422": { description: terms outside configured policy bounds }
+
+  /contracts:
+    get:
+      summary: List/search contracts (status, customer, branch, plan, collector filters)
+      x-permission: installments.contract.view
+      x-operation-class: READ
+      responses: { "200": { description: PaginatedResponse<InstallmentContractSummary> } }
+    post:
+      summary: Create a DRAFT contract (from template or custom terms)
+      x-permission: installments.contract.create
+      x-operation-class: ORIGINATION
+      x-idempotent: false
+      responses:
+        "201": { description: StandardResponse<InstallmentContract> }
+        "409": { description: an existing non-terminal contract already covers this invoice }
+
+  /contracts/{contractId}:
+    get:
+      summary: Get full contract detail
+      x-permission: installments.contract.view
+      x-operation-class: READ
+      responses:
+        "200": { description: StandardResponse<InstallmentContract> }
+        "404": { description: not found or belongs to another tenant (indistinguishable) }
+
+  /contracts/{contractId}/submit:
+    post:
+      summary: DRAFT → PENDING_APPROVAL (or directly → APPROVED if no threshold applies)
+      x-permission: installments.contract.create
+      x-operation-class: ORIGINATION
+      responses: { "200": { description: StandardResponse<InstallmentContract> }, "409": { description: illegal transition } }
+
+  /contracts/{contractId}/approve:
+    post:
+      summary: PENDING_APPROVAL → APPROVED
+      x-permission: installments.contract.approve
+      x-operation-class: ORIGINATION
+      x-maker-checker: submitter must differ from approver
+      responses: { "200": { description: StandardResponse<InstallmentContract> }, "422": { description: self-approval not allowed } }
+
+  /contracts/{contractId}/reject:
+    post:
+      summary: PENDING_APPROVAL → DRAFT (rejection is an event, not a persisted status)
+      x-permission: installments.contract.approve
+      x-operation-class: ORIGINATION
+      x-maker-checker: submitter must differ from rejecter
+      requestBody: { required: true, description: "{ reason: string (mandatory) }" }
+      responses: { "200": { description: StandardResponse<InstallmentContract> } }
+
+  /contracts/{contractId}/activate:
+    post:
+      summary: APPROVED → ACTIVE (generates the authoritative schedule; requires down payment if configured)
+      x-permission: installments.contract.activate
+      x-operation-class: ORIGINATION
+      x-idempotent: true
+      responses:
+        "200": { description: StandardResponse<InstallmentContract> }
+        "409": { description: insufficient down payment, or reconciliation check failed }
+        "422": { description: locked fiscal period (PERIOD_LOCKED) }
+
+  /contracts/{contractId}/schedule:
+    get:
+      summary: Current (active) schedule version and lines, with derived due-state per line
+      x-permission: installments.contract.view
+      x-operation-class: READ
+      responses: { "200": { description: StandardResponse<InstallmentSchedule> } }
+
+  /contracts/{contractId}/schedule/versions/{versionNumber}:
+    get:
+      summary: A specific (possibly superseded) schedule version, for historical explanation
+      x-permission: installments.contract.view
+      x-operation-class: READ
+      responses: { "200": { description: StandardResponse<InstallmentSchedule> } }
+
+  /contracts/{contractId}/collections:
+    post:
+      summary: Record a collection (exact/partial/multi-installment/advance), oldest-due-first allocation
+      x-permission: installments.collection.create
+      x-operation-class: SERVICING
+      x-idempotent: true
+      x-entitlement-note: permitted even when Installments entitlement is disabled, per FR-INST-356
+      responses:
+        "201": { description: StandardResponse<InstallmentCollectionResult> }
+        "409": { description: over-collection guard tripped, or concurrent collection conflict }
+        "422": { description: locked fiscal period }
+
+  /collections/{collectionId}/reverse:
+    post:
+      summary: Reverse a previously recorded collection
+      x-permission: installments.collection.reverse
+      x-operation-class: SERVICING
+      x-idempotent: true
+      responses: { "200": { description: StandardResponse<InstallmentCollectionResult> } }
+
+  /contracts/{contractId}/settlement/quote:
+    post:
+      summary: Generate a reproducible early-settlement quote (non-mutating, still audited)
+      x-permission: installments.settlement.execute
+      x-operation-class: SERVICING
+      x-idempotent: false
+      responses: { "200": { description: StandardResponse<InstallmentSettlementQuote> } }
+
+  /contracts/{contractId}/settlement/execute:
+    post:
+      summary: Execute settlement against an authoritative payment already recorded
+      x-permission: installments.settlement.execute
+      x-operation-class: SERVICING
+      x-idempotent: true
+      responses:
+        "200": { description: StandardResponse<InstallmentContract> }
+        "409": { description: settlement quote stale/expired }
+
+  /contracts/{contractId}/reschedule:
+    post:
+      summary: Controlled due-date-only amendment; creates a new schedule version
+      x-permission: installments.contract.reschedule
+      x-operation-class: ORIGINATION
+      x-idempotent: true
+      x-maker-checker: same discipline as contract approval
+      responses:
+        "200": { description: StandardResponse<InstallmentContract> }
+        "422": { description: restructuring (principal/markup/count change) rejected — due-date-only in scope }
+
+  /contracts/{contractId}/cancel:
+    post:
+      summary: Cancel per lifecycle-stage rules (§15.3)
+      x-permission: installments.contract.cancel
+      x-operation-class: ORIGINATION
+      x-idempotent: true
+      responses: { "200": { description: StandardResponse<InstallmentContract> } }
+
+  /contracts/{contractId}/default:
+    post:
+      summary: Explicitly mark ACTIVE → DEFAULTED (never automatic, never posts to Accounting)
+      x-permission: installments.contract.default
+      x-operation-class: ORIGINATION
+      x-idempotent: true
+      requestBody: { required: true, description: "{ reason: string (mandatory) }" }
+      responses: { "200": { description: StandardResponse<InstallmentContract> } }
+
+  /contracts/{contractId}/cure:
+    post:
+      summary: DEFAULTED → ACTIVE (policy-gated; distinct permission from collection)
+      x-permission: installments.contract.cure
+      x-operation-class: SERVICING
+      responses:
+        "200": { description: StandardResponse<InstallmentContract> }
+        "422": { description: curing not enabled by tenant policy }
+
+  /contracts/{contractId}/writeoff:
+    post:
+      summary: Write off a DEFAULTED contract's remaining balance
+      x-permission: installments.contract.writeoff
+      x-operation-class: ORIGINATION
+      x-idempotent: true
+      requestBody: { required: true, description: "{ reason: string (mandatory) }" }
+      responses: { "200": { description: StandardResponse<InstallmentContract> } }
+
+  /reports/{reportType}:
+    get:
+      summary: >
+        contract-register | collection | due | overdue | aging | settlement |
+        default-writeoff | plan-performance
+      x-permission: installments.report.view
+      x-operation-class: READ
+      responses: { "200": { description: PaginatedResponse<ReportRow> } }
+
+  /dashboard:
+    get:
+      summary: KPI summary (active contracts, outstanding, due today/this month, overdue, collection rate, aging distribution)
+      x-permission: installments.report.view
+      x-operation-class: READ
+      responses: { "200": { description: StandardResponse<InstallmentDashboard> } }
+
+  /contracts/{contractId}/documents/agreement:
+    get: { summary: Installment agreement document (read-only JSON), x-permission: installments.contract.view, x-operation-class: READ, responses: { "200": { description: StandardResponse<InstallmentAgreementView> } } }
+  /contracts/{contractId}/documents/schedule:
+    get: { summary: Payment schedule document, x-permission: installments.contract.view, x-operation-class: READ, responses: { "200": { description: StandardResponse<InstallmentScheduleDocument> } } }
+  /contracts/{contractId}/documents/settlement-quote:
+    get: { summary: Latest settlement quotation document, x-permission: installments.contract.view, x-operation-class: READ, responses: { "200": { description: StandardResponse<InstallmentSettlementQuote> } } }
+  /customers/{customerId}/statement:
+    get: { summary: Cross-contract customer installment statement, x-permission: installments.contract.view, x-operation-class: READ, responses: { "200": { description: StandardResponse<InstallmentCustomerStatement> } } }
+
+  /installments/status:
+    get:
+      summary: Tenant module toggle status (reachable regardless of entitlement — chicken-and-egg)
+      x-permission: rank-based (ADMIN_RANK), mirrors CRM admin_router
+      x-operation-class: ADMIN
+      responses: { "200": { description: StandardResponse<InstallmentsModuleStatus> } }
+  /installments/enable:
+    post: { summary: Enable the tenant module toggle, x-operation-class: ADMIN, responses: { "200": { description: StandardResponse<InstallmentsModuleStatus> } } }
+  /installments/disable:
+    post: { summary: Disable the tenant module toggle, x-operation-class: ADMIN, responses: { "200": { description: StandardResponse<InstallmentsModuleStatus> } } }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    # Placeholder — full Pydantic-derived schemas belong to /sp.tasks' implementation
+    # phase, not this planning-stage contract sketch. Field-level shapes are specified
+    # in data-model.md.
+    InstallmentContract: { type: object }
+    InstallmentContractSummary: { type: object }
+    InstallmentConfiguration: { type: object }
+    InstallmentPlanTemplate: { type: object }
+    InstallmentQuotePreview: { type: object }
+    InstallmentSchedule: { type: object }
+    InstallmentCollectionResult: { type: object }
+    InstallmentSettlementQuote: { type: object }
+    InstallmentDashboard: { type: object }
+    InstallmentAgreementView: { type: object }
+    InstallmentScheduleDocument: { type: object }
+    InstallmentCustomerStatement: { type: object }
+    InstallmentsModuleStatus: { type: object }
+    EligibilityResult: { type: object }
+    ReportRow: { type: object }
