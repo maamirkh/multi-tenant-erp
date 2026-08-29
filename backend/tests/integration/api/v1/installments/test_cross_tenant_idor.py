@@ -19,6 +19,8 @@ identical ``_get_or_404()`` gate, so the second gets a lighter check):
 3. ``InstallmentCollectionService.reverse_collection()``
 4. ``InstallmentContractService.get_active_schedule()``
 5. ``InstallmentContractService.get_schedule_version()`` (shares #4's gate)
+6. ``InstallmentSettlementService.generate_quote()`` (Phase 9, T160-adjacent)
+7. ``InstallmentSettlementService.execute()`` (Phase 9, T161-adjacent)
 
 Real Postgres (schedule tables require it).
 """
@@ -26,6 +28,7 @@ Real Postgres (schedule tables require it).
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -41,6 +44,7 @@ from modules.installments.repositories.contract import InstallmentContractReposi
 from tests.integration.api.v1.installments.conftest import (
     build_active_contract_with_schedule,
     build_collection_service,
+    build_settlement_service,
 )
 from tests.integration.api.v1.installments.test_activation_service import (
     _build_approved_contract,
@@ -172,3 +176,47 @@ class TestCrossTenantIDOR:
 
         with pytest.raises(InstallmentNotFoundError):
             service.get_schedule_version(company_b_id, company_a_ctx["contract"].id, 1)
+
+    def test_generate_settlement_quote_cannot_reach_another_companys_contract(
+        self, db_session
+    ) -> None:
+        company_a_ctx = build_active_contract_with_schedule(
+            db_session, installment_count=1, installment_amount=Decimal("100.00")
+        )
+        service = build_settlement_service(db_session)
+        company_b_id = uuid.uuid4()
+
+        with pytest.raises(InstallmentNotFoundError):
+            service.generate_quote(
+                company_b_id, company_a_ctx["contract"].id, date.today()
+            )
+
+    def test_execute_settlement_cannot_reach_another_companys_contract(
+        self, db_session
+    ) -> None:
+        company_a_ctx = build_active_contract_with_schedule(
+            db_session, installment_count=1, installment_amount=Decimal("100.00")
+        )
+        service = build_settlement_service(db_session)
+        quote = service.generate_quote(
+            company_a_ctx["company_id"], company_a_ctx["contract"].id, date.today()
+        )
+        company_b_id = uuid.uuid4()
+
+        with pytest.raises(InstallmentNotFoundError):
+            service.execute(
+                company_b_id,
+                company_a_ctx["contract"].id,
+                quote.settlement_amount,
+                quote.as_of_date,
+                idempotency_key=str(uuid.uuid4()),
+                actor_id=None,
+                bank_account_id=company_a_ctx["bank_account"].id,
+            )
+
+        # Company A's contract is untouched by the cross-tenant attempt.
+        untouched = InstallmentContractRepository(db_session).get_by_id_or_none(
+            company_a_ctx["contract"].id, company_a_ctx["company_id"]
+        )
+        assert untouched.status == "ACTIVE"
+        assert untouched.closed_at is None

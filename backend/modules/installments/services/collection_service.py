@@ -55,6 +55,7 @@ from modules.installments.services.audit_service import InstallmentAuditService
 from modules.installments.services.contract_service import InstallmentContractService
 from modules.installments.services.idempotency_service import (
     InstallmentIdempotencyService,
+    ReservationResult,
 )
 from modules.installments.services.outstanding_service import (
     InstallmentOutstandingService,
@@ -191,14 +192,55 @@ class InstallmentCollectionService:
         if reservation.outcome == "REPLAY":
             return reservation.result_payload or {}
 
+        return self.execute_collection_sequence(
+            company_id,
+            contract_id,
+            amount,
+            payment_method,
+            actor_id,
+            reservation=reservation,
+            audit_action="COLLECTED",
+            outbox_event_type="installment.collected",
+            pending_approval_audit_action="COLLECTION_PENDING_APPROVAL",
+            bank_account_id=bank_account_id,
+            cash_account_id=cash_account_id,
+        )
+
+    def execute_collection_sequence(
+        self,
+        company_id: UUID,
+        contract_id: UUID,
+        amount: Decimal,
+        payment_method: str,
+        actor_id: UUID | None,
+        *,
+        reservation: ReservationResult,
+        audit_action: str,
+        outbox_event_type: str,
+        pending_approval_audit_action: str = "COLLECTION_PENDING_APPROVAL",
+        bank_account_id: UUID | None = None,
+        cash_account_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        """The atomic collection sequence shared by ``record_collection()``
+        (``audit_action="COLLECTED"``) and, since Phase 9,
+        ``InstallmentSettlementService.execute()``
+        (``audit_action="SETTLED"``) — FOR UPDATE lock -> outstanding
+        calculation -> oldest-first allocation -> Accounting staged
+        write -> Installments rows staged -> completion guard -> Accounting
+        finalize LAST. The caller has already reserved its own
+        idempotency key (``reservation``) before calling this — this
+        method only *completes* that reservation, in the same commit as
+        everything else, never reserves one of its own (plan.md §21;
+        tasks.md T155's "reuses the exact atomic sequence" requirement).
+        """
         contract = self._contracts.get_by_id_locked(contract_id, company_id)
         if contract is None:
             raise InstallmentNotFoundError("InstallmentContract", str(contract_id))
         if contract.status not in _REVERSIBLE_STATUSES:
             raise InstallmentActivationFailedError(
                 f"Installment contract '{contract_id}' is {contract.status!r}; "
-                "collections may only be recorded against ACTIVE or DEFAULTED "
-                "contracts.",
+                "this operation may only be performed against ACTIVE or "
+                "DEFAULTED contracts.",
                 str(contract_id),
             )
 
@@ -262,13 +304,13 @@ class InstallmentCollectionService:
                 company_id,
                 "InstallmentContract",
                 contract.id,
-                action="COLLECTED",
+                action=audit_action,
                 actor_id=actor_id,
                 after={"amount": str(amount), "payment_method": payment_method},
             )
             self._outbox.create(
                 OutboxRecord(
-                    event_type="installment.collected",
+                    event_type=outbox_event_type,
                     aggregate_id=str(contract.id),
                     aggregate_type="InstallmentContract",
                     payload={
@@ -341,7 +383,7 @@ class InstallmentCollectionService:
                 company_id,
                 "InstallmentContract",
                 contract.id,
-                action="COLLECTION_PENDING_APPROVAL",
+                action=pending_approval_audit_action,
                 actor_id=actor_id,
                 after={
                     "amount": str(amount),

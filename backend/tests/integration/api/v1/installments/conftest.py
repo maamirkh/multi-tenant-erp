@@ -55,6 +55,9 @@ from modules.installments.repositories.allocation_reference import (
     InstallmentAllocationReferenceRepository,
 )
 from modules.installments.repositories.audit import InstallmentAuditLogRepository
+from modules.installments.repositories.configuration import (
+    InstallmentConfigurationRepository,
+)
 from modules.installments.repositories.contract import InstallmentContractRepository
 from modules.installments.repositories.late_charge import (
     InstallmentLateChargeRepository,
@@ -67,6 +70,9 @@ from modules.installments.services.audit_service import InstallmentAuditService
 from modules.installments.services.collection_service import (
     InstallmentCollectionService,
 )
+from modules.installments.services.configuration_service import (
+    InstallmentConfigurationService,
+)
 from modules.installments.services.contract_service import InstallmentContractService
 from modules.installments.services.delinquency_service import (
     InstallmentDelinquencyService,
@@ -76,6 +82,9 @@ from modules.installments.services.idempotency_service import (
 )
 from modules.installments.services.outstanding_service import (
     InstallmentOutstandingService,
+)
+from modules.installments.services.settlement_service import (
+    InstallmentSettlementService,
 )
 from tests.integration.migrations.conftest import (  # noqa: F401
     alembic_upgrade,
@@ -173,6 +182,36 @@ def build_delinquency_service(db_session: Session) -> InstallmentDelinquencyServ
             db=db_session, audit_repo=InstallmentAuditLogRepository(db_session)
         ),
         outbox_repo=EventOutboxRepository(db_session),
+    )
+
+
+def build_settlement_service(db_session: Session) -> InstallmentSettlementService:
+    ar_service = build_ar_service(db_session, with_sales_sync=False)
+    payment_service = build_payment_service(db_session)
+    allocation_engine = build_allocation_engine(db_session)
+    gateway = AccountingIntegrationGateway(
+        ar_service=ar_service,
+        payment_service=payment_service,
+        allocation_engine=allocation_engine,
+    )
+    outstanding_service = InstallmentOutstandingService(
+        schedule_repo=InstallmentScheduleRepository(db_session),
+        accounting_gateway=gateway,
+        allocation_ref_repo=InstallmentAllocationReferenceRepository(db_session),
+        late_charge_repo=InstallmentLateChargeRepository(db_session),
+    )
+    return InstallmentSettlementService(
+        db=db_session,
+        contract_repo=InstallmentContractRepository(db_session),
+        outstanding_service=outstanding_service,
+        collection_service=build_collection_service(db_session),
+        configuration_service=InstallmentConfigurationService(
+            repo=InstallmentConfigurationRepository(db_session)
+        ),
+        idempotency_service=InstallmentIdempotencyService(db_session),
+        audit_service=InstallmentAuditService(
+            db=db_session, audit_repo=InstallmentAuditLogRepository(db_session)
+        ),
     )
 
 

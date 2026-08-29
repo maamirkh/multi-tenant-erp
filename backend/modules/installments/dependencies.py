@@ -76,6 +76,9 @@ from modules.installments.services.sales_read_gateway import (
     SalesCustomerReadGateway,
     SalesInvoiceReadGateway,
 )
+from modules.installments.services.settlement_service import (
+    InstallmentSettlementService,
+)
 
 # ---------------------------------------------------------------------------
 # Repository factories
@@ -367,6 +370,36 @@ def get_installment_delinquency_service(
         accounting_gateway=accounting_gateway,
         audit_service=audit_service,
         outbox_repo=outbox_repo,
+    )
+
+
+def get_installment_settlement_service(
+    db: Session = Depends(get_db),
+    contract_repo: InstallmentContractRepository = Depends(
+        get_installment_contract_repo
+    ),
+    outstanding_service: InstallmentOutstandingService = Depends(
+        get_installment_outstanding_service
+    ),
+    collection_service: InstallmentCollectionService = Depends(
+        get_installment_collection_service
+    ),
+    configuration_service: InstallmentConfigurationService = Depends(
+        get_installment_configuration_service
+    ),
+    idempotency_service: InstallmentIdempotencyService = Depends(
+        get_installment_idempotency_service
+    ),
+    audit_service: InstallmentAuditService = Depends(get_installment_audit_service),
+) -> InstallmentSettlementService:
+    return InstallmentSettlementService(
+        db=db,
+        contract_repo=contract_repo,
+        outstanding_service=outstanding_service,
+        collection_service=collection_service,
+        configuration_service=configuration_service,
+        idempotency_service=idempotency_service,
+        audit_service=audit_service,
     )
 
 

@@ -49,6 +49,7 @@ specs/010-installments/contracts/installments-api.yaml.
 from __future__ import annotations
 
 import math
+from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Path, Query, status
@@ -69,6 +70,7 @@ from modules.installments.dependencies import (
     get_installment_eligibility_service,
     get_installment_plan_template_service,
     get_installment_quote_service,
+    get_installment_settlement_service,
     get_installments_feature_flag_service,
 )
 from modules.installments.exceptions import InstallmentNotFoundError
@@ -99,6 +101,11 @@ from modules.installments.schemas.schedule import (
     InstallmentQuoteRequest,
     InstallmentScheduleRead,
 )
+from modules.installments.schemas.settlement import (
+    InstallmentSettlementExecuteRequest,
+    InstallmentSettlementQuoteRead,
+    InstallmentSettlementQuoteRequest,
+)
 from modules.installments.services.collection_service import (
     InstallmentCollectionService,
 )
@@ -119,6 +126,9 @@ from modules.installments.services.plan_template_service import (
     InstallmentPlanTemplateService,
 )
 from modules.installments.services.quote_service import InstallmentQuoteService
+from modules.installments.services.settlement_service import (
+    InstallmentSettlementService,
+)
 from modules.users_roles.constants import ADMIN_RANK
 from modules.users_roles.dependencies import require_rank
 
@@ -595,6 +605,74 @@ async def reverse_collection(
     return StandardResponse(
         data=InstallmentCollectionResultRead.model_validate(result),
         message="Installment collection reversed.",
+        meta=_meta(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Settlement (Phase 9, plan.md §16.1: installments.settlement.execute,
+# SERVICING). Quote generation is read-only/non-idempotent (FR-INST-192);
+# execution is idempotency-protected (plan.md §20) via the client-supplied
+# ``Idempotency-Key`` header, same as Activation/Collections.
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/contracts/{contractId}/settlement/quote",
+    response_model=StandardResponse[InstallmentSettlementQuoteRead],
+    summary="Generate a reproducible early-settlement quote (non-mutating, still audited)",
+)
+async def generate_settlement_quote(
+    body: InstallmentSettlementQuoteRequest,
+    company_id: UUID = Path(..., description="Company identifier"),
+    contract_id: UUID = Path(..., alias="contractId"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentSettlementService = Depends(get_installment_settlement_service),
+) -> StandardResponse[InstallmentSettlementQuoteRead]:
+    _require_permission(db, company_id, current_user, "installments.settlement.execute")
+    quote = svc.generate_quote(
+        company_id,
+        contract_id,
+        body.as_of_date or date.today(),
+        actor_id=current_user.user_id,
+    )
+    return StandardResponse(
+        data=InstallmentSettlementQuoteRead.model_validate(quote),
+        message="Installment settlement quote generated.",
+        meta=_meta(),
+    )
+
+
+@router.post(
+    "/contracts/{contractId}/settlement/execute",
+    response_model=StandardResponse[InstallmentContractRead],
+    summary="Execute settlement against an authoritative payment already recorded",
+)
+async def execute_settlement(
+    body: InstallmentSettlementExecuteRequest,
+    company_id: UUID = Path(..., description="Company identifier"),
+    contract_id: UUID = Path(..., alias="contractId"),
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentSettlementService = Depends(get_installment_settlement_service),
+) -> StandardResponse[InstallmentContractRead]:
+    _require_permission(db, company_id, current_user, "installments.settlement.execute")
+    contract = svc.execute(
+        company_id,
+        contract_id,
+        body.quoted_amount,
+        body.quoted_as_of_date,
+        idempotency_key,
+        current_user.user_id,
+        payment_method=body.payment_method,
+        bank_account_id=body.bank_account_id,
+        cash_account_id=body.cash_account_id,
+    )
+    return StandardResponse(
+        data=InstallmentContractRead.model_validate(contract),
+        message="Installment settlement executed.",
         meta=_meta(),
     )
 

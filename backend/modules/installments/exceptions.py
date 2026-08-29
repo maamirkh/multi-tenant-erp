@@ -259,6 +259,46 @@ class InstallmentLateChargeAlreadyWaivedError(ConflictException):
         self.code = "LATE_CHARGE_ALREADY_WAIVED"
 
 
+class InstallmentSettlementNotAllowedError(ConflictException):
+    """Raised by ``InstallmentSettlementService`` when the contract is not
+    in a settleable status (``ACTIVE``/``DEFAULTED`` only, FR-INST-356) or
+    has no outstanding balance left to settle."""
+
+    def __init__(self, message: str, contract_id: str | None = None) -> None:
+        super().__init__(message=message, details={"contract_id": contract_id})
+        self.code = "SETTLEMENT_NOT_ALLOWED"
+
+
+class InstallmentSettlementQuoteStaleError(ConflictException):
+    """Raised by ``InstallmentSettlementService.execute()`` when the
+    contract's live outstanding balance no longer matches the amount the
+    client quoted (spec §28 edge case) — settlement is only realized by
+    an authoritative payment against the *current* balance, never
+    against a quote whose underlying contract state has since changed
+    (FR-INST-190–192); the caller must generate a new quote."""
+
+    def __init__(
+        self,
+        quoted_amount: str,
+        current_amount: str,
+        contract_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message=(
+                f"Settlement quote for installment contract '{contract_id or '?'}' "
+                f"is stale: quoted amount '{quoted_amount}' no longer matches the "
+                f"current outstanding balance '{current_amount}'. Generate a new "
+                "settlement quote."
+            ),
+            details={
+                "quoted_amount": quoted_amount,
+                "current_amount": current_amount,
+                "contract_id": contract_id,
+            },
+        )
+        self.code = "SETTLEMENT_QUOTE_STALE"
+
+
 class InstallmentIdempotencyConflictError(ConflictException):
     """Raised by ``InstallmentIdempotencyService`` (plan.md §20.2/§20.3)
     when a duplicate request cannot be resolved as a clean replay.

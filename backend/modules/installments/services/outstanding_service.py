@@ -25,10 +25,21 @@ Accounting gateway's read-only ``get_ar_transaction()`` (never a cached/
 duplicated balance): a charge counts as still-outstanding unless its
 ``ARTransaction`` is missing, fully paid (``outstanding_amount <= 0``),
 or ``status == "WRITTEN_OFF"``.
+
+**[Phase 9 extension applied]** ``compute_outstanding_breakdown()`` (T154)
+exposes the same two live sources as amounts rather than a pass/fail
+guard, so ``InstallmentSettlementService.generate_quote()`` can quote a
+settlement figure that is provably identical to what ``complete()``
+would itself require to be zero — no second, competing computation of
+"what does this contract still owe" exists anywhere in the module.
+``assert_zero_outstanding()`` is now a thin wrapper over this single
+computation, preserving its exact prior raise semantics (schedule
+checked first, then the first open late charge found).
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
 from uuid import UUID
 
@@ -43,6 +54,20 @@ from modules.installments.repositories.schedule import InstallmentScheduleReposi
 from modules.installments.services.accounting_gateway import (
     AccountingIntegrationGateway,
 )
+
+
+@dataclass(frozen=True)
+class OutstandingBreakdown:
+    """The live, authoritative outstanding balance for a contract, split
+    by source — never a cached/duplicated total (plan.md §9.3)."""
+
+    schedule_outstanding: Decimal
+    late_charge_outstanding: Decimal
+    first_open_late_charge_ar_transaction_id: UUID | None = None
+
+    @property
+    def total_outstanding(self) -> Decimal:
+        return self.schedule_outstanding + self.late_charge_outstanding
 
 
 class InstallmentOutstandingService:
@@ -61,21 +86,26 @@ class InstallmentOutstandingService:
         self._allocation_refs = allocation_ref_repo
         self._late_charges = late_charge_repo
 
-    def assert_zero_outstanding(self, company_id: UUID, contract_id: UUID) -> None:
-        """Raise ``InstallmentOutstandingBalanceRemainsError`` if the
-        contract has any authoritative outstanding obligation remaining;
-        return silently if it is genuinely fully settled.
+    def compute_outstanding_breakdown(
+        self, company_id: UUID, contract_id: UUID
+    ) -> OutstandingBreakdown:
+        """Live-read the full outstanding breakdown for a contract — the
+        single computation both ``assert_zero_outstanding()`` (a pass/
+        fail guard) and ``InstallmentSettlementService.generate_quote()``/
+        ``execute()`` (an amount) are built on top of.
 
-        Checks, in order:
+        Sources, both live, neither cached:
         1. Schedule outstanding — the sum of every active schedule
            line's ``scheduled_amount`` minus its net allocated amount
            (``InstallmentAllocationReference``, non-reversal minus
            reversal, T118).
-        2. Late-charge outstanding — every linked, non-waived
-           ``InstallmentLateCharge``'s live
-           ``ARTransaction.outstanding_amount``/``status`` via the
-           Accounting gateway (T140).
+        2. Late-charge outstanding — the sum, across every linked,
+           non-waived ``InstallmentLateCharge``, of its live
+           ``ARTransaction.outstanding_amount`` via the Accounting
+           gateway (T140) — excluding any charge whose ``ARTransaction``
+           is missing, ``WRITTEN_OFF``, or already fully paid.
         """
+        schedule_outstanding = Decimal("0")
         version = self._schedule_repo.get_active_version(company_id, contract_id)
         if version is not None:
             lines = self._schedule_repo.get_lines(company_id, version.id)
@@ -96,11 +126,9 @@ class InstallmentOutstandingService:
                 ),
                 Decimal("0"),
             )
-            if schedule_outstanding > Decimal("0"):
-                raise InstallmentOutstandingBalanceRemainsError(
-                    kind="SCHEDULE", contract_id=str(contract_id)
-                )
 
+        late_charge_outstanding = Decimal("0")
+        first_open_late_charge_ar_transaction_id: UUID | None = None
         if self._late_charges is not None:
             for charge in self._late_charges.list_for_contract(company_id, contract_id):
                 if charge.waived_at is not None:
@@ -116,8 +144,41 @@ class InstallmentOutstandingService:
                     ar_transaction.status != "WRITTEN_OFF"
                     and ar_transaction.outstanding_amount > Decimal("0")
                 ):
-                    raise InstallmentOutstandingBalanceRemainsError(
-                        kind="LATE_CHARGE",
-                        contract_id=str(contract_id),
-                        ar_transaction_id=str(charge.accounting_ar_transaction_id),
-                    )
+                    late_charge_outstanding += ar_transaction.outstanding_amount
+                    if first_open_late_charge_ar_transaction_id is None:
+                        first_open_late_charge_ar_transaction_id = (
+                            charge.accounting_ar_transaction_id
+                        )
+
+        return OutstandingBreakdown(
+            schedule_outstanding=schedule_outstanding,
+            late_charge_outstanding=late_charge_outstanding,
+            first_open_late_charge_ar_transaction_id=(
+                first_open_late_charge_ar_transaction_id
+            ),
+        )
+
+    def assert_zero_outstanding(self, company_id: UUID, contract_id: UUID) -> None:
+        """Raise ``InstallmentOutstandingBalanceRemainsError`` if the
+        contract has any authoritative outstanding obligation remaining;
+        return silently if it is genuinely fully settled.
+
+        Preserves the exact prior raise order (schedule checked before
+        late charges) even though ``compute_outstanding_breakdown()``
+        itself computes both eagerly — the *order in which this method
+        raises* is the only externally-observable behavior, and it must
+        not regress.
+        """
+        breakdown = self.compute_outstanding_breakdown(company_id, contract_id)
+        if breakdown.schedule_outstanding > Decimal("0"):
+            raise InstallmentOutstandingBalanceRemainsError(
+                kind="SCHEDULE", contract_id=str(contract_id)
+            )
+        if breakdown.late_charge_outstanding > Decimal("0"):
+            raise InstallmentOutstandingBalanceRemainsError(
+                kind="LATE_CHARGE",
+                contract_id=str(contract_id),
+                ar_transaction_id=str(
+                    breakdown.first_open_late_charge_ar_transaction_id
+                ),
+            )
