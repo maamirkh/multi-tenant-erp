@@ -17,13 +17,17 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
+from modules.accounting.models.ar import ARTransaction
 from modules.accounting.models.payments import Payment, PaymentAllocationLine
 from modules.installments.exceptions import (
     InstallmentCancellationNotAllowedError,
     InstallmentCancellationPaymentReferenceRequiredError,
+    InstallmentIdempotencyConflictError,
     InstallmentIllegalTransitionError,
 )
+from modules.installments.models.audit import InstallmentAuditLog
 from modules.installments.models.contract import InstallmentContract
+from modules.installments.models.idempotency import InstallmentIdempotencyKey
 from tests.integration.api.v1.installments.conftest import (
     build_active_contract_with_schedule,
     build_collection_service,
@@ -259,3 +263,190 @@ class TestCancelFinancialActivityPath:
             db_session.query(InstallmentContract).filter_by(id=ctx["contract"].id).one()
         )
         assert refreshed.status == "ACTIVE"
+
+
+class TestCancelFinancialActivityIdempotency:
+    """[Phase-10 closure evidence] Direct proof of replay/conflict
+    behavior for ``contract.cancel``'s FINANCIAL-ACTIVITY path (down-
+    payment reversal via ``reverse_payment()``) — not the free/DRAFT
+    path already covered by ``TestCancelFreePath``."""
+
+    def test_replay_with_same_key_does_not_repeat_the_payment_reversal(
+        self, db_session
+    ) -> None:
+        ctx = build_active_contract_with_schedule(
+            db_session,
+            installment_count=1,
+            installment_amount=Decimal("100.00"),
+            down_payment_amount=Decimal("50.00"),
+        )
+        assert ctx["down_payment"] is not None
+        svc = build_contract_service(db_session)
+        idem_key = str(uuid.uuid4())
+
+        first = svc.cancel(
+            ctx["company_id"],
+            ctx["contract"].id,
+            "Customer request",
+            idempotency_key=idem_key,
+            actor_id=None,
+            payment_id=ctx["down_payment"].id,
+        )
+        assert first.status == "CANCELLED"
+
+        invoice_ar_after_first = (
+            db_session.execute(
+                select(ARTransaction).where(ARTransaction.id == ctx["invoice"].id)
+            )
+            .scalars()
+            .one()
+        )
+        outstanding_after_first = invoice_ar_after_first.outstanding_amount
+        # Invoice total is contractual_total (100.00) + down_payment
+        # (50.00) = 150.00; the down payment reduced outstanding to
+        # 100.00 at fixture setup, so a correct single reversal restores
+        # it to the full 150.00 — never negative, never re-added twice.
+        assert outstanding_after_first == Decimal("150.00")
+
+        remaining_lines_after_first = (
+            db_session.execute(
+                select(PaymentAllocationLine).where(
+                    PaymentAllocationLine.payment_id == ctx["down_payment"].id,
+                    PaymentAllocationLine.is_deleted == False,  # noqa: E712
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert remaining_lines_after_first == []
+
+        audit_after_first = (
+            db_session.execute(
+                select(InstallmentAuditLog).where(
+                    InstallmentAuditLog.entity_id == ctx["contract"].id,
+                    InstallmentAuditLog.action == "CANCELLED",
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(audit_after_first) == 1
+
+        # Replay — same key, same payment_id, same reason.
+        second = svc.cancel(
+            ctx["company_id"],
+            ctx["contract"].id,
+            "Customer request",
+            idempotency_key=idem_key,
+            actor_id=None,
+            payment_id=ctx["down_payment"].id,
+        )
+        assert second.id == first.id
+        assert second.status == "CANCELLED"
+
+        # The invoice's outstanding balance is UNCHANGED by the replay —
+        # if the reversal had been repeated, this would have been
+        # restored a second time (150.00 instead of 100.00), silently
+        # crediting the customer twice.
+        invoice_ar_after_replay = (
+            db_session.execute(
+                select(ARTransaction).where(ARTransaction.id == ctx["invoice"].id)
+            )
+            .scalars()
+            .one()
+        )
+        assert invoice_ar_after_replay.outstanding_amount == outstanding_after_first
+
+        # No new allocation lines were created or removed a second time.
+        remaining_lines_after_replay = (
+            db_session.execute(
+                select(PaymentAllocationLine).where(
+                    PaymentAllocationLine.payment_id == ctx["down_payment"].id,
+                    PaymentAllocationLine.is_deleted == False,  # noqa: E712
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert remaining_lines_after_replay == []
+
+        audit_after_replay = (
+            db_session.execute(
+                select(InstallmentAuditLog).where(
+                    InstallmentAuditLog.entity_id == ctx["contract"].id,
+                    InstallmentAuditLog.action == "CANCELLED",
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(audit_after_replay) == 1, "replay must create ZERO new audit rows"
+
+        reservations = (
+            db_session.execute(
+                select(InstallmentIdempotencyKey)
+                .where(InstallmentIdempotencyKey.company_id == ctx["company_id"])
+                .where(InstallmentIdempotencyKey.operation == "contract.cancel")
+            )
+            .scalars()
+            .all()
+        )
+        assert len(reservations) == 1
+        assert reservations[0].status == "COMPLETED"
+
+    def test_conflict_with_different_reason_makes_no_additional_financial_mutation(
+        self, db_session
+    ) -> None:
+        ctx = build_active_contract_with_schedule(
+            db_session,
+            installment_count=1,
+            installment_amount=Decimal("100.00"),
+            down_payment_amount=Decimal("50.00"),
+        )
+        svc = build_contract_service(db_session)
+        idem_key = str(uuid.uuid4())
+
+        svc.cancel(
+            ctx["company_id"],
+            ctx["contract"].id,
+            "Reason A",
+            idempotency_key=idem_key,
+            actor_id=None,
+            payment_id=ctx["down_payment"].id,
+        )
+        invoice_ar_after_first = (
+            db_session.execute(
+                select(ARTransaction).where(ARTransaction.id == ctx["invoice"].id)
+            )
+            .scalars()
+            .one()
+        )
+        outstanding_after_first = invoice_ar_after_first.outstanding_amount
+
+        # Same key, a DIFFERENT reason -> different fingerprint.
+        with pytest.raises(InstallmentIdempotencyConflictError) as exc_info:
+            svc.cancel(
+                ctx["company_id"],
+                ctx["contract"].id,
+                "Reason B — a different request",
+                idempotency_key=idem_key,
+                actor_id=None,
+                payment_id=ctx["down_payment"].id,
+            )
+        assert exc_info.value.code == "IDEMPOTENCY_PAYLOAD_MISMATCH"
+
+        invoice_ar_after_conflict = (
+            db_session.execute(
+                select(ARTransaction).where(ARTransaction.id == ctx["invoice"].id)
+            )
+            .scalars()
+            .one()
+        )
+        assert (
+            invoice_ar_after_conflict.outstanding_amount == outstanding_after_first
+        ), "a rejected conflicting request must make ZERO additional financial mutation"
+
+        refreshed = (
+            db_session.query(InstallmentContract).filter_by(id=ctx["contract"].id).one()
+        )
+        assert refreshed.status == "CANCELLED"  # unchanged from the first call

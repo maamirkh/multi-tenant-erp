@@ -18,9 +18,14 @@ from sqlalchemy.orm import sessionmaker
 from core.events.outbox import EventOutboxRepository
 from modules.accounting.dependencies import build_ar_service, build_payment_service
 from modules.accounting.models.ar import ARTransaction
+from modules.accounting.models.gl import JournalEntry
+from modules.accounting.models.payments import Payment
 from modules.installments.exceptions import (
     InstallmentActivationFailedError,
     InstallmentIllegalTransitionError,
+)
+from modules.installments.models.allocation_reference import (
+    InstallmentAllocationReference,
 )
 from modules.installments.models.contract import InstallmentContract
 from modules.installments.repositories.allocation_reference import (
@@ -91,6 +96,7 @@ class TestWriteoffVsCollectionRace:
         company_id = ctx["company_id"]
         contract_id = ctx["contract"].id
         bank_account_id = ctx["bank_account"].id
+        customer_id = ctx["customer_id"]
 
         session_factory = sessionmaker(bind=pg_engine)
         session_a = session_factory()
@@ -188,5 +194,105 @@ class TestWriteoffVsCollectionRace:
             else:
                 assert ar_transaction.status == "PAID"
                 assert ar_transaction.outstanding_amount == Decimal("0")
+
+            # --- Fully unconditional, company-wide exactly-once proof ---
+            # Mirrors Phase 9's test_settlement_concurrency.py standard:
+            # none of these queries filter by a winning row's own id —
+            # a second row left behind by a genuinely broken lock (rather
+            # than a cleanly rolled-back loser) cannot hide from them.
+            # Only company/customer_id plus the minimal authoritative
+            # type/source discriminators are used.
+            #
+            # Collection creates exactly 1 new Payment + 1 PAYMENT-sourced
+            # JournalEntry + 1 payment-sourced credit ARTransaction + 1
+            # InstallmentAllocationReference. Write-off creates NEW rows
+            # in none of those — it mutates the existing invoice
+            # ARTransaction in place and posts exactly 1 MANUAL-sourced
+            # JournalEntry (source_document_type="ARTransaction").
+            all_payments_for_company = (
+                verify_session.execute(
+                    select(Payment)
+                    .where(Payment.company_id == company_id)
+                    .where(Payment.party_id == customer_id)
+                )
+                .scalars()
+                .all()
+            )
+            all_refs_for_company = (
+                verify_session.execute(
+                    select(InstallmentAllocationReference).where(
+                        InstallmentAllocationReference.company_id == company_id
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            all_payment_journal_entries = (
+                verify_session.execute(
+                    select(JournalEntry)
+                    .where(JournalEntry.company_id == company_id)
+                    .where(JournalEntry.posting_source == "PAYMENT")
+                )
+                .scalars()
+                .all()
+            )
+            all_writeoff_journal_entries = (
+                verify_session.execute(
+                    select(JournalEntry)
+                    .where(JournalEntry.company_id == company_id)
+                    .where(JournalEntry.posting_source == "MANUAL")
+                    .where(JournalEntry.source_document_type == "ARTransaction")
+                    .where(JournalEntry.source_document_id == ar_transaction_id)
+                )
+                .scalars()
+                .all()
+            )
+            all_payment_credit_ar_transactions = (
+                verify_session.execute(
+                    select(ARTransaction)
+                    .where(ARTransaction.company_id == company_id)
+                    .where(ARTransaction.transaction_type == "PAYMENT")
+                    .where(ARTransaction.source_document_type == "Payment")
+                )
+                .scalars()
+                .all()
+            )
+
+            if refreshed_contract.status == "WRITTEN_OFF":
+                assert (
+                    len(all_payments_for_company) == 0
+                ), f"write-off must create ZERO Payment rows, found {len(all_payments_for_company)}"
+                assert (
+                    len(all_refs_for_company) == 0
+                ), f"write-off must create ZERO InstallmentAllocationReference rows, found {len(all_refs_for_company)}"
+                assert (
+                    len(all_payment_journal_entries) == 0
+                ), f"write-off must create ZERO PAYMENT-sourced JournalEntry rows, found {len(all_payment_journal_entries)}"
+                assert (
+                    len(all_payment_credit_ar_transactions) == 0
+                ), f"write-off must create ZERO payment-sourced ARTransaction rows, found {len(all_payment_credit_ar_transactions)}"
+                assert (
+                    len(all_writeoff_journal_entries) == 1
+                ), f"expected exactly 1 write-off JournalEntry, found {len(all_writeoff_journal_entries)}"
+            else:
+                assert (
+                    len(all_payments_for_company) == 1
+                ), f"expected exactly 1 Payment company-wide, found {len(all_payments_for_company)}"
+                assert (
+                    len(all_refs_for_company) == 1
+                ), f"expected exactly 1 InstallmentAllocationReference, found {len(all_refs_for_company)}"
+                assert (
+                    len(all_payment_journal_entries) == 1
+                ), f"expected exactly 1 payment-sourced JournalEntry, found {len(all_payment_journal_entries)}"
+                assert (
+                    len(all_payment_credit_ar_transactions) == 1
+                ), f"expected exactly 1 payment-sourced ARTransaction, found {len(all_payment_credit_ar_transactions)}"
+                assert (
+                    len(all_writeoff_journal_entries) == 0
+                ), f"a successful collection must leave ZERO write-off JournalEntry rows, found {len(all_writeoff_journal_entries)}"
+                assert (
+                    all_payments_for_company[0].id
+                    == all_refs_for_company[0].accounting_payment_id
+                )
         finally:
             verify_session.close()

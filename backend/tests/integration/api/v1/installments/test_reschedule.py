@@ -21,15 +21,24 @@ from __future__ import annotations
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
+from unittest.mock import patch
 
 import pytest
+from sqlalchemy import select
 
+from core.events.outbox import OutboxRecord
 from modules.installments.exceptions import (
+    InstallmentIdempotencyConflictError,
     InstallmentRescheduleRestructuringNotAllowedError,
     InstallmentRescheduleSelfApprovalNotAllowedError,
 )
+from modules.installments.models.audit import InstallmentAuditLog
 from modules.installments.models.contract import InstallmentContract
-from modules.installments.models.schedule import InstallmentScheduleVersion
+from modules.installments.models.idempotency import InstallmentIdempotencyKey
+from modules.installments.models.schedule import (
+    InstallmentScheduleLine,
+    InstallmentScheduleVersion,
+)
 from modules.installments.repositories.allocation_reference import (
     InstallmentAllocationReferenceRepository,
 )
@@ -284,3 +293,315 @@ class TestRescheduleRejectsRestructuring:
             requested_by=uuid.uuid4(),
         )
         assert updated.active_schedule_version_id != ctx["schedule_version"].id
+
+
+class TestRescheduleIdempotency:
+    """[Phase-10 closure evidence] Direct proof of replay/conflict/
+    forced-failure behavior for ``contract.reschedule`` — the REAL
+    ``reschedule()`` command, not code inspection of its REPLAY branch."""
+
+    def test_replay_with_same_key_creates_zero_additional_versions_or_effects(
+        self, db_session
+    ) -> None:
+        ctx = build_active_contract_with_schedule(
+            db_session, installment_count=1, installment_amount=Decimal("500.00")
+        )
+        svc = build_rescheduling_service(db_session)
+        idem_key = str(uuid.uuid4())
+        terms = RescheduleTerms(first_due_date=date.today() + timedelta(days=30))
+        requested_by = uuid.uuid4()
+        actor_id = uuid.uuid4()
+
+        first = svc.reschedule(
+            ctx["company_id"],
+            ctx["contract"].id,
+            terms,
+            "reason",
+            idempotency_key=idem_key,
+            actor_id=actor_id,
+            requested_by=requested_by,
+        )
+
+        versions_after_first = (
+            db_session.execute(
+                select(InstallmentScheduleVersion).where(
+                    InstallmentScheduleVersion.contract_id == ctx["contract"].id
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(versions_after_first) == 2  # original v1 + the one new v2
+        lines_after_first = (
+            db_session.execute(
+                select(InstallmentScheduleLine).where(
+                    InstallmentScheduleLine.company_id == ctx["company_id"]
+                )
+            )
+            .scalars()
+            .all()
+        )
+        line_count_after_first = len(lines_after_first)
+        audit_after_first = (
+            db_session.execute(
+                select(InstallmentAuditLog).where(
+                    InstallmentAuditLog.entity_id == ctx["contract"].id,
+                    InstallmentAuditLog.action == "RESCHEDULED",
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(audit_after_first) == 1
+        outbox_after_first = (
+            db_session.query(OutboxRecord)
+            .filter_by(aggregate_id=str(ctx["contract"].id))
+            .all()
+        )
+        assert len(outbox_after_first) == 1
+        reservations_after_first = (
+            db_session.execute(
+                select(InstallmentIdempotencyKey)
+                .where(InstallmentIdempotencyKey.company_id == ctx["company_id"])
+                .where(InstallmentIdempotencyKey.operation == "contract.reschedule")
+            )
+            .scalars()
+            .all()
+        )
+        assert len(reservations_after_first) == 1
+        assert reservations_after_first[0].status == "COMPLETED"
+
+        # Replay — the exact same call, same key.
+        second = svc.reschedule(
+            ctx["company_id"],
+            ctx["contract"].id,
+            terms,
+            "reason",
+            idempotency_key=idem_key,
+            actor_id=actor_id,
+            requested_by=requested_by,
+        )
+        assert second.id == first.id
+        assert second.active_schedule_version_id == first.active_schedule_version_id
+
+        versions_after_replay = (
+            db_session.execute(
+                select(InstallmentScheduleVersion).where(
+                    InstallmentScheduleVersion.contract_id == ctx["contract"].id
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(versions_after_replay) == 2, "replay must create ZERO new versions"
+
+        lines_after_replay = (
+            db_session.execute(
+                select(InstallmentScheduleLine).where(
+                    InstallmentScheduleLine.company_id == ctx["company_id"]
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert (
+            len(lines_after_replay) == line_count_after_first
+        ), "replay must create ZERO new schedule lines"
+
+        audit_after_replay = (
+            db_session.execute(
+                select(InstallmentAuditLog).where(
+                    InstallmentAuditLog.entity_id == ctx["contract"].id,
+                    InstallmentAuditLog.action == "RESCHEDULED",
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(audit_after_replay) == 1, "replay must create ZERO new audit rows"
+
+        outbox_after_replay = (
+            db_session.query(OutboxRecord)
+            .filter_by(aggregate_id=str(ctx["contract"].id))
+            .all()
+        )
+        assert len(outbox_after_replay) == 1, "replay must create ZERO new outbox rows"
+
+        reservations_after_replay = (
+            db_session.execute(
+                select(InstallmentIdempotencyKey)
+                .where(InstallmentIdempotencyKey.company_id == ctx["company_id"])
+                .where(InstallmentIdempotencyKey.operation == "contract.reschedule")
+            )
+            .scalars()
+            .all()
+        )
+        assert (
+            len(reservations_after_replay) == 1
+        ), "replay must create ZERO new idempotency reservations"
+
+    def test_conflict_with_different_terms_creates_no_additional_version(
+        self, db_session
+    ) -> None:
+        ctx = build_active_contract_with_schedule(
+            db_session, installment_count=1, installment_amount=Decimal("500.00")
+        )
+        svc = build_rescheduling_service(db_session)
+        idem_key = str(uuid.uuid4())
+
+        svc.reschedule(
+            ctx["company_id"],
+            ctx["contract"].id,
+            RescheduleTerms(first_due_date=date.today() + timedelta(days=30)),
+            "reason",
+            idempotency_key=idem_key,
+            actor_id=uuid.uuid4(),
+            requested_by=uuid.uuid4(),
+        )
+        versions_before_conflict = (
+            db_session.execute(
+                select(InstallmentScheduleVersion).where(
+                    InstallmentScheduleVersion.contract_id == ctx["contract"].id
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(versions_before_conflict) == 2
+
+        # Same key, a DIFFERENT first_due_date -> different fingerprint.
+        with pytest.raises(InstallmentIdempotencyConflictError) as exc_info:
+            svc.reschedule(
+                ctx["company_id"],
+                ctx["contract"].id,
+                RescheduleTerms(first_due_date=date.today() + timedelta(days=60)),
+                "reason",
+                idempotency_key=idem_key,
+                actor_id=uuid.uuid4(),
+                requested_by=uuid.uuid4(),
+            )
+        assert exc_info.value.code == "IDEMPOTENCY_PAYLOAD_MISMATCH"
+
+        versions_after_conflict = (
+            db_session.execute(
+                select(InstallmentScheduleVersion).where(
+                    InstallmentScheduleVersion.contract_id == ctx["contract"].id
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert (
+            len(versions_after_conflict) == 2
+        ), "a rejected conflicting request must create ZERO additional versions"
+
+    def test_forced_failure_before_commit_leaves_nothing_committed_and_retry_succeeds(
+        self, db_session
+    ) -> None:
+        ctx = build_active_contract_with_schedule(
+            db_session, installment_count=1, installment_amount=Decimal("500.00")
+        )
+        svc = build_rescheduling_service(db_session)
+        idem_key = str(uuid.uuid4())
+        original_version_id = ctx["schedule_version"].id
+
+        class _InjectedFailure(Exception):
+            pass
+
+        # The LEAST invasive technique consistent with this repo's own
+        # atomicity-test patterns (T136/T152/T184's replicated-sequence
+        # style, adapted here since reschedule() is a single self-
+        # contained method with one real commit as its last statement):
+        # let the real db.commit() run normally on every call EXCEPT
+        # this one — patch the bound method to raise instead, so
+        # everything reschedule() staged (new version+lines, superseded
+        # prior version, contract.active_schedule_version_id, audit,
+        # outbox, idempotency completion) is flushed but never committed.
+        with patch.object(
+            db_session, "commit", side_effect=_InjectedFailure("simulated failure")
+        ):
+            with pytest.raises(_InjectedFailure):
+                svc.reschedule(
+                    ctx["company_id"],
+                    ctx["contract"].id,
+                    RescheduleTerms(first_due_date=date.today() + timedelta(days=30)),
+                    "reason",
+                    idempotency_key=idem_key,
+                    actor_id=uuid.uuid4(),
+                    requested_by=uuid.uuid4(),
+                )
+        db_session.rollback()
+
+        # Nothing committed: still exactly 1 version, still ACTIVE.
+        versions = (
+            db_session.execute(
+                select(InstallmentScheduleVersion).where(
+                    InstallmentScheduleVersion.contract_id == ctx["contract"].id
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(versions) == 1
+        assert versions[0].id == original_version_id
+        assert versions[0].status == "ACTIVE"
+
+        refreshed_contract = (
+            db_session.query(InstallmentContract).filter_by(id=ctx["contract"].id).one()
+        )
+        assert refreshed_contract.active_schedule_version_id == original_version_id
+
+        audit_rows = (
+            db_session.execute(
+                select(InstallmentAuditLog).where(
+                    InstallmentAuditLog.entity_id == ctx["contract"].id,
+                    InstallmentAuditLog.action == "RESCHEDULED",
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert audit_rows == []
+
+        outbox_rows = (
+            db_session.query(OutboxRecord)
+            .filter_by(aggregate_id=str(ctx["contract"].id))
+            .all()
+        )
+        assert outbox_rows == []
+
+        # The reservation itself is NOT stranded IN_PROGRESS — it never
+        # committed at all, so it does not exist.
+        reservations = (
+            db_session.execute(
+                select(InstallmentIdempotencyKey)
+                .where(InstallmentIdempotencyKey.company_id == ctx["company_id"])
+                .where(InstallmentIdempotencyKey.operation == "contract.reschedule")
+            )
+            .scalars()
+            .all()
+        )
+        assert reservations == []
+
+        # Retry with the SAME key, now unpatched, succeeds cleanly.
+        retried = svc.reschedule(
+            ctx["company_id"],
+            ctx["contract"].id,
+            RescheduleTerms(first_due_date=date.today() + timedelta(days=30)),
+            "reason",
+            idempotency_key=idem_key,
+            actor_id=uuid.uuid4(),
+            requested_by=uuid.uuid4(),
+        )
+        assert retried.active_schedule_version_id != original_version_id
+
+        versions_after_retry = (
+            db_session.execute(
+                select(InstallmentScheduleVersion).where(
+                    InstallmentScheduleVersion.contract_id == ctx["contract"].id
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(versions_after_retry) == 2
