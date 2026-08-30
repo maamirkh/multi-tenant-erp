@@ -13,6 +13,10 @@ from uuid import UUID
 
 from core.exceptions.base import ValidationException
 from modules.installments.exceptions import InstallmentNotFoundError
+from modules.installments.services.access_policy import (
+    InstallmentAccessPolicy,
+    InstallmentOperationClass,
+)
 from modules.installments.services.accounting_gateway import (
     AccountingIntegrationGateway,
 )
@@ -43,16 +47,24 @@ class InstallmentEligibilityService:
         invoice_gateway: SalesInvoiceReadGateway,
         customer_gateway: SalesCustomerReadGateway,
         ar_gateway: AccountingIntegrationGateway,
+        access_policy: InstallmentAccessPolicy | None = None,
     ) -> None:
         self._invoices = invoice_gateway
         self._customers = customer_gateway
         self._ar = ar_gateway
+        self._access_policy = access_policy
 
     def check_invoice_eligibility(
         self, company_id: UUID, sales_invoice_id: UUID
     ) -> EligibilityResult:
         """Raises on any ineligibility reason; returns an
         ``EligibilityResult`` only when every check passes.
+
+        Entitlement note: reachable both directly (``GET /eligibility``,
+        ORIGINATION — "new quote" is FR-INST-353's own example) and
+        internally via ``InstallmentContractService.create_draft()``/
+        ``activate()`` (which already authorize ORIGINATION themselves,
+        making this a harmless redundant check in that path, never a gap).
 
         Raises:
             InstallmentNotFoundError: the invoice does not exist for this
@@ -61,6 +73,10 @@ class InstallmentEligibilityService:
                 balance, or customer not ``ACTIVE`` — each with a
                 documented ``code``.
         """
+        if self._access_policy is not None:
+            self._access_policy.authorize(
+                company_id=company_id, operation=InstallmentOperationClass.ORIGINATION
+            )
         invoice = self._invoices.get_invoice(company_id, sales_invoice_id)
         if invoice is None:
             raise InstallmentNotFoundError("SalesInvoice", str(sales_invoice_id))

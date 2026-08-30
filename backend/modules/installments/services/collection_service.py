@@ -44,6 +44,10 @@ from modules.installments.repositories.late_charge import (
     InstallmentLateChargeRepository,
 )
 from modules.installments.repositories.schedule import InstallmentScheduleRepository
+from modules.installments.services.access_policy import (
+    InstallmentAccessPolicy,
+    InstallmentOperationClass,
+)
 from modules.installments.services.accounting_gateway import (
     AccountingIntegrationGateway,
 )
@@ -86,6 +90,7 @@ class InstallmentCollectionService:
         outbox_repo: EventOutboxRepository,
         contract_service: InstallmentContractService,
         late_charge_repo: InstallmentLateChargeRepository | None = None,
+        access_policy: InstallmentAccessPolicy | None = None,
     ) -> None:
         self.db = db
         self._contracts = contract_repo
@@ -98,6 +103,7 @@ class InstallmentCollectionService:
         self._outbox = outbox_repo
         self._contract_service = contract_service
         self._late_charges = late_charge_repo
+        self._access_policy = access_policy
 
     def _outstanding_lines(
         self, company_id: UUID, contract_id: UUID
@@ -179,6 +185,10 @@ class InstallmentCollectionService:
                 request (409).
             InstallmentFiscalPeriodLockedError: locked fiscal period (422).
         """
+        if self._access_policy is not None:
+            self._access_policy.authorize(
+                company_id=company_id, operation=InstallmentOperationClass.SERVICING
+            )
         fingerprint = hashlib.sha256(
             f"collection.create:{contract_id}:{amount}:{payment_method}".encode()
         ).hexdigest()
@@ -434,6 +444,10 @@ class InstallmentCollectionService:
             InstallmentIdempotencyConflictError: same key, different
                 request (409).
         """
+        if self._access_policy is not None:
+            self._access_policy.authorize(
+                company_id=company_id, operation=InstallmentOperationClass.SERVICING
+            )
         original_refs = self._allocation_refs.get_by_payment_id(
             company_id, collection_id
         )

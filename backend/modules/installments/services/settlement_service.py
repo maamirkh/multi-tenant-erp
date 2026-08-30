@@ -43,6 +43,10 @@ from modules.installments.exceptions import (
 )
 from modules.installments.models.contract import InstallmentContract
 from modules.installments.repositories.contract import InstallmentContractRepository
+from modules.installments.services.access_policy import (
+    InstallmentAccessPolicy,
+    InstallmentOperationClass,
+)
 from modules.installments.services.audit_service import InstallmentAuditService
 from modules.installments.services.collection_service import (
     InstallmentCollectionService,
@@ -92,12 +96,14 @@ class InstallmentSettlementService:
         configuration_service: InstallmentConfigurationService,
         idempotency_service: InstallmentIdempotencyService,
         audit_service: InstallmentAuditService,
+        access_policy: InstallmentAccessPolicy | None = None,
     ) -> None:
         self.db = db
         self._contracts = contract_repo
         self._outstanding = outstanding_service
         self._collections = collection_service
         self._configuration = configuration_service
+        self._access_policy = access_policy
         self._idempotency = idempotency_service
         self._audit = audit_service
 
@@ -134,6 +140,10 @@ class InstallmentSettlementService:
             InstallmentSettlementNotAllowedError: contract is not
                 ``ACTIVE``/``DEFAULTED``.
         """
+        if self._access_policy is not None:
+            self._access_policy.authorize(
+                company_id=company_id, operation=InstallmentOperationClass.SERVICING
+            )
         contract = self._get_settleable_contract(company_id, contract_id)
 
         breakdown = self._outstanding.compute_outstanding_breakdown(
@@ -205,6 +215,10 @@ class InstallmentSettlementService:
                 request (409).
             InstallmentFiscalPeriodLockedError: locked fiscal period (422).
         """
+        if self._access_policy is not None:
+            self._access_policy.authorize(
+                company_id=company_id, operation=InstallmentOperationClass.SERVICING
+            )
         fingerprint = hashlib.sha256(
             f"settlement.execute:{contract_id}:{quoted_amount}:"
             f"{quoted_as_of_date}".encode()

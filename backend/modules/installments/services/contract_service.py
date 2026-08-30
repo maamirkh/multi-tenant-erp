@@ -51,6 +51,10 @@ from modules.installments.repositories.allocation_reference import (
 from modules.installments.repositories.contract import InstallmentContractRepository
 from modules.installments.repositories.schedule import InstallmentScheduleRepository
 from modules.installments.repositories.sequence import InstallmentSequenceRepository
+from modules.installments.services.access_policy import (
+    InstallmentAccessPolicy,
+    InstallmentOperationClass,
+)
 from modules.installments.services.accounting_gateway import (
     AccountingIntegrationGateway,
 )
@@ -158,6 +162,7 @@ class InstallmentContractService:
         idempotency_service: InstallmentIdempotencyService | None = None,
         outbox_repo: EventOutboxRepository | None = None,
         allocation_ref_repo: InstallmentAllocationReferenceRepository | None = None,
+        access_policy: InstallmentAccessPolicy | None = None,
     ) -> None:
         self._repo = repo
         self._sequences = sequence_repo
@@ -169,6 +174,13 @@ class InstallmentContractService:
         self._idempotency = idempotency_service
         self._outbox = outbox_repo
         self._allocation_refs = allocation_ref_repo
+        self._access_policy = access_policy
+
+    def _authorize(
+        self, company_id: UUID, operation: InstallmentOperationClass
+    ) -> None:
+        if self._access_policy is not None:
+            self._access_policy.authorize(company_id=company_id, operation=operation)
 
     def create_draft(
         self,
@@ -209,6 +221,7 @@ class InstallmentContractService:
                 check ``InstallmentQuoteService.preview()`` applies, so a
                 caller cannot bypass it by skipping ``/quotes``.
         """
+        self._authorize(company_id, InstallmentOperationClass.ORIGINATION)
         eligibility = self._eligibility.check_invoice_eligibility(
             company_id, sales_invoice_id
         )
@@ -301,6 +314,7 @@ class InstallmentContractService:
             raise
 
     def get(self, company_id: UUID, contract_id: UUID) -> InstallmentContract:
+        self._authorize(company_id, InstallmentOperationClass.READ)
         contract = self._repo.get_by_id_or_none(contract_id, company_id)
         if contract is None:
             raise InstallmentNotFoundError("InstallmentContract", str(contract_id))
@@ -309,6 +323,7 @@ class InstallmentContractService:
     def list(
         self, company_id: UUID, skip: int = 0, limit: int = 20
     ) -> tuple[list[InstallmentContract], int]:
+        self._authorize(company_id, InstallmentOperationClass.READ)
         return self._repo.list(company_id, skip=skip, limit=limit)
 
     def get_active_schedule(
@@ -318,6 +333,7 @@ class InstallmentContractService:
         ``ACTIVE`` schedule version and its lines. Raises
         ``InstallmentNotFoundError`` if the contract has never been
         activated (no active version exists yet)."""
+        self._authorize(company_id, InstallmentOperationClass.READ)
         assert (
             self._schedule is not None
         ), "get_active_schedule() requires schedule_repo"
@@ -336,6 +352,7 @@ class InstallmentContractService:
         """``GET /contracts/{id}/schedule/versions/{v}`` (tasks.md T129) —
         a specific (possibly superseded) schedule version, for historical
         explanation."""
+        self._authorize(company_id, InstallmentOperationClass.READ)
         assert (
             self._schedule is not None
         ), "get_schedule_version() requires schedule_repo"
@@ -365,6 +382,7 @@ class InstallmentContractService:
             InstallmentIllegalTransitionError: ``contract.status`` is not
                 ``DRAFT``.
         """
+        self._authorize(company_id, InstallmentOperationClass.ORIGINATION)
         contract = self._get_or_404(company_id, contract_id)
 
         # "APPROVED" is reachable in _LEGAL_TRANSITIONS from BOTH "DRAFT"
@@ -432,6 +450,7 @@ class InstallmentContractService:
             InstallmentIllegalTransitionError: ``contract.status`` is not
                 ``PENDING_APPROVAL``.
         """
+        self._authorize(company_id, InstallmentOperationClass.ORIGINATION)
         contract = self._get_or_404(company_id, contract_id)
 
         # "APPROVED" is also reachable from "DRAFT" in _LEGAL_TRANSITIONS
@@ -492,6 +511,7 @@ class InstallmentContractService:
             InstallmentIllegalTransitionError: ``contract.status`` is not
                 ``PENDING_APPROVAL``.
         """
+        self._authorize(company_id, InstallmentOperationClass.ORIGINATION)
         if not reason or not reason.strip():
             raise ValidationException(
                 message="A reason is required to reject an installment contract."
@@ -588,6 +608,7 @@ class InstallmentContractService:
             InstallmentIdempotencyConflictError: same key, different
                 request (409).
         """
+        self._authorize(company_id, InstallmentOperationClass.ORIGINATION)
         if not reason or not reason.strip():
             raise ValidationException(
                 message="A reason is required to cancel an installment contract."
@@ -702,6 +723,7 @@ class InstallmentContractService:
             InstallmentIllegalTransitionError: ``contract.status`` is not
                 ``ACTIVE``.
         """
+        self._authorize(company_id, InstallmentOperationClass.ORIGINATION)
         if not reason or not reason.strip():
             raise ValidationException(
                 message="A reason is required to mark an installment "
@@ -762,6 +784,7 @@ class InstallmentContractService:
             InstallmentIdempotencyConflictError: same key, different
                 request (409).
         """
+        self._authorize(company_id, InstallmentOperationClass.ORIGINATION)
         assert (
             self._idempotency is not None
         ), "default_command() requires idempotency_service"
@@ -831,6 +854,7 @@ class InstallmentContractService:
             InstallmentCureNotAllowedError: the effective configuration
                 has ``cure_enabled=False`` (422).
         """
+        self._authorize(company_id, InstallmentOperationClass.SERVICING)
         contract = self._get_or_404(company_id, contract_id)
         _assert_transition(contract.status, "ACTIVE")
 
@@ -902,6 +926,7 @@ class InstallmentContractService:
                 request (409).
             InstallmentFiscalPeriodLockedError: locked fiscal period (422).
         """
+        self._authorize(company_id, InstallmentOperationClass.ORIGINATION)
         if not reason or not reason.strip():
             raise ValidationException(
                 message="A reason is required to write off an installment " "contract."
@@ -1019,6 +1044,7 @@ class InstallmentContractService:
             InstallmentActivationFailedError: the down payment posting or
                 the BR-INST-005 reconciliation check failed (409).
         """
+        self._authorize(company_id, InstallmentOperationClass.ORIGINATION)
         assert self._schedule is not None, "activate() requires schedule_repo"
         assert self._idempotency is not None, "activate() requires idempotency_service"
         assert self._outbox is not None, "activate() requires outbox_repo"
@@ -1190,6 +1216,7 @@ class InstallmentContractService:
         caller's own final commit covers this together with everything
         else it staged.
         """
+        self._authorize(company_id, InstallmentOperationClass.SERVICING)
         _assert_transition(contract.status, "COMPLETED")
         before_status = contract.status
         contract.status = "COMPLETED"

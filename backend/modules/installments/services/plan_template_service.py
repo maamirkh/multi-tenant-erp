@@ -20,18 +20,35 @@ from modules.installments.models.plan_template import InstallmentPlanTemplate
 from modules.installments.repositories.plan_template import (
     InstallmentPlanTemplateRepository,
 )
+from modules.installments.services.access_policy import (
+    InstallmentAccessPolicy,
+    InstallmentOperationClass,
+)
 
 
 class InstallmentPlanTemplateService:
     """Service layer for Installments plan templates."""
 
-    def __init__(self, repo: InstallmentPlanTemplateRepository) -> None:
+    def __init__(
+        self,
+        repo: InstallmentPlanTemplateRepository,
+        access_policy: InstallmentAccessPolicy | None = None,
+    ) -> None:
         self._repo = repo
+        self._access_policy = access_policy
 
     def list_active(self, company_id: UUID) -> list[InstallmentPlanTemplate]:
+        if self._access_policy is not None:
+            self._access_policy.authorize(
+                company_id=company_id, operation=InstallmentOperationClass.READ
+            )
         return self._repo.list_active(company_id)
 
     def get(self, company_id: UUID, template_id: UUID) -> InstallmentPlanTemplate:
+        if self._access_policy is not None:
+            self._access_policy.authorize(
+                company_id=company_id, operation=InstallmentOperationClass.READ
+            )
         template = self._repo.get_by_id_or_none(template_id, company_id)
         if template is None:
             raise InstallmentNotFoundError("InstallmentPlanTemplate", str(template_id))
@@ -43,6 +60,10 @@ class InstallmentPlanTemplateService:
         """Create a new plan template. Rejects a duplicate name for this
         company with a clean 409 before the DB partial unique index is
         ever reached."""
+        if self._access_policy is not None:
+            self._access_policy.authorize(
+                company_id=company_id, operation=InstallmentOperationClass.ORIGINATION
+            )
         self._validate_fields(fields)
         if self._repo.get_by_name(company_id, fields["name"]) is not None:
             raise ConflictException(
@@ -68,7 +89,13 @@ class InstallmentPlanTemplateService:
     ) -> InstallmentPlanTemplate:
         """Edit an existing template. A name change is re-validated for
         uniqueness against every other (non-deleted) template."""
-        template = self.get(company_id, template_id)
+        if self._access_policy is not None:
+            self._access_policy.authorize(
+                company_id=company_id, operation=InstallmentOperationClass.ORIGINATION
+            )
+        template = self._repo.get_by_id_or_none(template_id, company_id)
+        if template is None:
+            raise InstallmentNotFoundError("InstallmentPlanTemplate", str(template_id))
         self._validate_fields({**self._current_fields(template), **fields})
 
         new_name = fields.get("name")
@@ -89,7 +116,13 @@ class InstallmentPlanTemplateService:
     ) -> InstallmentPlanTemplate:
         """Deactivate a template — blocks new use, never affects existing
         contracts (FR-INST-013)."""
-        template = self.get(company_id, template_id)
+        if self._access_policy is not None:
+            self._access_policy.authorize(
+                company_id=company_id, operation=InstallmentOperationClass.ORIGINATION
+            )
+        template = self._repo.get_by_id_or_none(template_id, company_id)
+        if template is None:
+            raise InstallmentNotFoundError("InstallmentPlanTemplate", str(template_id))
         template.is_active = False
         return self._repo.update(template)
 

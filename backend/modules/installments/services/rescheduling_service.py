@@ -46,6 +46,10 @@ from modules.installments.repositories.allocation_reference import (
 )
 from modules.installments.repositories.contract import InstallmentContractRepository
 from modules.installments.repositories.schedule import InstallmentScheduleRepository
+from modules.installments.services.access_policy import (
+    InstallmentAccessPolicy,
+    InstallmentOperationClass,
+)
 from modules.installments.services.audit_service import InstallmentAuditService
 from modules.installments.services.configuration_service import (
     InstallmentConfigurationService,
@@ -87,6 +91,7 @@ class InstallmentReschedulingService:
         idempotency_service: InstallmentIdempotencyService,
         audit_service: InstallmentAuditService,
         outbox_repo: EventOutboxRepository,
+        access_policy: InstallmentAccessPolicy | None = None,
     ) -> None:
         self.db = db
         self._contracts = contract_repo
@@ -96,6 +101,7 @@ class InstallmentReschedulingService:
         self._idempotency = idempotency_service
         self._audit = audit_service
         self._outbox = outbox_repo
+        self._access_policy = access_policy
 
     def _assert_no_restructuring(
         self, contract: InstallmentContract, new_terms: RescheduleTerms
@@ -158,6 +164,10 @@ class InstallmentReschedulingService:
             InstallmentIdempotencyConflictError: same key, different
                 request (409).
         """
+        if self._access_policy is not None:
+            self._access_policy.authorize(
+                company_id=company_id, operation=InstallmentOperationClass.ORIGINATION
+            )
         if not reason or not reason.strip():
             raise ValidationException(
                 message="A reason is required to reschedule an installment " "contract."

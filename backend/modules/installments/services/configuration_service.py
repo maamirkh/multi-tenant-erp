@@ -18,13 +18,22 @@ from modules.installments.models.configuration import InstallmentConfiguration
 from modules.installments.repositories.configuration import (
     InstallmentConfigurationRepository,
 )
+from modules.installments.services.access_policy import (
+    InstallmentAccessPolicy,
+    InstallmentOperationClass,
+)
 
 
 class InstallmentConfigurationService:
     """Service layer for tenant/branch Installments configuration."""
 
-    def __init__(self, repo: InstallmentConfigurationRepository) -> None:
+    def __init__(
+        self,
+        repo: InstallmentConfigurationRepository,
+        access_policy: InstallmentAccessPolicy | None = None,
+    ) -> None:
         self._repo = repo
+        self._access_policy = access_policy
 
     def get_effective_config(
         self, company_id: UUID, branch_id: UUID | None = None
@@ -33,6 +42,10 @@ class InstallmentConfigurationService:
         branch-specific override wins if one exists, otherwise the
         company-level default row, otherwise ``None`` (never configured).
         """
+        if self._access_policy is not None:
+            self._access_policy.authorize(
+                company_id=company_id, operation=InstallmentOperationClass.READ
+            )
         return self._repo.get_effective_config(company_id, branch_id)
 
     def upsert_config(
@@ -48,7 +61,21 @@ class InstallmentConfigurationService:
         Validates the two cross-field business rules before any write:
         ``min_term <= max_term`` and at most one of
         ``min_down_payment_pct``/``min_down_payment_amount`` populated.
+
+        Entitlement note: spec FR-INST-353/§34 OQ-2 explicitly classify
+        "configuration changes" as a blocked-while-disabled ORIGINATION
+        operation — this overrides plan.md §16.1's permission-catalogue
+        table, which loosely labels ``installments.config.manage`` as
+        "ADMIN" in the RBAC sense (an admin-level permission), not the
+        distinct ``InstallmentOperationClass.ADMIN`` entitlement-bypass
+        sense (reserved for the module enable/disable toggle itself, per
+        §15.2's own code). Spec outranks Plan's summary table per the
+        documented authority order.
         """
+        if self._access_policy is not None:
+            self._access_policy.authorize(
+                company_id=company_id, operation=InstallmentOperationClass.ORIGINATION
+            )
         self._validate_fields(fields)
 
         existing = (

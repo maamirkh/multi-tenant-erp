@@ -42,6 +42,7 @@ from modules.installments.repositories.plan_template import (
 )
 from modules.installments.repositories.schedule import InstallmentScheduleRepository
 from modules.installments.repositories.sequence import InstallmentSequenceRepository
+from modules.installments.services.access_policy import InstallmentAccessPolicy
 from modules.installments.services.accounting_gateway import (
     AccountingIntegrationGateway,
 )
@@ -81,6 +82,23 @@ from modules.installments.services.sales_read_gateway import (
 )
 from modules.installments.services.settlement_service import (
     InstallmentSettlementService,
+)
+from modules.platform_admin.repositories.override_repository import (
+    OverrideRepository,
+)
+from modules.platform_admin.repositories.plan_repository import PlanRepository
+from modules.platform_admin.repositories.platform_audit_repository import (
+    PlatformAuditRepository,
+)
+from modules.platform_admin.repositories.subscription_repository import (
+    SubscriptionRepository,
+)
+from modules.platform_admin.services.entitlement_service import (
+    PlatformEntitlementService,
+)
+from modules.platform_admin.services.override_service import OverrideService
+from modules.platform_admin.services.platform_audit_service import (
+    PlatformAuditService,
 )
 
 # ---------------------------------------------------------------------------
@@ -154,6 +172,30 @@ def get_installment_idempotency_service(
     return InstallmentIdempotencyService(db)
 
 
+def get_installment_access_policy(
+    db: Session = Depends(get_db),
+) -> InstallmentAccessPolicy:
+    """Mirrors ``require_capability_entitled``'s own
+    ``PlatformEntitlementService`` construction (T188, plan.md §15.2) —
+    same override/plan/subscription resolution chain, just invoked from
+    inside each Installments service method instead of a router-mount
+    dependency. Resolved fresh on every call (FR-9A-170); no
+    request-scoped memoisation here (unlike ``require_capability_entitled``)
+    since each request reaches at most one gated service method."""
+    override_service = OverrideService(
+        db=db,
+        repo=OverrideRepository(db),
+        audit=PlatformAuditService(db, PlatformAuditRepository(db)),
+    )
+    entitlement_service = PlatformEntitlementService(
+        db=db,
+        plan_repo=PlanRepository(db),
+        subscription_repo=SubscriptionRepository(db),
+        override_checker=override_service,
+    )
+    return InstallmentAccessPolicy(entitlement_service=entitlement_service)
+
+
 # ---------------------------------------------------------------------------
 # Cross-module read-only gateway factories
 # ---------------------------------------------------------------------------
@@ -221,16 +263,18 @@ def get_installment_configuration_service(
     repo: InstallmentConfigurationRepository = Depends(
         get_installment_configuration_repo
     ),
+    access_policy: InstallmentAccessPolicy = Depends(get_installment_access_policy),
 ) -> InstallmentConfigurationService:
-    return InstallmentConfigurationService(repo=repo)
+    return InstallmentConfigurationService(repo=repo, access_policy=access_policy)
 
 
 def get_installment_plan_template_service(
     repo: InstallmentPlanTemplateRepository = Depends(
         get_installment_plan_template_repo
     ),
+    access_policy: InstallmentAccessPolicy = Depends(get_installment_access_policy),
 ) -> InstallmentPlanTemplateService:
-    return InstallmentPlanTemplateService(repo=repo)
+    return InstallmentPlanTemplateService(repo=repo, access_policy=access_policy)
 
 
 def get_installments_feature_flag_service(
@@ -256,11 +300,13 @@ def get_installment_eligibility_service(
     ar_gateway: AccountingIntegrationGateway = Depends(
         get_accounting_integration_gateway
     ),
+    access_policy: InstallmentAccessPolicy = Depends(get_installment_access_policy),
 ) -> InstallmentEligibilityService:
     return InstallmentEligibilityService(
         invoice_gateway=invoice_gateway,
         customer_gateway=customer_gateway,
         ar_gateway=ar_gateway,
+        access_policy=access_policy,
     )
 
 
@@ -289,6 +335,7 @@ def get_installment_contract_service(
     allocation_ref_repo: InstallmentAllocationReferenceRepository = Depends(
         get_installment_allocation_reference_repo
     ),
+    access_policy: InstallmentAccessPolicy = Depends(get_installment_access_policy),
 ) -> InstallmentContractService:
     return InstallmentContractService(
         repo=repo,
@@ -301,6 +348,7 @@ def get_installment_contract_service(
         idempotency_service=idempotency_service,
         outbox_repo=outbox_repo,
         allocation_ref_repo=allocation_ref_repo,
+        access_policy=access_policy,
     )
 
 
@@ -332,6 +380,7 @@ def get_installment_collection_service(
     late_charge_repo: InstallmentLateChargeRepository = Depends(
         get_installment_late_charge_repo
     ),
+    access_policy: InstallmentAccessPolicy = Depends(get_installment_access_policy),
 ) -> InstallmentCollectionService:
     return InstallmentCollectionService(
         db=db,
@@ -345,6 +394,7 @@ def get_installment_collection_service(
         outbox_repo=outbox_repo,
         contract_service=contract_service,
         late_charge_repo=late_charge_repo,
+        access_policy=access_policy,
     )
 
 
@@ -367,6 +417,7 @@ def get_installment_delinquency_service(
     ),
     audit_service: InstallmentAuditService = Depends(get_installment_audit_service),
     outbox_repo: EventOutboxRepository = Depends(get_event_outbox_repo),
+    access_policy: InstallmentAccessPolicy = Depends(get_installment_access_policy),
 ) -> InstallmentDelinquencyService:
     return InstallmentDelinquencyService(
         db=db,
@@ -377,6 +428,7 @@ def get_installment_delinquency_service(
         accounting_gateway=accounting_gateway,
         audit_service=audit_service,
         outbox_repo=outbox_repo,
+        access_policy=access_policy,
     )
 
 
@@ -398,6 +450,7 @@ def get_installment_settlement_service(
         get_installment_idempotency_service
     ),
     audit_service: InstallmentAuditService = Depends(get_installment_audit_service),
+    access_policy: InstallmentAccessPolicy = Depends(get_installment_access_policy),
 ) -> InstallmentSettlementService:
     return InstallmentSettlementService(
         db=db,
@@ -407,6 +460,7 @@ def get_installment_settlement_service(
         configuration_service=configuration_service,
         idempotency_service=idempotency_service,
         audit_service=audit_service,
+        access_policy=access_policy,
     )
 
 
@@ -418,11 +472,13 @@ def get_installment_quote_service(
     configuration_service: InstallmentConfigurationService = Depends(
         get_installment_configuration_service
     ),
+    access_policy: InstallmentAccessPolicy = Depends(get_installment_access_policy),
 ) -> InstallmentQuoteService:
     return InstallmentQuoteService(
         eligibility_service=eligibility_service,
         invoice_gateway=invoice_gateway,
         configuration_service=configuration_service,
+        access_policy=access_policy,
     )
 
 
@@ -445,6 +501,7 @@ def get_installment_rescheduling_service(
     ),
     audit_service: InstallmentAuditService = Depends(get_installment_audit_service),
     outbox_repo: EventOutboxRepository = Depends(get_event_outbox_repo),
+    access_policy: InstallmentAccessPolicy = Depends(get_installment_access_policy),
 ) -> InstallmentReschedulingService:
     return InstallmentReschedulingService(
         db=db,
@@ -455,4 +512,5 @@ def get_installment_rescheduling_service(
         idempotency_service=idempotency_service,
         audit_service=audit_service,
         outbox_repo=outbox_repo,
+        access_policy=access_policy,
     )

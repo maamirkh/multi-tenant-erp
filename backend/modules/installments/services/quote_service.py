@@ -21,6 +21,10 @@ from decimal import Decimal
 from uuid import UUID
 
 from core.exceptions.base import ValidationException
+from modules.installments.services.access_policy import (
+    InstallmentAccessPolicy,
+    InstallmentOperationClass,
+)
 from modules.installments.services.configuration_service import (
     InstallmentConfigurationService,
 )
@@ -65,10 +69,12 @@ class InstallmentQuoteService:
         eligibility_service: InstallmentEligibilityService,
         invoice_gateway: SalesInvoiceReadGateway,
         configuration_service: InstallmentConfigurationService,
+        access_policy: InstallmentAccessPolicy | None = None,
     ) -> None:
         self._eligibility = eligibility_service
         self._invoices = invoice_gateway
         self._configuration = configuration_service
+        self._access_policy = access_policy
 
     def preview(
         self,
@@ -86,6 +92,10 @@ class InstallmentQuoteService:
         as ``InstallmentEligibilityService.check_invoice_eligibility()`` for
         an ineligible invoice/customer (422, per the OpenAPI contract) —
         no separate eligibility re-check logic is introduced here."""
+        if self._access_policy is not None:
+            self._access_policy.authorize(
+                company_id=company_id, operation=InstallmentOperationClass.ORIGINATION
+            )
         eligibility = self._eligibility.check_invoice_eligibility(
             company_id, sales_invoice_id
         )

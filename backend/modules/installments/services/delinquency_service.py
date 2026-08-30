@@ -51,6 +51,10 @@ from modules.installments.repositories.late_charge import (
     InstallmentLateChargeRepository,
 )
 from modules.installments.repositories.schedule import InstallmentScheduleRepository
+from modules.installments.services.access_policy import (
+    InstallmentAccessPolicy,
+    InstallmentOperationClass,
+)
 from modules.installments.services.accounting_gateway import (
     AccountingIntegrationGateway,
 )
@@ -79,6 +83,7 @@ class InstallmentDelinquencyService:
         accounting_gateway: AccountingIntegrationGateway,
         audit_service: InstallmentAuditService,
         outbox_repo: EventOutboxRepository,
+        access_policy: InstallmentAccessPolicy | None = None,
     ) -> None:
         self.db = db
         self._contracts = contract_repo
@@ -88,6 +93,7 @@ class InstallmentDelinquencyService:
         self._accounting = accounting_gateway
         self._audit = audit_service
         self._outbox = outbox_repo
+        self._access_policy = access_policy
 
     def apply_late_charge(
         self,
@@ -111,6 +117,10 @@ class InstallmentDelinquencyService:
                 this exact occurrence (FR-INST-171).
             InstallmentFiscalPeriodLockedError: locked fiscal period.
         """
+        if self._access_policy is not None:
+            self._access_policy.authorize(
+                company_id=company_id, operation=InstallmentOperationClass.SERVICING
+            )
         contract = self._contracts.get_by_id_locked(contract_id, company_id)
         if contract is None:
             raise InstallmentNotFoundError("InstallmentContract", str(contract_id))
@@ -242,6 +252,10 @@ class InstallmentDelinquencyService:
             InstallmentLateChargeAlreadyWaivedError: already waived.
             ValidationException: ``reason`` is empty.
         """
+        if self._access_policy is not None:
+            self._access_policy.authorize(
+                company_id=company_id, operation=InstallmentOperationClass.SERVICING
+            )
         if not reason or not reason.strip():
             raise ValidationException(message="A waiver reason is required.")
 

@@ -44,6 +44,8 @@ from modules.companies.router import router as companies_router
 from modules.crm.dependencies import require_crm_enabled
 from modules.crm.router import admin_router as crm_admin_router
 from modules.crm.router import router as crm_router
+from modules.installments.router import admin_router as installments_admin_router
+from modules.installments.router import router as installments_router
 from modules.inventory.router import router as inventory_router
 from modules.platform_admin.dependencies import require_capability_entitled
 from modules.platform_admin.router import admin_router as platform_admin_admin_router
@@ -228,6 +230,33 @@ router.include_router(
 router.include_router(
     platform_admin_health_router,
     prefix="/platform",
+)
+# Installments (Epic 10, Phase 11 T190) — mounted with
+# get_current_company_member ONLY, deliberately NOT alongside a
+# require_capability_entitled("installments")/module-disable router-level
+# gate the way CRM/Inventory/Purchase/Sales/Accounting are: Installments'
+# spec (§22.3/22.4, FR-INST-353-358) requires operation-level granularity
+# (origination blocked, servicing/read permitted while disabled), which a
+# blanket router-mount gate cannot express (plan.md §15.1, ADR-INST-06).
+# Entitlement is instead enforced per-service-method by
+# InstallmentAccessPolicy.authorize() (T188/T189), itself built on the
+# same PlatformEntitlementService.resolve_effective_entitlement() chain
+# require_capability_entitled uses — so the Plan Entitlement ceiling is
+# still honoured, just one layer deeper than the router edge.
+router.include_router(
+    installments_router,
+    prefix="/companies/{company_id}/installments",
+    dependencies=[Depends(get_current_company_member)],
+)
+# Installments module administration (status/enable/disable) — mounted
+# separately, same "a company must be able to enable the module through
+# an endpoint reachable while it's still disabled" rationale as CRM's own
+# admin_router. ADMIN-class operations bypass InstallmentAccessPolicy
+# entirely (plan.md §15.2).
+router.include_router(
+    installments_admin_router,
+    prefix="/companies/{company_id}/installments",
+    dependencies=[Depends(get_current_company_member)],
 )
 
 
