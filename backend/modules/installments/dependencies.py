@@ -72,6 +72,9 @@ from modules.installments.services.plan_template_service import (
     InstallmentPlanTemplateService,
 )
 from modules.installments.services.quote_service import InstallmentQuoteService
+from modules.installments.services.rescheduling_service import (
+    InstallmentReschedulingService,
+)
 from modules.installments.services.sales_read_gateway import (
     SalesCustomerReadGateway,
     SalesInvoiceReadGateway,
@@ -283,6 +286,9 @@ def get_installment_contract_service(
         get_installment_idempotency_service
     ),
     outbox_repo: EventOutboxRepository = Depends(get_event_outbox_repo),
+    allocation_ref_repo: InstallmentAllocationReferenceRepository = Depends(
+        get_installment_allocation_reference_repo
+    ),
 ) -> InstallmentContractService:
     return InstallmentContractService(
         repo=repo,
@@ -294,6 +300,7 @@ def get_installment_contract_service(
         schedule_repo=schedule_repo,
         idempotency_service=idempotency_service,
         outbox_repo=outbox_repo,
+        allocation_ref_repo=allocation_ref_repo,
     )
 
 
@@ -416,4 +423,36 @@ def get_installment_quote_service(
         eligibility_service=eligibility_service,
         invoice_gateway=invoice_gateway,
         configuration_service=configuration_service,
+    )
+
+
+def get_installment_rescheduling_service(
+    db: Session = Depends(get_db),
+    contract_repo: InstallmentContractRepository = Depends(
+        get_installment_contract_repo
+    ),
+    schedule_repo: InstallmentScheduleRepository = Depends(
+        get_installment_schedule_repo
+    ),
+    allocation_ref_repo: InstallmentAllocationReferenceRepository = Depends(
+        get_installment_allocation_reference_repo
+    ),
+    configuration_service: InstallmentConfigurationService = Depends(
+        get_installment_configuration_service
+    ),
+    idempotency_service: InstallmentIdempotencyService = Depends(
+        get_installment_idempotency_service
+    ),
+    audit_service: InstallmentAuditService = Depends(get_installment_audit_service),
+    outbox_repo: EventOutboxRepository = Depends(get_event_outbox_repo),
+) -> InstallmentReschedulingService:
+    return InstallmentReschedulingService(
+        db=db,
+        contract_repo=contract_repo,
+        schedule_repo=schedule_repo,
+        allocation_ref_repo=allocation_ref_repo,
+        configuration_service=configuration_service,
+        idempotency_service=idempotency_service,
+        audit_service=audit_service,
+        outbox_repo=outbox_repo,
     )

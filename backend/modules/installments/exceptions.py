@@ -63,6 +63,25 @@ class InstallmentSelfApprovalNotAllowedError(ForbiddenException):
         self.code = "SELF_APPROVAL_NOT_ALLOWED"
 
 
+class InstallmentRescheduleSelfApprovalNotAllowedError(ForbiddenException):
+    """Raised when a reschedule's requester and approver are the same
+    actor (FR-INST-201, plan.md §16.2: "the same maker-checker
+    discipline as contract approval") — distinct from
+    ``InstallmentSelfApprovalNotAllowedError`` (contract approval/
+    rejection) purely for message accuracy; the underlying discipline is
+    identical."""
+
+    def __init__(self, contract_id: str | None = None) -> None:
+        super().__init__(
+            message=(
+                f"Installment contract '{contract_id or '?'}' cannot be "
+                "rescheduled by the same actor who requested the reschedule."
+            ),
+            details={"contract_id": contract_id},
+        )
+        self.code = "SELF_APPROVAL_NOT_ALLOWED"
+
+
 class InstallmentsNotEntitledError(ForbiddenException):
     """Raised when an ``ORIGINATION``-class operation is attempted while
     the Installments module is disabled for this tenant
@@ -259,6 +278,46 @@ class InstallmentLateChargeAlreadyWaivedError(ConflictException):
         self.code = "LATE_CHARGE_ALREADY_WAIVED"
 
 
+class InstallmentRescheduleNotAllowedError(ConflictException):
+    """Raised by ``InstallmentReschedulingService.reschedule()`` when the
+    contract is not ``ACTIVE`` — rescheduling is not itself a status
+    transition (the contract stays ``ACTIVE`` throughout), so it is not
+    part of ``_LEGAL_TRANSITIONS`` and does not raise
+    ``InstallmentIllegalTransitionError``."""
+
+    def __init__(self, current_status: str, contract_id: str | None = None) -> None:
+        super().__init__(
+            message=(
+                f"Installment contract '{contract_id or '?'}' is "
+                f"{current_status!r}; only ACTIVE contracts can be "
+                "rescheduled."
+            ),
+            details={"current_status": current_status, "contract_id": contract_id},
+        )
+        self.code = "RESCHEDULE_NOT_ALLOWED"
+
+
+class InstallmentCancellationNotAllowedError(ConflictException):
+    """Raised by ``InstallmentContractService.cancel()`` when an ``ACTIVE``
+    contract has recorded ordinary collections (beyond, at most, its
+    automatic activation down payment) — cancellation-with-reversal in
+    this Epic only reverses the single down-payment ``Payment``
+    (FR-INST-210); a contract with further collections must have those
+    reversed individually (``InstallmentCollectionService.reverse_collection()``)
+    or be settled/defaulted+written-off instead."""
+
+    def __init__(self, contract_id: str | None = None) -> None:
+        super().__init__(
+            message=(
+                f"Installment contract '{contract_id or '?'}' has recorded "
+                "collections beyond its down payment; reverse them "
+                "individually before cancelling, or use settlement/default."
+            ),
+            details={"contract_id": contract_id},
+        )
+        self.code = "CANCELLATION_NOT_ALLOWED"
+
+
 class InstallmentSettlementNotAllowedError(ConflictException):
     """Raised by ``InstallmentSettlementService`` when the contract is not
     in a settleable status (``ACTIVE``/``DEFAULTED`` only, FR-INST-356) or
@@ -323,6 +382,61 @@ class InstallmentIdempotencyConflictError(ConflictException):
 
 
 # ── Validation (422) ─────────────────────────────────────────────────────────
+
+
+class InstallmentCureNotAllowedError(ValidationException):
+    """Raised by ``InstallmentContractService.cure()`` when the contract's
+    frozen effective policy has ``cure_enabled=False`` — a true kill
+    switch (ADR-INST-12): holding ``installments.contract.cure`` alone
+    is never sufficient if the tenant has not opted in."""
+
+    def __init__(self, contract_id: str | None = None) -> None:
+        super().__init__(
+            message=(
+                f"Installment contract '{contract_id or '?'}' cannot be "
+                "cured: curing is not enabled by tenant policy."
+            ),
+        )
+        self.code = "CURE_NOT_ALLOWED"
+
+
+class InstallmentRescheduleRestructuringNotAllowedError(ValidationException):
+    """Raised by ``InstallmentReschedulingService.reschedule()`` when the
+    requested new terms would change ``principal_amount``,
+    ``markup_amount``, or ``installment_count`` — full commercial-term
+    restructuring is explicitly out of scope for Epic 10 (FR-INST-202);
+    only due-date changes within the existing contractual total are
+    permitted."""
+
+    def __init__(self, violations: dict[str, str]) -> None:
+        super().__init__(
+            message=(
+                "Rescheduling may only change due dates, not principal, "
+                "markup, or installment count (restructuring is out of "
+                "scope)."
+            ),
+            details={"violations": violations},
+        )
+        self.code = "RESTRUCTURING_NOT_ALLOWED"
+
+
+class InstallmentCancellationPaymentReferenceRequiredError(ValidationException):
+    """Raised by ``InstallmentContractService.cancel()`` when an ``ACTIVE``
+    contract has a recorded down payment but the caller did not supply
+    the Accounting ``Payment`` id to reverse — Installments has no
+    stored reference to it (down-payment recording creates no
+    ``InstallmentAllocationReference`` row, unlike ordinary collections),
+    so the caller (who already has it from ``activate()``'s own response
+    or ``GET /contracts/{id}``) must supply it explicitly."""
+
+    def __init__(self, contract_id: str | None = None) -> None:
+        super().__init__(
+            message=(
+                f"Installment contract '{contract_id or '?'}' has a recorded "
+                "down payment; 'payment_id' is required to cancel it."
+            ),
+        )
+        self.code = "PAYMENT_REFERENCE_REQUIRED"
 
 
 class InstallmentFiscalPeriodLockedError(ValidationException):

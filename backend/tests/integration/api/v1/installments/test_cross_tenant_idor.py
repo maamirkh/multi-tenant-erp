@@ -21,6 +21,11 @@ identical ``_get_or_404()`` gate, so the second gets a lighter check):
 5. ``InstallmentContractService.get_schedule_version()`` (shares #4's gate)
 6. ``InstallmentSettlementService.generate_quote()`` (Phase 9, T160-adjacent)
 7. ``InstallmentSettlementService.execute()`` (Phase 9, T161-adjacent)
+8. ``InstallmentReschedulingService.reschedule()`` (Phase 10)
+9. ``InstallmentContractService.cancel()`` (Phase 10)
+10. ``InstallmentContractService.default_command()`` (Phase 10)
+11. ``InstallmentContractService.cure()`` (Phase 10)
+12. ``InstallmentContractService.writeoff()`` (Phase 10)
 
 Real Postgres (schedule tables require it).
 """
@@ -28,7 +33,7 @@ Real Postgres (schedule tables require it).
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -37,13 +42,20 @@ from modules.installments.exceptions import (
     InstallmentNotFoundError,
     InstallmentReversalNotAllowedError,
 )
+from modules.installments.models.configuration import InstallmentConfiguration
 from modules.installments.repositories.allocation_reference import (
     InstallmentAllocationReferenceRepository,
 )
+from modules.installments.repositories.configuration import (
+    InstallmentConfigurationRepository,
+)
 from modules.installments.repositories.contract import InstallmentContractRepository
+from modules.installments.services.rescheduling_service import RescheduleTerms
 from tests.integration.api.v1.installments.conftest import (
     build_active_contract_with_schedule,
     build_collection_service,
+    build_contract_service,
+    build_rescheduling_service,
     build_settlement_service,
 )
 from tests.integration.api.v1.installments.test_activation_service import (
@@ -220,3 +232,141 @@ class TestCrossTenantIDOR:
         )
         assert untouched.status == "ACTIVE"
         assert untouched.closed_at is None
+
+    def test_reschedule_cannot_reach_another_companys_contract(
+        self, db_session
+    ) -> None:
+        company_a_ctx = build_active_contract_with_schedule(
+            db_session, installment_count=1, installment_amount=Decimal("500.00")
+        )
+        service = build_rescheduling_service(db_session)
+        company_b_id = uuid.uuid4()
+
+        with pytest.raises(InstallmentNotFoundError):
+            service.reschedule(
+                company_b_id,
+                company_a_ctx["contract"].id,
+                RescheduleTerms(first_due_date=date.today() + timedelta(days=30)),
+                "reason",
+                idempotency_key=str(uuid.uuid4()),
+                actor_id=uuid.uuid4(),
+                requested_by=uuid.uuid4(),
+            )
+
+        untouched = InstallmentContractRepository(db_session).get_by_id_or_none(
+            company_a_ctx["contract"].id, company_a_ctx["company_id"]
+        )
+        assert (
+            untouched.active_schedule_version_id == company_a_ctx["schedule_version"].id
+        )
+
+    def test_cancel_cannot_reach_another_companys_contract(self, db_session) -> None:
+        company_a_ctx = build_active_contract_with_schedule(
+            db_session, installment_count=1, installment_amount=Decimal("500.00")
+        )
+        service = build_contract_service(db_session)
+        company_b_id = uuid.uuid4()
+
+        with pytest.raises(InstallmentNotFoundError):
+            service.cancel(
+                company_b_id,
+                company_a_ctx["contract"].id,
+                "reason",
+                idempotency_key=str(uuid.uuid4()),
+                actor_id=None,
+            )
+
+        untouched = InstallmentContractRepository(db_session).get_by_id_or_none(
+            company_a_ctx["contract"].id, company_a_ctx["company_id"]
+        )
+        assert untouched.status == "ACTIVE"
+
+    def test_default_command_cannot_reach_another_companys_contract(
+        self, db_session
+    ) -> None:
+        company_a_ctx = build_active_contract_with_schedule(
+            db_session, installment_count=1, installment_amount=Decimal("500.00")
+        )
+        service = build_contract_service(db_session)
+        company_b_id = uuid.uuid4()
+
+        with pytest.raises(InstallmentNotFoundError):
+            service.default_command(
+                company_b_id,
+                company_a_ctx["contract"].id,
+                "reason",
+                idempotency_key=str(uuid.uuid4()),
+                actor_id=None,
+            )
+
+        untouched = InstallmentContractRepository(db_session).get_by_id_or_none(
+            company_a_ctx["contract"].id, company_a_ctx["company_id"]
+        )
+        assert untouched.status == "ACTIVE"
+        assert untouched.defaulted_at is None
+
+    def test_cure_cannot_reach_another_companys_contract(self, db_session) -> None:
+        company_a_ctx = build_active_contract_with_schedule(
+            db_session, installment_count=1, installment_amount=Decimal("500.00")
+        )
+        contract_repo = InstallmentContractRepository(db_session)
+        contract = contract_repo.get_by_id_or_none(
+            company_a_ctx["contract"].id, company_a_ctx["company_id"]
+        )
+        contract.status = "DEFAULTED"
+        db_session.add(contract)
+        db_session.commit()
+        InstallmentConfigurationRepository(db_session).create(
+            InstallmentConfiguration(
+                company_id=company_a_ctx["company_id"],
+                branch_id=None,
+                allowed_frequencies=["MONTHLY"],
+                min_term=1,
+                max_term=60,
+                cure_enabled=True,
+            )
+        )
+        db_session.commit()
+
+        service = build_contract_service(db_session)
+        company_b_id = uuid.uuid4()
+
+        with pytest.raises(InstallmentNotFoundError):
+            service.cure(
+                company_b_id, company_a_ctx["contract"].id, "Goodwill", actor_id=None
+            )
+
+        untouched = contract_repo.get_by_id_or_none(
+            company_a_ctx["contract"].id, company_a_ctx["company_id"]
+        )
+        assert untouched.status == "DEFAULTED"
+
+    def test_writeoff_cannot_reach_another_companys_contract(self, db_session) -> None:
+        company_a_ctx = build_active_contract_with_schedule(
+            db_session, installment_count=1, installment_amount=Decimal("500.00")
+        )
+        contract_repo = InstallmentContractRepository(db_session)
+        contract = contract_repo.get_by_id_or_none(
+            company_a_ctx["contract"].id, company_a_ctx["company_id"]
+        )
+        contract.status = "DEFAULTED"
+        db_session.add(contract)
+        db_session.commit()
+
+        service = build_contract_service(db_session)
+        company_b_id = uuid.uuid4()
+
+        with pytest.raises(InstallmentNotFoundError):
+            service.writeoff(
+                company_b_id,
+                company_a_ctx["contract"].id,
+                "reason",
+                idempotency_key=str(uuid.uuid4()),
+                actor_id=None,
+            )
+
+        untouched = contract_repo.get_by_id_or_none(
+            company_a_ctx["contract"].id, company_a_ctx["company_id"]
+        )
+        assert untouched.status == "DEFAULTED"
+        assert untouched.written_off_at is None

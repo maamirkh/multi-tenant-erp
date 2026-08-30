@@ -83,6 +83,9 @@ from modules.installments.services.idempotency_service import (
 from modules.installments.services.outstanding_service import (
     InstallmentOutstandingService,
 )
+from modules.installments.services.rescheduling_service import (
+    InstallmentReschedulingService,
+)
 from modules.installments.services.settlement_service import (
     InstallmentSettlementService,
 )
@@ -215,6 +218,57 @@ def build_settlement_service(db_session: Session) -> InstallmentSettlementServic
     )
 
 
+def build_contract_service(db_session: Session) -> InstallmentContractService:
+    """Full ``InstallmentContractService`` builder for Phase 10's
+    advanced-lifecycle methods (``cancel()``/``default_command()``/
+    ``cure()``/``writeoff()``) — real Accounting gateway, idempotency,
+    outbox, and allocation-reference repo, matching the DI wiring
+    ``get_installment_contract_service()`` assembles in production."""
+    ar_service = build_ar_service(db_session, with_sales_sync=False)
+    payment_service = build_payment_service(db_session)
+    allocation_engine = build_allocation_engine(db_session)
+    gateway = AccountingIntegrationGateway(
+        ar_service=ar_service,
+        payment_service=payment_service,
+        allocation_engine=allocation_engine,
+    )
+    return InstallmentContractService(
+        repo=InstallmentContractRepository(db_session),
+        sequence_repo=None,  # type: ignore[arg-type]  # not exercised by lifecycle methods
+        eligibility_service=None,  # type: ignore[arg-type]  # not exercised by lifecycle methods
+        accounting_gateway=gateway,
+        configuration_service=InstallmentConfigurationService(
+            repo=InstallmentConfigurationRepository(db_session)
+        ),
+        audit_service=InstallmentAuditService(
+            db=db_session, audit_repo=InstallmentAuditLogRepository(db_session)
+        ),
+        schedule_repo=InstallmentScheduleRepository(db_session),
+        idempotency_service=InstallmentIdempotencyService(db_session),
+        outbox_repo=EventOutboxRepository(db_session),
+        allocation_ref_repo=InstallmentAllocationReferenceRepository(db_session),
+    )
+
+
+def build_rescheduling_service(
+    db_session: Session,
+) -> InstallmentReschedulingService:
+    return InstallmentReschedulingService(
+        db=db_session,
+        contract_repo=InstallmentContractRepository(db_session),
+        schedule_repo=InstallmentScheduleRepository(db_session),
+        allocation_ref_repo=InstallmentAllocationReferenceRepository(db_session),
+        configuration_service=InstallmentConfigurationService(
+            repo=InstallmentConfigurationRepository(db_session)
+        ),
+        idempotency_service=InstallmentIdempotencyService(db_session),
+        audit_service=InstallmentAuditService(
+            db=db_session, audit_repo=InstallmentAuditLogRepository(db_session)
+        ),
+        outbox_repo=EventOutboxRepository(db_session),
+    )
+
+
 def build_active_contract_with_schedule(
     db_session: Session,
     *,
@@ -223,6 +277,7 @@ def build_active_contract_with_schedule(
     down_payment_amount: Decimal = Decimal("0"),
     grace_period_days: int = 0,
     late_charge_policy: dict | None = None,
+    status: str = "ACTIVE",
 ) -> dict:
     """Build a fully self-contained, real-Postgres-backed ACTIVE
     installment contract with an active schedule version, ready for
@@ -276,6 +331,14 @@ def build_active_contract_with_schedule(
             account_type="REVENUE",
         )
     )
+    bad_debt_account = account_repo.create(
+        Account(
+            company_id=company_id,
+            account_code="5100",
+            account_name="Bad Debt Expense",
+            account_type="EXPENSE",
+        )
+    )
     bank_account = BankAccountRepository(db_session).create(
         BankAccount(
             company_id=company_id,
@@ -298,6 +361,7 @@ def build_active_contract_with_schedule(
             company_id=company_id,
             default_ar_account_id=ar_account.id,
             default_revenue_account_id=revenue_account.id,
+            default_bad_debt_account_id=bad_debt_account.id,
         )
     )
     db_session.commit()
@@ -317,13 +381,14 @@ def build_active_contract_with_schedule(
         due_date=today,
         actor_id=None,
     )
+    down_payment = None
     if down_payment_amount > 0:
         # A real, committed down payment allocation, exactly mirroring
         # what activate() would have staged — reduces the invoice's
         # outstanding to contractual_total before collections begin.
         payment_service = build_payment_service(db_session)
         allocation_engine = build_allocation_engine(db_session)
-        payment, _ = payment_service.create_customer_payment(
+        down_payment, _ = payment_service.create_customer_payment(
             company_id=company_id,
             customer_id=customer_id,
             payment_method="BANK_TRANSFER",
@@ -335,7 +400,7 @@ def build_active_contract_with_schedule(
         )
         allocation_engine.allocate(
             company_id=company_id,
-            payment_id=payment.id,
+            payment_id=down_payment.id,
             allocation_lines=[
                 {"transaction_id": invoice.id, "amount_foreign": down_payment_amount}
             ],
@@ -365,7 +430,7 @@ def build_active_contract_with_schedule(
         first_due_date=today,
         maturity_date=today,
         currency_code="USD",
-        status="ACTIVE",
+        status=status,
         terms_snapshot={
             "note": "Phase 7/8 collection/delinquency-test fixture",
             "grace_period_days": grace_period_days,
@@ -410,7 +475,9 @@ def build_active_contract_with_schedule(
         "schedule_lines": lines,
         "bank_account": bank_account,
         "late_fee_account": late_fee_account,
+        "bad_debt_account": bad_debt_account,
         "ar_account": ar_account,
         "revenue_account": revenue_account,
         "today": today,
+        "down_payment": down_payment,
     }

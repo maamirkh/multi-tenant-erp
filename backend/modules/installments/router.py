@@ -70,6 +70,7 @@ from modules.installments.dependencies import (
     get_installment_eligibility_service,
     get_installment_plan_template_service,
     get_installment_quote_service,
+    get_installment_rescheduling_service,
     get_installment_settlement_service,
     get_installments_feature_flag_service,
 )
@@ -91,6 +92,13 @@ from modules.installments.schemas.contract import (
     InstallmentContractSummary,
 )
 from modules.installments.schemas.eligibility import EligibilityResultRead
+from modules.installments.schemas.lifecycle import (
+    InstallmentCancelRequest,
+    InstallmentCureRequest,
+    InstallmentDefaultRequest,
+    InstallmentRescheduleRequest,
+    InstallmentWriteoffRequest,
+)
 from modules.installments.schemas.plan_template import (
     InstallmentPlanTemplateCreate,
     InstallmentPlanTemplateRead,
@@ -126,6 +134,10 @@ from modules.installments.services.plan_template_service import (
     InstallmentPlanTemplateService,
 )
 from modules.installments.services.quote_service import InstallmentQuoteService
+from modules.installments.services.rescheduling_service import (
+    InstallmentReschedulingService,
+    RescheduleTerms,
+)
 from modules.installments.services.settlement_service import (
     InstallmentSettlementService,
 )
@@ -673,6 +685,156 @@ async def execute_settlement(
     return StandardResponse(
         data=InstallmentContractRead.model_validate(contract),
         message="Installment settlement executed.",
+        meta=_meta(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Advanced Lifecycle (Phase 10, plan.md §16.1: installments.contract.
+# reschedule/cancel/default/cure/writeoff). Reschedule/cancel/default/
+# writeoff are idempotency-protected (plan.md §20) via the client-
+# supplied ``Idempotency-Key`` header; cure is a discrete state
+# transition with no financial posting (no idempotency key required).
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/contracts/{contractId}/reschedule",
+    response_model=StandardResponse[InstallmentContractRead],
+    summary="Controlled due-date-only amendment; creates a new schedule version",
+)
+async def reschedule_contract(
+    body: InstallmentRescheduleRequest,
+    company_id: UUID = Path(..., description="Company identifier"),
+    contract_id: UUID = Path(..., alias="contractId"),
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentReschedulingService = Depends(get_installment_rescheduling_service),
+) -> StandardResponse[InstallmentContractRead]:
+    _require_permission(
+        db, company_id, current_user, "installments.contract.reschedule"
+    )
+    contract = svc.reschedule(
+        company_id,
+        contract_id,
+        RescheduleTerms(
+            first_due_date=body.first_due_date,
+            frequency=body.frequency,
+            principal_amount=body.principal_amount,
+            markup_amount=body.markup_amount,
+            installment_count=body.installment_count,
+        ),
+        body.reason,
+        idempotency_key,
+        current_user.user_id,
+        requested_by=body.requested_by,
+    )
+    return StandardResponse(
+        data=InstallmentContractRead.model_validate(contract),
+        message="Installment contract rescheduled.",
+        meta=_meta(),
+    )
+
+
+@router.post(
+    "/contracts/{contractId}/cancel",
+    response_model=StandardResponse[InstallmentContractRead],
+    summary="Cancel per lifecycle-stage rules",
+)
+async def cancel_contract(
+    body: InstallmentCancelRequest,
+    company_id: UUID = Path(..., description="Company identifier"),
+    contract_id: UUID = Path(..., alias="contractId"),
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentContractService = Depends(get_installment_contract_service),
+) -> StandardResponse[InstallmentContractRead]:
+    _require_permission(db, company_id, current_user, "installments.contract.cancel")
+    contract = svc.cancel(
+        company_id,
+        contract_id,
+        body.reason,
+        idempotency_key,
+        current_user.user_id,
+        payment_id=body.payment_id,
+    )
+    return StandardResponse(
+        data=InstallmentContractRead.model_validate(contract),
+        message="Installment contract cancelled.",
+        meta=_meta(),
+    )
+
+
+@router.post(
+    "/contracts/{contractId}/default",
+    response_model=StandardResponse[InstallmentContractRead],
+    summary="Explicitly mark ACTIVE -> DEFAULTED (never automatic, never posts to Accounting)",
+)
+async def default_contract(
+    body: InstallmentDefaultRequest,
+    company_id: UUID = Path(..., description="Company identifier"),
+    contract_id: UUID = Path(..., alias="contractId"),
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentContractService = Depends(get_installment_contract_service),
+) -> StandardResponse[InstallmentContractRead]:
+    _require_permission(db, company_id, current_user, "installments.contract.default")
+    contract = svc.default_command(
+        company_id, contract_id, body.reason, idempotency_key, current_user.user_id
+    )
+    return StandardResponse(
+        data=InstallmentContractRead.model_validate(contract),
+        message="Installment contract marked defaulted.",
+        meta=_meta(),
+    )
+
+
+@router.post(
+    "/contracts/{contractId}/cure",
+    response_model=StandardResponse[InstallmentContractRead],
+    summary="DEFAULTED -> ACTIVE (policy-gated; distinct permission from collection)",
+)
+async def cure_contract(
+    body: InstallmentCureRequest,
+    company_id: UUID = Path(..., description="Company identifier"),
+    contract_id: UUID = Path(..., alias="contractId"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentContractService = Depends(get_installment_contract_service),
+) -> StandardResponse[InstallmentContractRead]:
+    _require_permission(db, company_id, current_user, "installments.contract.cure")
+    contract = svc.cure(company_id, contract_id, body.reason, current_user.user_id)
+    return StandardResponse(
+        data=InstallmentContractRead.model_validate(contract),
+        message="Installment contract cured.",
+        meta=_meta(),
+    )
+
+
+@router.post(
+    "/contracts/{contractId}/writeoff",
+    response_model=StandardResponse[InstallmentContractRead],
+    summary="Write off a DEFAULTED contract's remaining balance",
+)
+async def writeoff_contract(
+    body: InstallmentWriteoffRequest,
+    company_id: UUID = Path(..., description="Company identifier"),
+    contract_id: UUID = Path(..., alias="contractId"),
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentContractService = Depends(get_installment_contract_service),
+) -> StandardResponse[InstallmentContractRead]:
+    _require_permission(db, company_id, current_user, "installments.contract.writeoff")
+    contract = svc.writeoff(
+        company_id, contract_id, body.reason, idempotency_key, current_user.user_id
+    )
+    return StandardResponse(
+        data=InstallmentContractRead.model_validate(contract),
+        message="Installment contract written off.",
         meta=_meta(),
     )
 

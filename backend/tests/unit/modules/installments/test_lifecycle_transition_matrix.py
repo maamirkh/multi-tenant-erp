@@ -1,16 +1,27 @@
 """Unit tests for the full reachable _LEGAL_TRANSITIONS matrix (tasks.md
 T081) — every legal transition Phase 5's named methods (``submit()``,
-``approve()``, ``reject()``, ``cancel()``, ``mark_defaulted()``) can
-reach succeeds; a representative sample of illegal transitions raises
+``approve()``, ``reject()``, ``mark_defaulted()``) can reach succeeds; a
+representative sample of illegal transitions raises
 ``InstallmentIllegalTransitionError``.
+
+``cancel()`` is intentionally NOT tested here as of Phase 10: it became
+idempotency-protected (T169), which requires PostgreSQL's
+``ON CONFLICT DO NOTHING`` — incompatible with this file's SQLite
+in-memory ``db_session`` fixture. Its transition-matrix and commit-
+durability coverage now lives in
+``tests/integration/api/v1/installments/test_cancellation_service.py``
+(real Postgres), alongside its financial-activity-branch tests.
 
 ``activate()``/``complete()``/``cure()``/``writeoff()`` don't exist as
 service methods until Phase 7/10 — those _LEGAL_TRANSITIONS edges are
 untestable here by construction and are not exercised (no future-phase
-leakage). Contracts start in a non-DRAFT status by direct ORM
-construction where needed (there is no other way to reach e.g. ACTIVE
-before Phase 7's ``activate()`` exists) — this is arranging state for an
-isolated unit test, not bypassing any guard under test.
+leakage; ``cure()``/``writeoff()`` are also tested in dedicated
+Postgres-backed files, since ``writeoff()`` needs Accounting integration
+and ``cure()`` needs policy-configuration fixtures). Contracts start in
+a non-DRAFT status by direct ORM construction where needed (there is no
+other way to reach e.g. ACTIVE before Phase 7's ``activate()`` exists)
+— this is arranging state for an isolated unit test, not bypassing any
+guard under test.
 """
 
 from __future__ import annotations
@@ -198,35 +209,6 @@ class TestRejectTransitions:
             svc.reject(company_id, contract.id, "reason", uuid.uuid4())
 
 
-class TestCancelTransitions:
-    @pytest.mark.parametrize(
-        "starting_status", ["DRAFT", "PENDING_APPROVAL", "APPROVED", "ACTIVE"]
-    )
-    def test_cancel_succeeds_from_every_legal_stage(
-        self, db_session: Session, starting_status: str
-    ) -> None:
-        company_id = uuid.uuid4()
-        contract = _persist_contract(db_session, company_id, status=starting_status)
-        svc = _make_service(db_session)
-
-        updated = svc.cancel(company_id, contract.id, "Customer request", uuid.uuid4())
-        assert updated.status == "CANCELLED"
-        assert updated.cancelled_at is not None
-
-    @pytest.mark.parametrize(
-        "starting_status", ["COMPLETED", "CANCELLED", "WRITTEN_OFF"]
-    )
-    def test_cancel_rejected_from_terminal_statuses(
-        self, db_session: Session, starting_status: str
-    ) -> None:
-        company_id = uuid.uuid4()
-        contract = _persist_contract(db_session, company_id, status=starting_status)
-        svc = _make_service(db_session)
-
-        with pytest.raises(InstallmentIllegalTransitionError):
-            svc.cancel(company_id, contract.id, "reason", uuid.uuid4())
-
-
 class TestLifecycleMethodsCommitDurably:
     """Every lifecycle method must actually commit — a returned in-memory
     object alone proves nothing about durability. Re-fetch through a
@@ -274,18 +256,6 @@ class TestLifecycleMethodsCommitDurably:
             contract.id, company_id
         )
         assert refetched.status == "DRAFT"
-
-    def test_cancel_commits(self, db_session: Session) -> None:
-        company_id = uuid.uuid4()
-        contract = _persist_contract(db_session, company_id, status="DRAFT")
-        svc = _make_service(db_session)
-        svc.cancel(company_id, contract.id, "reason", uuid.uuid4())
-
-        db_session.expire_all()
-        refetched = InstallmentContractRepository(db_session).get_by_id_or_none(
-            contract.id, company_id
-        )
-        assert refetched.status == "CANCELLED"
 
     def test_mark_defaulted_does_not_commit_by_itself(
         self, db_session: Session

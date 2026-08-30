@@ -6,10 +6,10 @@ adds the named lifecycle-transition methods (``submit()``, ``approve()``,
 ``_LEGAL_TRANSITIONS`` before mutating and audits the mutation; there is
 no generic ``set_status()``/``update_status()`` anywhere (FR-INST-106).
 
-``activate()``, ``complete()``, ``cure()``, ``writeoff()``, and the
-idempotency-protected external "default"/"cancel-with-financial-activity"
-commands are later phases' scope (Phase 7/Phase 10) and are not
-pre-created here.
+Phase 7 adds ``activate()``/``complete()``. Phase 10 completes
+``cancel()``'s financial-activity branch and adds ``default_command()``
+(the idempotency-protected external wrapper around ``mark_defaulted()``),
+``cure()``, and ``writeoff()``.
 
 Spec ref: specs/010-installments/plan.md §9 (Lifecycle), §13 (Sales
 Integration).
@@ -32,6 +32,9 @@ from modules.accounting.exceptions import PostingValidationError
 from modules.installments.constants import _LEGAL_TRANSITIONS
 from modules.installments.exceptions import (
     InstallmentActivationFailedError,
+    InstallmentCancellationNotAllowedError,
+    InstallmentCancellationPaymentReferenceRequiredError,
+    InstallmentCureNotAllowedError,
     InstallmentFiscalPeriodLockedError,
     InstallmentIllegalTransitionError,
     InstallmentNotFoundError,
@@ -41,6 +44,9 @@ from modules.installments.models.contract import InstallmentContract
 from modules.installments.models.schedule import (
     InstallmentScheduleLine,
     InstallmentScheduleVersion,
+)
+from modules.installments.repositories.allocation_reference import (
+    InstallmentAllocationReferenceRepository,
 )
 from modules.installments.repositories.contract import InstallmentContractRepository
 from modules.installments.repositories.schedule import InstallmentScheduleRepository
@@ -151,6 +157,7 @@ class InstallmentContractService:
         schedule_repo: InstallmentScheduleRepository | None = None,
         idempotency_service: InstallmentIdempotencyService | None = None,
         outbox_repo: EventOutboxRepository | None = None,
+        allocation_ref_repo: InstallmentAllocationReferenceRepository | None = None,
     ) -> None:
         self._repo = repo
         self._sequences = sequence_repo
@@ -161,6 +168,7 @@ class InstallmentContractService:
         self._schedule = schedule_repo
         self._idempotency = idempotency_service
         self._outbox = outbox_repo
+        self._allocation_refs = allocation_ref_repo
 
     def create_draft(
         self,
@@ -524,55 +532,150 @@ class InstallmentContractService:
         company_id: UUID,
         contract_id: UUID,
         reason: str,
+        idempotency_key: str,
         actor_id: UUID | None,
+        *,
+        payment_id: UUID | None = None,
     ) -> InstallmentContract:
-        """Cancel a contract. Legality varies by stage (plan.md §15.3):
+        """Cancel a contract. Legality varies by stage (spec FR-INST-210):
         ``DRAFT``/``PENDING_APPROVAL``/``APPROVED``/``ACTIVE`` may all
         transition to ``CANCELLED`` per ``_LEGAL_TRANSITIONS``.
 
-        This phase implements only the free (no-financial-activity) path.
-        An ``ACTIVE`` contract with financial activity must delegate to a
-        reversal workflow that cannot exist before collections/allocations
-        do (Phase 7) or before the idempotency primitive does (Phase 5.5)
-        — that branch, and this method's ``idempotency_key`` parameter,
-        are completed by Phase 10's T169. No contract can reach ``ACTIVE``
-        at all yet (``activate()`` is Phase 7's T124), so every path
-        reachable today is necessarily the free path.
+        Two paths, both idempotency-protected (``cancel`` is one of the 8
+        approved high-risk commands, plan.md §20):
+
+        - **Free path** (``DRAFT``/``PENDING_APPROVAL``/``APPROVED``, or
+          ``ACTIVE`` with zero recorded activity — no down payment and no
+          collections): status transition + audit + outbox + idempotency
+          completion, single commit.
+        - **Financial-activity path** (``ACTIVE`` with a recorded down
+          payment and no further ordinary collections): the caller-
+          supplied ``payment_id`` (the down payment's Accounting
+          ``Payment`` id — Installments has no stored reference to it,
+          since down-payment recording creates no
+          ``InstallmentAllocationReference`` row, unlike ordinary
+          collections) is un-allocated via
+          ``AccountingIntegrationGateway.reverse_payment(full_cancellation=
+          False)`` — the identical shape and staging-order discipline as
+          ``InstallmentCollectionService.reverse_collection()`` (T123),
+          including its choice of ``full_cancellation=False``: fully
+          cancelling the payment itself would additionally require the
+          calling actor to hold Accounting's own
+          ``accounting.journal.reverse`` permission (``cancel_payment()``'s
+          own SoD gate) — an Installments-side actor cannot be assumed to
+          hold it, and plan.md §12.3.2 explicitly notes an unallocated
+          ``Payment`` left in ``POSTED`` status is itself a valid,
+          already-existing Accounting concept, not a corrupt one; any
+          further refund/reallocation of that freed credit is Accounting's
+          own, separate concern. Installments' own rows are staged and
+          flushed *first*, so the first commit inside ``reverse_payment()``
+          sweeps them in.
+
+        An ``ACTIVE`` contract with any *ordinary* collection recorded
+        (beyond the down payment) cannot be cancelled via this path at
+        all — ``InstallmentCancellationNotAllowedError`` — those must be
+        reversed individually first, or the contract settled/defaulted.
 
         Raises:
             ValidationException: ``reason`` is empty.
             InstallmentNotFoundError: contract not found for this tenant.
             InstallmentIllegalTransitionError: the current status has no
                 legal path to ``CANCELLED``.
+            InstallmentCancellationNotAllowedError: ordinary collections
+                exist beyond the down payment (409).
+            InstallmentCancellationPaymentReferenceRequiredError: a down
+                payment exists but ``payment_id`` was not supplied (422).
+            InstallmentIdempotencyConflictError: same key, different
+                request (409).
         """
         if not reason or not reason.strip():
             raise ValidationException(
                 message="A reason is required to cancel an installment contract."
             )
+        assert self._idempotency is not None, "cancel() requires idempotency_service"
+        assert self._outbox is not None, "cancel() requires outbox_repo"
 
-        contract = self._get_or_404(company_id, contract_id)
+        fingerprint = hashlib.sha256(
+            f"contract.cancel:{contract_id}:{reason}:{payment_id}".encode()
+        ).hexdigest()
+        reservation = self._idempotency.reserve(
+            company_id,
+            "contract.cancel",
+            idempotency_key,
+            fingerprint,
+            contract_id=contract_id,
+        )
+        if reservation.outcome == "REPLAY":
+            return self._get_or_404(company_id, contract_id)
 
+        contract = self._repo.get_by_id_locked(contract_id, company_id)
+        if contract is None:
+            raise InstallmentNotFoundError("InstallmentContract", str(contract_id))
         _assert_transition(contract.status, "CANCELLED")
 
-        updated = self._repo.update_with_version_check(
-            contract_id=contract.id,
-            company_id=company_id,
-            expected_version=contract.version,
-            status="CANCELLED",
-            cancelled_at=utcnow(),
+        has_ordinary_collections = False
+        if contract.status == "ACTIVE" and self._allocation_refs is not None:
+            refs = self._allocation_refs.list_for_contract(company_id, contract_id)
+            has_ordinary_collections = any(not ref.is_reversal for ref in refs)
+        if has_ordinary_collections:
+            raise InstallmentCancellationNotAllowedError(str(contract_id))
+
+        has_down_payment = (
+            contract.status == "ACTIVE" and contract.down_payment_amount > 0
         )
-        self._audit.record(
-            company_id,
-            "InstallmentContract",
-            contract.id,
-            action="CANCELLED",
-            actor_id=actor_id,
-            before={"status": contract.status},
-            after={"status": "CANCELLED"},
-            reason=reason,
-        )
-        self._repo.db.commit()
-        return updated
+        if has_down_payment and payment_id is None:
+            raise InstallmentCancellationPaymentReferenceRequiredError(str(contract_id))
+
+        def _stage_cancellation_rows() -> None:
+            before_status = contract.status
+            contract.status = "CANCELLED"
+            contract.cancelled_at = utcnow()
+            contract.version = contract.version + 1
+            self._repo.db.add(contract)
+            self._repo.db.flush()
+            self._audit.record(
+                company_id,
+                "InstallmentContract",
+                contract.id,
+                action="CANCELLED",
+                actor_id=actor_id,
+                before={"status": before_status},
+                after={"status": "CANCELLED"},
+                reason=reason,
+            )
+            assert self._outbox is not None
+            self._outbox.create(
+                OutboxRecord(
+                    event_type="installment.contract.cancelled",
+                    aggregate_id=str(contract.id),
+                    aggregate_type="InstallmentContract",
+                    payload={
+                        "contract_id": str(contract.id),
+                        "company_id": str(company_id),
+                    },
+                )
+            )
+            assert self._idempotency is not None
+            self._idempotency.complete(
+                reservation.reservation_id,
+                {"contract_id": str(contract.id), "status": "CANCELLED"},
+            )
+
+        if has_down_payment:
+            assert payment_id is not None
+            self._accounting.reverse_payment(
+                company_id=company_id,
+                payment_id=payment_id,
+                full_cancellation=False,
+                reason=reason,
+                actor_id=actor_id,
+                stage_installments_rows=_stage_cancellation_rows,
+            )
+        else:
+            _stage_cancellation_rows()
+            self._repo.db.commit()
+
+        return self._get_or_404(company_id, contract_id)
 
     def mark_defaulted(
         self,
@@ -629,6 +732,257 @@ class InstallmentContractService:
         # No commit — internal primitive only; the idempotency-protected
         # orchestration wrapper (Phase 10) commits as its own final step.
         return updated
+
+    def default_command(
+        self,
+        company_id: UUID,
+        contract_id: UUID,
+        reason: str,
+        idempotency_key: str,
+        actor_id: UUID | None,
+    ) -> InstallmentContract:
+        """The externally-callable, idempotency-protected "default"
+        command (tasks.md T166) — distinct from ``mark_defaulted()``'s
+        internal transition primitive (T078). Structurally cannot exist
+        before Phase 5.5's idempotency primitive, which is why it is a
+        Phase 10 wrapper rather than part of ``mark_defaulted()`` itself.
+
+        Idempotency reservation -> ``FOR UPDATE`` lock -> the internal
+        ``mark_defaulted()`` primitive (stages the transition + audit,
+        flush only) -> outbox staged -> idempotency completion staged ->
+        single commit **last**. Zero Accounting calls anywhere in this
+        sequence (BR-INST-013: reaching ``DEFAULTED`` never implies a
+        posting).
+
+        Raises:
+            ValidationException: ``reason`` is empty.
+            InstallmentNotFoundError: contract not found for this tenant.
+            InstallmentIllegalTransitionError: ``contract.status`` is not
+                ``ACTIVE``.
+            InstallmentIdempotencyConflictError: same key, different
+                request (409).
+        """
+        assert (
+            self._idempotency is not None
+        ), "default_command() requires idempotency_service"
+        assert self._outbox is not None, "default_command() requires outbox_repo"
+
+        fingerprint = hashlib.sha256(
+            f"contract.default:{contract_id}:{reason}".encode()
+        ).hexdigest()
+        reservation = self._idempotency.reserve(
+            company_id,
+            "contract.default",
+            idempotency_key,
+            fingerprint,
+            contract_id=contract_id,
+        )
+        if reservation.outcome == "REPLAY":
+            return self._get_or_404(company_id, contract_id)
+
+        locked = self._repo.get_by_id_locked(contract_id, company_id)
+        if locked is None:
+            raise InstallmentNotFoundError("InstallmentContract", str(contract_id))
+
+        updated = self.mark_defaulted(company_id, contract_id, reason, actor_id)
+
+        self._outbox.create(
+            OutboxRecord(
+                event_type="installment.contract.defaulted",
+                aggregate_id=str(updated.id),
+                aggregate_type="InstallmentContract",
+                payload={
+                    "contract_id": str(updated.id),
+                    "company_id": str(company_id),
+                },
+            )
+        )
+        self._idempotency.complete(
+            reservation.reservation_id,
+            {"contract_id": str(updated.id), "status": "DEFAULTED"},
+        )
+        self._repo.db.commit()
+        return updated
+
+    def cure(
+        self,
+        company_id: UUID,
+        contract_id: UUID,
+        reason: str | None,
+        actor_id: UUID | None,
+    ) -> InstallmentContract:
+        """``DEFAULTED -> ACTIVE`` (tasks.md T170) — policy-gated
+        (``InstallmentConfiguration.cure_enabled``, a true kill switch
+        per ADR-INST-12: holding ``installments.contract.cure`` alone is
+        never sufficient). Never creates a new contract, never deletes
+        default/delinquency history (the ``DEFAULTED`` audit event and
+        every ``InstallmentLateCharge``/``InstallmentAllocationReference``
+        row remain permanently visible), never touches Accounting, never
+        rewrites the original terms snapshot.
+
+        Discrete state transition — optimistic ``version`` check, no
+        idempotency reservation (not one of the 8 approved high-risk
+        idempotency-protected commands: no financial posting occurs).
+
+        Raises:
+            InstallmentNotFoundError: contract not found for this tenant.
+            InstallmentIllegalTransitionError: ``contract.status`` is not
+                ``DEFAULTED``.
+            InstallmentCureNotAllowedError: the effective configuration
+                has ``cure_enabled=False`` (422).
+        """
+        contract = self._get_or_404(company_id, contract_id)
+        _assert_transition(contract.status, "ACTIVE")
+
+        config = self._configuration.get_effective_config(
+            company_id, contract.branch_id
+        )
+        if config is None or not config.cure_enabled:
+            raise InstallmentCureNotAllowedError(str(contract_id))
+
+        updated = self._repo.update_with_version_check(
+            contract_id=contract.id,
+            company_id=company_id,
+            expected_version=contract.version,
+            status="ACTIVE",
+        )
+        self._audit.record(
+            company_id,
+            "InstallmentContract",
+            contract.id,
+            action="CURED",
+            actor_id=actor_id,
+            before={"status": "DEFAULTED"},
+            after={"status": "ACTIVE"},
+            reason=reason,
+        )
+        assert self._outbox is not None, "cure() requires outbox_repo"
+        self._outbox.create(
+            OutboxRecord(
+                event_type="installment.contract.cured",
+                aggregate_id=str(updated.id),
+                aggregate_type="InstallmentContract",
+                payload={
+                    "contract_id": str(updated.id),
+                    "company_id": str(company_id),
+                },
+            )
+        )
+        self._repo.db.commit()
+        return updated
+
+    def writeoff(
+        self,
+        company_id: UUID,
+        contract_id: UUID,
+        reason: str,
+        idempotency_key: str,
+        actor_id: UUID | None,
+    ) -> InstallmentContract:
+        """``DEFAULTED -> WRITTEN_OFF`` (tasks.md T171) — writes off the
+        contract's originating invoice ``ARTransaction`` (the single
+        authoritative remaining balance; Accounting has no per-schedule-
+        line concept of its own) via
+        ``AccountingIntegrationGateway.writeoff()``'s staged/finalize
+        pair: ``stage_write_off()`` (flush only) -> Installments' own
+        status transition + audit + outbox + idempotency completion
+        staged -> ``finalize_write_off()`` called **last**, by
+        Installments (plan.md §12.3.3) — the single commit for GL +
+        ``ARTransaction`` status/outstanding + ``CustomerLedger``
+        recompute + contract status + audit + outbox together.
+
+        Raises:
+            ValidationException: ``reason`` is empty.
+            InstallmentNotFoundError: contract not found for this tenant,
+                or no Accounting ``ARTransaction`` exists for its
+                originating invoice.
+            InstallmentIllegalTransitionError: ``contract.status`` is not
+                ``DEFAULTED``.
+            InstallmentIdempotencyConflictError: same key, different
+                request (409).
+            InstallmentFiscalPeriodLockedError: locked fiscal period (422).
+        """
+        if not reason or not reason.strip():
+            raise ValidationException(
+                message="A reason is required to write off an installment " "contract."
+            )
+        assert self._idempotency is not None, "writeoff() requires idempotency_service"
+        assert self._outbox is not None, "writeoff() requires outbox_repo"
+
+        fingerprint = hashlib.sha256(
+            f"contract.writeoff:{contract_id}:{reason}".encode()
+        ).hexdigest()
+        reservation = self._idempotency.reserve(
+            company_id,
+            "contract.writeoff",
+            idempotency_key,
+            fingerprint,
+            contract_id=contract_id,
+        )
+        if reservation.outcome == "REPLAY":
+            return self._get_or_404(company_id, contract_id)
+
+        contract = self._repo.get_by_id_locked(contract_id, company_id)
+        if contract is None:
+            raise InstallmentNotFoundError("InstallmentContract", str(contract_id))
+        _assert_transition(contract.status, "WRITTEN_OFF")
+
+        ar_transaction_id = self._accounting.get_invoice_ar_transaction_id(
+            company_id, contract.sales_invoice_id
+        )
+        if ar_transaction_id is None:
+            raise InstallmentNotFoundError(
+                "ARTransaction", str(contract.sales_invoice_id)
+            )
+
+        def _stage_writeoff_rows(_staged: Any) -> None:
+            before_status = contract.status
+            contract.status = "WRITTEN_OFF"
+            contract.written_off_at = utcnow()
+            contract.version = contract.version + 1
+            self._repo.db.add(contract)
+            self._repo.db.flush()
+            self._audit.record(
+                company_id,
+                "InstallmentContract",
+                contract.id,
+                action="WRITTEN_OFF",
+                actor_id=actor_id,
+                before={"status": before_status},
+                after={"status": "WRITTEN_OFF"},
+                reason=reason,
+            )
+            assert self._outbox is not None
+            self._outbox.create(
+                OutboxRecord(
+                    event_type="installment.contract.written_off",
+                    aggregate_id=str(contract.id),
+                    aggregate_type="InstallmentContract",
+                    payload={
+                        "contract_id": str(contract.id),
+                        "company_id": str(company_id),
+                    },
+                )
+            )
+            assert self._idempotency is not None
+            self._idempotency.complete(
+                reservation.reservation_id,
+                {"contract_id": str(contract.id), "status": "WRITTEN_OFF"},
+            )
+
+        try:
+            self._accounting.writeoff(
+                company_id=company_id,
+                ar_transaction_id=ar_transaction_id,
+                reason=reason,
+                actor_id=actor_id,
+                stage_installments_rows=_stage_writeoff_rows,
+            )
+        except PostingValidationError as exc:
+            self._repo.db.rollback()
+            _raise_for_posting_error(exc, contract_id)
+
+        return self._get_or_404(company_id, contract_id)
 
     def activate(
         self,
