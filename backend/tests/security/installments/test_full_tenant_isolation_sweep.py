@@ -24,11 +24,27 @@ import uuid
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from modules.accounting.models.payments import Payment
 from modules.installments.exceptions import (
     InstallmentNotFoundError,
     InstallmentReversalNotAllowedError,
+)
+from modules.installments.models.contract import InstallmentContract
+from modules.installments.models.plan_template import InstallmentPlanTemplate
+from modules.installments.repositories.configuration import (
+    InstallmentConfigurationRepository,
+)
+from modules.installments.repositories.plan_template import (
+    InstallmentPlanTemplateRepository,
+)
+from modules.installments.services.configuration_service import (
+    InstallmentConfigurationService,
+)
+from modules.installments.services.plan_template_service import (
+    InstallmentPlanTemplateService,
 )
 from tests.security.installments.conftest import (
     build_active_contract_with_schedule,
@@ -119,6 +135,12 @@ class TestLifecycleActionsIsolation:
         )
         svc = build_contract_service(pg_db_session)
         company_b = uuid.uuid4()
+        before = (
+            pg_db_session.query(InstallmentContract)
+            .filter_by(id=ctx["contract"].id)
+            .one()
+        )
+        before_status, before_version = before.status, before.version
 
         with pytest.raises(InstallmentNotFoundError):
             svc.cancel(
@@ -128,6 +150,18 @@ class TestLifecycleActionsIsolation:
                 idempotency_key=str(uuid.uuid4()),
                 actor_id=None,
             )
+
+        # Every protected field on the target (owning tenant's) record
+        # is re-read and confirmed unchanged after the attempt.
+        after = (
+            pg_db_session.query(InstallmentContract)
+            .filter_by(id=ctx["contract"].id)
+            .one()
+        )
+        assert after.status == before_status == "DRAFT"
+        assert after.version == before_version
+        assert after.cancelled_at is None
+        assert after.company_id == ctx["company_id"]
 
     def test_default_cross_tenant_is_not_found(self, pg_db_session: Session) -> None:
         ctx = build_active_contract_with_schedule(
@@ -225,6 +259,20 @@ class TestCollectionIsolation:
         )
         svc = build_collection_service(pg_db_session)
         company_b = uuid.uuid4()
+        before = (
+            pg_db_session.query(InstallmentContract)
+            .filter_by(id=ctx["contract"].id)
+            .one()
+        )
+        before_status = before.status
+        payments_before = (
+            pg_db_session.execute(
+                select(Payment).where(Payment.company_id == ctx["company_id"])
+            )
+            .scalars()
+            .all()
+        )
+        assert payments_before == []
 
         with pytest.raises(InstallmentNotFoundError):
             svc.record_collection(
@@ -236,6 +284,23 @@ class TestCollectionIsolation:
                 actor_id=None,
                 bank_account_id=ctx["bank_account"].id,
             )
+
+        # No financial mutation reached Accounting, and the contract's
+        # own protected state is unchanged.
+        after = (
+            pg_db_session.query(InstallmentContract)
+            .filter_by(id=ctx["contract"].id)
+            .one()
+        )
+        assert after.status == before_status
+        payments_after = (
+            pg_db_session.execute(
+                select(Payment).where(Payment.company_id == ctx["company_id"])
+            )
+            .scalars()
+            .all()
+        )
+        assert payments_after == [], "cross-tenant attempt must create ZERO payments"
 
     def test_reverse_collection_cross_tenant_is_rejected(
         self, pg_db_session: Session
@@ -325,3 +390,99 @@ class TestRescheduleIsolation:
                 actor_id=None,
                 requested_by=None,
             )
+
+
+class TestConfigurationAndPlanTemplateIsolation:
+    """[Strengthening — HTTP Security Evidence Closure item 8] The
+    configuration/template group T197 did not originally cover."""
+
+    def test_plan_template_update_cross_tenant_is_not_found_and_unchanged(
+        self, pg_db_session: Session
+    ) -> None:
+        company_a = uuid.uuid4()
+        repo = InstallmentPlanTemplateRepository(pg_db_session)
+        svc = InstallmentPlanTemplateService(repo=repo)
+        template = svc.create(
+            company_a,
+            None,
+            name="Tenant A's Template",
+            installment_count=6,
+            frequency="MONTHLY",
+            down_payment_rule={"type": "FIXED", "amount": "0"},
+        )
+        before_name, before_updated_at = template.name, template.updated_at
+        company_b = uuid.uuid4()
+
+        with pytest.raises(InstallmentNotFoundError):
+            svc.update(company_b, template.id, name="Hijacked By Tenant B")
+
+        after = (
+            pg_db_session.execute(
+                select(InstallmentPlanTemplate).where(
+                    InstallmentPlanTemplate.id == template.id
+                )
+            )
+            .scalars()
+            .one()
+        )
+        assert after.name == before_name == "Tenant A's Template"
+        assert after.updated_at == before_updated_at
+        assert after.company_id == company_a
+
+    def test_plan_template_deactivate_cross_tenant_is_not_found_and_unchanged(
+        self, pg_db_session: Session
+    ) -> None:
+        company_a = uuid.uuid4()
+        repo = InstallmentPlanTemplateRepository(pg_db_session)
+        svc = InstallmentPlanTemplateService(repo=repo)
+        template = svc.create(
+            company_a,
+            None,
+            name="Tenant A's Deactivation Target",
+            installment_count=3,
+            frequency="MONTHLY",
+            down_payment_rule={"type": "FIXED", "amount": "0"},
+        )
+        assert template.is_active is True
+        company_b = uuid.uuid4()
+
+        with pytest.raises(InstallmentNotFoundError):
+            svc.deactivate(company_b, template.id)
+
+        after = (
+            pg_db_session.execute(
+                select(InstallmentPlanTemplate).where(
+                    InstallmentPlanTemplate.id == template.id
+                )
+            )
+            .scalars()
+            .one()
+        )
+        assert after.is_active is True, "cross-tenant attempt must not deactivate it"
+
+    def test_configuration_never_reveals_another_companys_policy(
+        self, pg_db_session: Session
+    ) -> None:
+        company_a = uuid.uuid4()
+        repo = InstallmentConfigurationRepository(pg_db_session)
+        svc = InstallmentConfigurationService(repo=repo)
+        svc.upsert_config(
+            company_a,
+            None,
+            None,
+            allowed_frequencies=["MONTHLY"],
+            min_term=1,
+            max_term=60,
+            cure_enabled=True,
+        )
+        company_b = uuid.uuid4()
+
+        # Company B's own effective config is genuinely unconfigured —
+        # never company A's policy, structurally impossible to leak
+        # since the lookup is scoped by company_id at the query level.
+        config_for_b = svc.get_effective_config(company_b, None)
+        assert config_for_b is None
+
+        config_for_a = svc.get_effective_config(company_a, None)
+        assert config_for_a is not None
+        assert config_for_a.cure_enabled is True
