@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from modules.installments.models.audit import InstallmentAuditLog
@@ -43,3 +43,32 @@ class InstallmentAuditLogRepository:
             .order_by(InstallmentAuditLog.occurred_at)
         )
         return list(self.db.execute(stmt).scalars().all())
+
+    def list_by_action_for_company(
+        self,
+        company_id: UUID,
+        *,
+        entity_type: str,
+        action: str,
+        skip: int = 0,
+        limit: int = 20,
+    ) -> tuple[list[InstallmentAuditLog], int]:
+        """Company-wide, action-filtered audit listing — the Settlement
+        report's base query (tasks.md T204: "Installments (SETTLED audit
+        events + contract closure data)"), most-recent first."""
+        base_stmt = (
+            select(InstallmentAuditLog)
+            .where(InstallmentAuditLog.company_id == company_id)
+            .where(InstallmentAuditLog.entity_type == entity_type)
+            .where(InstallmentAuditLog.action == action)
+        )
+        count_stmt = select(func.count()).select_from(base_stmt.subquery())
+        total: int = self.db.execute(count_stmt).scalar_one()
+
+        rows_stmt = (
+            base_stmt.order_by(InstallmentAuditLog.occurred_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+        items = list(self.db.execute(rows_stmt).scalars().all())
+        return items, total

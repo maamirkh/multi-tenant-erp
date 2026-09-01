@@ -112,6 +112,30 @@ class AccountingIntegrationGateway:
         )
         return transaction.id if transaction is not None else None
 
+    def get_payment(self, company_id: UUID, payment_id: UUID):
+        """Live read of a single Accounting ``Payment`` by id, or
+        ``None`` if it does not exist for this company — the same
+        None-on-missing convention as ``get_ar_transaction()``. Used
+        starting Phase 12 (reporting: the Collection report and
+        dashboard collection KPIs read the authoritative payment date/
+        method/amount from here, never from a cached Installments-side
+        copy, plan.md §25)."""
+        from modules.accounting.exceptions import PaymentNotFoundError
+
+        try:
+            return self._payment_service.get_payment(company_id, payment_id)
+        except PaymentNotFoundError:
+            return None
+
+    def list_allocation_lines(self, company_id: UUID, payment_id: UUID):
+        """Live read of every ``PaymentAllocationLine`` for a single
+        Accounting payment — the authoritative per-line collected
+        amount a Collection report row cross-references against (never
+        trusting ``InstallmentAllocationReference.allocated_amount``
+        alone as the reported figure, plan.md §25's "never invents a
+        competing amount collected figure")."""
+        return self._payment_service.list_allocation_lines(company_id, payment_id)
+
     # ------------------------------------------------------------------
     # Money-mutating staged/finalize operations (Phase 6, T107)
     # ------------------------------------------------------------------

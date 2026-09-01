@@ -54,9 +54,13 @@ from modules.installments.services.configuration_service import (
     InstallmentConfigurationService,
 )
 from modules.installments.services.contract_service import InstallmentContractService
+from modules.installments.services.customer_summary_service import (
+    InstallmentCustomerSummaryService,
+)
 from modules.installments.services.delinquency_service import (
     InstallmentDelinquencyService,
 )
+from modules.installments.services.document_service import InstallmentDocumentService
 from modules.installments.services.eligibility_service import (
     InstallmentEligibilityService,
 )
@@ -73,6 +77,9 @@ from modules.installments.services.plan_template_service import (
     InstallmentPlanTemplateService,
 )
 from modules.installments.services.quote_service import InstallmentQuoteService
+from modules.installments.services.reporting_service import (
+    InstallmentReportingService,
+)
 from modules.installments.services.rescheduling_service import (
     InstallmentReschedulingService,
 )
@@ -512,5 +519,79 @@ def get_installment_rescheduling_service(
         idempotency_service=idempotency_service,
         audit_service=audit_service,
         outbox_repo=outbox_repo,
+        access_policy=access_policy,
+    )
+
+
+def get_installment_reporting_service(
+    contract_repo: InstallmentContractRepository = Depends(
+        get_installment_contract_repo
+    ),
+    schedule_repo: InstallmentScheduleRepository = Depends(
+        get_installment_schedule_repo
+    ),
+    allocation_ref_repo: InstallmentAllocationReferenceRepository = Depends(
+        get_installment_allocation_reference_repo
+    ),
+    late_charge_repo: InstallmentLateChargeRepository = Depends(
+        get_installment_late_charge_repo
+    ),
+    audit_repo: InstallmentAuditLogRepository = Depends(get_installment_audit_log_repo),
+    plan_template_repo: InstallmentPlanTemplateRepository = Depends(
+        get_installment_plan_template_repo
+    ),
+    accounting_gateway: AccountingIntegrationGateway = Depends(
+        get_accounting_integration_gateway
+    ),
+    access_policy: InstallmentAccessPolicy = Depends(get_installment_access_policy),
+) -> InstallmentReportingService:
+    return InstallmentReportingService(
+        contract_repo=contract_repo,
+        schedule_repo=schedule_repo,
+        allocation_ref_repo=allocation_ref_repo,
+        late_charge_repo=late_charge_repo,
+        audit_repo=audit_repo,
+        plan_template_repo=plan_template_repo,
+        accounting_gateway=accounting_gateway,
+        access_policy=access_policy,
+    )
+
+
+def get_installment_document_service(
+    contract_repo: InstallmentContractRepository = Depends(
+        get_installment_contract_repo
+    ),
+    schedule_repo: InstallmentScheduleRepository = Depends(
+        get_installment_schedule_repo
+    ),
+    allocation_ref_repo: InstallmentAllocationReferenceRepository = Depends(
+        get_installment_allocation_reference_repo
+    ),
+    access_policy: InstallmentAccessPolicy = Depends(get_installment_access_policy),
+) -> InstallmentDocumentService:
+    return InstallmentDocumentService(
+        contract_repo=contract_repo,
+        schedule_repo=schedule_repo,
+        allocation_ref_repo=allocation_ref_repo,
+        access_policy=access_policy,
+    )
+
+
+def get_installment_customer_summary_service(
+    contract_repo: InstallmentContractRepository = Depends(
+        get_installment_contract_repo
+    ),
+    schedule_repo: InstallmentScheduleRepository = Depends(
+        get_installment_schedule_repo
+    ),
+    allocation_ref_repo: InstallmentAllocationReferenceRepository = Depends(
+        get_installment_allocation_reference_repo
+    ),
+    access_policy: InstallmentAccessPolicy = Depends(get_installment_access_policy),
+) -> InstallmentCustomerSummaryService:
+    return InstallmentCustomerSummaryService(
+        contract_repo=contract_repo,
+        schedule_repo=schedule_repo,
+        allocation_ref_repo=allocation_ref_repo,
         access_policy=access_policy,
     )

@@ -67,9 +67,11 @@ from modules.installments.dependencies import (
     get_installment_collection_service,
     get_installment_configuration_service,
     get_installment_contract_service,
+    get_installment_document_service,
     get_installment_eligibility_service,
     get_installment_plan_template_service,
     get_installment_quote_service,
+    get_installment_reporting_service,
     get_installment_rescheduling_service,
     get_installment_settlement_service,
     get_installments_feature_flag_service,
@@ -104,6 +106,15 @@ from modules.installments.schemas.plan_template import (
     InstallmentPlanTemplateRead,
     InstallmentPlanTemplateUpdate,
 )
+from modules.installments.schemas.reports import (
+    InstallmentAgreementView,
+    InstallmentCustomerStatement,
+    InstallmentCustomerStatementContract,
+    InstallmentDashboard,
+    InstallmentReportRow,
+    InstallmentScheduleDocument,
+    InstallmentScheduleDocumentLine,
+)
 from modules.installments.schemas.schedule import (
     InstallmentQuotePreviewRead,
     InstallmentQuoteRequest,
@@ -121,6 +132,7 @@ from modules.installments.services.configuration_service import (
     InstallmentConfigurationService,
 )
 from modules.installments.services.contract_service import InstallmentContractService
+from modules.installments.services.document_service import InstallmentDocumentService
 from modules.installments.services.eligibility_service import (
     InstallmentEligibilityService,
 )
@@ -134,6 +146,10 @@ from modules.installments.services.plan_template_service import (
     InstallmentPlanTemplateService,
 )
 from modules.installments.services.quote_service import InstallmentQuoteService
+from modules.installments.services.reporting_service import (
+    InstallmentDashboardData,
+    InstallmentReportingService,
+)
 from modules.installments.services.rescheduling_service import (
     InstallmentReschedulingService,
     RescheduleTerms,
@@ -923,6 +939,226 @@ async def check_eligibility(
     return StandardResponse(
         data=EligibilityResultRead.model_validate(result),
         message="Invoice/customer eligible for an installment offer.",
+        meta=_meta(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Reports / Dashboard (plan.md §16.1: installments.report.view, READ)
+# ---------------------------------------------------------------------------
+
+_REPORT_TYPES = (
+    "contract-register",
+    "collection",
+    "due",
+    "overdue",
+    "aging",
+    "settlement",
+    "default-writeoff",
+    "plan-performance",
+)
+
+
+@router.get(
+    "/reports/{reportType}",
+    response_model=PaginatedResponse[InstallmentReportRow],
+    summary=(
+        "contract-register | collection | due | overdue | aging | settlement | "
+        "default-writeoff | plan-performance"
+    ),
+)
+async def get_report(
+    company_id: UUID = Path(..., description="Company identifier"),
+    report_type: str = Path(..., alias="reportType"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    status_filter: str | None = Query(None, alias="status"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentReportingService = Depends(get_installment_reporting_service),
+) -> PaginatedResponse[InstallmentReportRow]:
+    _require_permission(db, company_id, current_user, "installments.report.view")
+    if report_type not in _REPORT_TYPES:
+        raise InstallmentNotFoundError("ReportType", report_type)
+
+    skip = (page - 1) * page_size
+    if report_type == "contract-register":
+        rows, total = svc.get_contract_register(
+            company_id, status=status_filter, skip=skip, limit=page_size
+        )
+    elif report_type == "collection":
+        rows, total = svc.get_collection_report(company_id, skip=skip, limit=page_size)
+    elif report_type == "due":
+        rows, total = svc.get_due_report(company_id, skip=skip, limit=page_size)
+    elif report_type == "overdue":
+        rows, total = svc.get_overdue_report(company_id, skip=skip, limit=page_size)
+    elif report_type == "aging":
+        rows, total = svc.get_aging_report(company_id, skip=skip, limit=page_size)
+    elif report_type == "settlement":
+        rows, total = svc.get_settlement_report(company_id, skip=skip, limit=page_size)
+    elif report_type == "default-writeoff":
+        rows, total = svc.get_default_writeoff_report(
+            company_id, skip=skip, limit=page_size
+        )
+    else:  # plan-performance
+        rows, total = svc.get_plan_performance_report(company_id)
+
+    pages = math.ceil(total / page_size) if total > 0 else 0
+    return PaginatedResponse(
+        data=PaginatedData(
+            items=[InstallmentReportRow(row) for row in rows],
+            total=total,
+            page=page,
+            page_size=page_size,
+            pages=pages,
+        ),
+        message=f"{total} {report_type} report row(s) found.",
+        meta=_meta(),
+    )
+
+
+@router.get(
+    "/dashboard",
+    response_model=StandardResponse[InstallmentDashboard],
+    summary=(
+        "KPI summary (active contracts, outstanding, due today/this month, "
+        "overdue, collection rate, aging distribution)"
+    ),
+)
+async def get_dashboard(
+    company_id: UUID = Path(..., description="Company identifier"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentReportingService = Depends(get_installment_reporting_service),
+) -> StandardResponse[InstallmentDashboard]:
+    _require_permission(db, company_id, current_user, "installments.report.view")
+    data: InstallmentDashboardData = svc.get_dashboard(company_id)
+    return StandardResponse(
+        data=InstallmentDashboard(
+            active_contract_count=data.active_contract_count,
+            outstanding_amount=data.outstanding_amount,
+            due_today_amount=data.due_today_amount,
+            due_this_month_amount=data.due_this_month_amount,
+            collected_today_amount=data.collected_today_amount,
+            collected_this_month_amount=data.collected_this_month_amount,
+            overdue_amount=data.overdue_amount,
+            overdue_count=data.overdue_count,
+            collection_rate=data.collection_rate,
+            aging_distribution=data.aging_distribution,
+            defaulted_balance=data.defaulted_balance,
+            written_off_balance=data.written_off_balance,
+            upcoming_receivables_amount=data.upcoming_receivables_amount,
+        ),
+        message="Installments dashboard KPIs retrieved.",
+        meta=_meta(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Documents / Statements (plan.md §16.1: installments.contract.view, READ)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/contracts/{contractId}/documents/agreement",
+    response_model=StandardResponse[InstallmentAgreementView],
+    summary="Installment agreement document (read-only JSON)",
+)
+async def get_agreement_document(
+    company_id: UUID = Path(..., description="Company identifier"),
+    contract_id: UUID = Path(..., alias="contractId"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentDocumentService = Depends(get_installment_document_service),
+) -> StandardResponse[InstallmentAgreementView]:
+    _require_permission(db, company_id, current_user, "installments.contract.view")
+    result = svc.get_agreement(company_id, contract_id)
+    return StandardResponse(
+        data=InstallmentAgreementView.model_validate(result),
+        message="Installment agreement document retrieved.",
+        meta=_meta(),
+    )
+
+
+@router.get(
+    "/contracts/{contractId}/documents/schedule",
+    response_model=StandardResponse[InstallmentScheduleDocument],
+    summary="Payment schedule document",
+)
+async def get_schedule_document(
+    company_id: UUID = Path(..., description="Company identifier"),
+    contract_id: UUID = Path(..., alias="contractId"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentDocumentService = Depends(get_installment_document_service),
+) -> StandardResponse[InstallmentScheduleDocument]:
+    _require_permission(db, company_id, current_user, "installments.contract.view")
+    result = svc.get_schedule_document(company_id, contract_id)
+    return StandardResponse(
+        data=InstallmentScheduleDocument(
+            document_type=result["document_type"],
+            contract_id=result["contract_id"],
+            contract_number=result["contract_number"],
+            version_number=result["version_number"],
+            generated_at=result["generated_at"],
+            lines=[
+                InstallmentScheduleDocumentLine.model_validate(line)
+                for line in result["lines"]
+            ],
+        ),
+        message="Installment schedule document retrieved.",
+        meta=_meta(),
+    )
+
+
+@router.get(
+    "/contracts/{contractId}/documents/settlement-quote",
+    response_model=StandardResponse[InstallmentSettlementQuoteRead],
+    summary="Latest settlement quotation document",
+)
+async def get_settlement_quote_document(
+    company_id: UUID = Path(..., description="Company identifier"),
+    contract_id: UUID = Path(..., alias="contractId"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentSettlementService = Depends(get_installment_settlement_service),
+) -> StandardResponse[InstallmentSettlementQuoteRead]:
+    """Reuses ``InstallmentSettlementService.generate_quote()``'s output
+    directly (plan.md §27) — already a structured, non-mutating read; no
+    second, competing document-generation code path exists for it."""
+    _require_permission(db, company_id, current_user, "installments.contract.view")
+    quote = svc.generate_quote(company_id, contract_id, date.today(), actor_id=None)
+    return StandardResponse(
+        data=InstallmentSettlementQuoteRead.model_validate(quote),
+        message="Installment settlement quotation document retrieved.",
+        meta=_meta(),
+    )
+
+
+@router.get(
+    "/customers/{customerId}/statement",
+    response_model=StandardResponse[InstallmentCustomerStatement],
+    summary="Cross-contract customer installment statement",
+)
+async def get_customer_statement(
+    company_id: UUID = Path(..., description="Company identifier"),
+    customer_id: UUID = Path(..., alias="customerId"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    svc: InstallmentDocumentService = Depends(get_installment_document_service),
+) -> StandardResponse[InstallmentCustomerStatement]:
+    _require_permission(db, company_id, current_user, "installments.contract.view")
+    result = svc.get_customer_statement(company_id, customer_id)
+    return StandardResponse(
+        data=InstallmentCustomerStatement(
+            document_type=result["document_type"],
+            customer_id=result["customer_id"],
+            contracts=[
+                InstallmentCustomerStatementContract.model_validate(c)
+                for c in result["contracts"]
+            ],
+        ),
+        message="Customer installment statement retrieved.",
         meta=_meta(),
     )
 

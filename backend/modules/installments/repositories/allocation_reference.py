@@ -12,6 +12,7 @@ Spec ref: specs/010-installments/data-model.md
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
@@ -87,7 +88,10 @@ class InstallmentAllocationReferenceRepository:
             )
             .group_by(InstallmentAllocationReference.schedule_line_id)
         )
-        return dict(self.db.execute(stmt).all())
+        return {
+            schedule_line_id: amount
+            for schedule_line_id, amount in self.db.execute(stmt).all()
+        }
 
     def get_by_payment_id(
         self, company_id: UUID, accounting_payment_id: UUID
@@ -106,3 +110,64 @@ class InstallmentAllocationReferenceRepository:
             .order_by(InstallmentAllocationReference.allocation_order)
         )
         return list(self.db.execute(stmt).scalars().all())
+
+    def list_for_company(
+        self,
+        company_id: UUID,
+        *,
+        since: date | None = None,
+        until: date | None = None,
+        include_reversals: bool = False,
+        skip: int = 0,
+        limit: int = 20,
+    ) -> tuple[list[InstallmentAllocationReference], int]:
+        """Company-wide, paginated allocation-reference listing — the
+        Collection report's base query (tasks.md T204) and the
+        dashboard's collected-today/this-month KPI input (T205). Date
+        filters apply to ``allocated_at`` (the date Accounting actually
+        recorded the collection, never a schedule due date)."""
+        base_stmt = select(InstallmentAllocationReference).where(
+            InstallmentAllocationReference.company_id == company_id
+        )
+        if not include_reversals:
+            base_stmt = base_stmt.where(
+                InstallmentAllocationReference.is_reversal == False  # noqa: E712
+            )
+        if since is not None:
+            base_stmt = base_stmt.where(
+                func.date(InstallmentAllocationReference.allocated_at) >= since
+            )
+        if until is not None:
+            base_stmt = base_stmt.where(
+                func.date(InstallmentAllocationReference.allocated_at) <= until
+            )
+
+        count_stmt = select(func.count()).select_from(base_stmt.subquery())
+        total: int = self.db.execute(count_stmt).scalar_one()
+
+        rows_stmt = (
+            base_stmt.order_by(InstallmentAllocationReference.allocated_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+        items = list(self.db.execute(rows_stmt).scalars().all())
+        return items, total
+
+    def sum_allocated_between(
+        self, company_id: UUID, *, since: date, until: date
+    ) -> Decimal:
+        """A single aggregate ``SUM`` for a date window — the dashboard's
+        collected-today/collected-this-month KPIs (T205), never a Python
+        loop summing individually-fetched rows."""
+        stmt = (
+            select(
+                func.coalesce(
+                    func.sum(InstallmentAllocationReference.allocated_amount), 0
+                )
+            )
+            .where(InstallmentAllocationReference.company_id == company_id)
+            .where(InstallmentAllocationReference.is_reversal == False)  # noqa: E712
+            .where(func.date(InstallmentAllocationReference.allocated_at) >= since)
+            .where(func.date(InstallmentAllocationReference.allocated_at) <= until)
+        )
+        return Decimal(self.db.execute(stmt).scalar_one())

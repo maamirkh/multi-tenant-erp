@@ -80,6 +80,25 @@ class InstallmentLateChargeRepository:
         )
         return list(self.db.execute(stmt).scalars().all())
 
+    def list_for_company(
+        self, company_id: UUID, *, exclude_waived: bool = True
+    ) -> list[InstallmentLateCharge]:
+        """Every late charge across the company — the dashboard
+        "outstanding" KPI's late-charge component (tasks.md T205),
+        typically a much smaller row count than the full schedule-line
+        population, so a bounded per-charge Accounting AR-status check
+        (the same live-read ``InstallmentOutstandingService`` already
+        does per-contract) stays acceptable here without a dedicated
+        bulk Accounting-side query."""
+        stmt = (
+            select(InstallmentLateCharge)
+            .where(InstallmentLateCharge.company_id == company_id)
+            .where(InstallmentLateCharge.is_deleted == False)  # noqa: E712
+        )
+        if exclude_waived:
+            stmt = stmt.where(InstallmentLateCharge.waived_at.is_(None))
+        return list(self.db.execute(stmt).scalars().all())
+
     def mark_waived(
         self,
         late_charge: InstallmentLateCharge,

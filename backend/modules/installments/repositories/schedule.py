@@ -17,15 +17,25 @@ data-model.md "InstallmentScheduleVersion"/"InstallmentScheduleLine".
 
 from __future__ import annotations
 
+from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from modules.installments.models.allocation_reference import (
+    InstallmentAllocationReference,
+)
+from modules.installments.models.contract import InstallmentContract
 from modules.installments.models.schedule import (
     InstallmentScheduleLine,
     InstallmentScheduleVersion,
 )
+
+#: Contracts still capable of carrying a live, servicing-relevant schedule
+#: obligation — matches InstallmentCollectionService's own
+#: _REVERSIBLE_STATUSES (plan.md §25's due/overdue/aging population).
+_SERVICEABLE_STATUSES = ("ACTIVE", "DEFAULTED")
 
 
 class InstallmentScheduleRepository:
@@ -97,3 +107,118 @@ class InstallmentScheduleRepository:
             InstallmentScheduleLine.id == schedule_line_id,
         )
         return self.db.execute(stmt).scalars().one_or_none()
+
+    def list_active_lines_for_company(
+        self, company_id: UUID, *, skip: int = 0, limit: int = 20
+    ) -> tuple[list[tuple[InstallmentScheduleLine, InstallmentContract]], int]:
+        """The base population every due/overdue/aging report page draws
+        from (tasks.md T204/T213): every non-waived, non-voided line
+        belonging to its owning contract's currently-``ACTIVE`` schedule
+        version, for contracts still capable of carrying a live
+        obligation. Returns each line paired with its owning contract in
+        the SAME query (one JOIN) so a report page never issues a
+        separate per-line or per-contract follow-up lookup — the join
+        condition (``InstallmentContract.active_schedule_version_id ==
+        InstallmentScheduleLine.schedule_version_id``) is exactly how
+        ``InstallmentContractService.get_active_schedule()`` already
+        identifies "the" active version for a contract, reused here at
+        set level instead of one-contract-at-a-time.
+        """
+        base_stmt = (
+            select(InstallmentScheduleLine, InstallmentContract)
+            .join(
+                InstallmentContract,
+                InstallmentContract.active_schedule_version_id
+                == InstallmentScheduleLine.schedule_version_id,
+            )
+            .where(InstallmentScheduleLine.company_id == company_id)
+            .where(InstallmentContract.company_id == company_id)
+            .where(InstallmentContract.status.in_(_SERVICEABLE_STATUSES))
+            .where(InstallmentContract.is_deleted == False)  # noqa: E712
+            .where(InstallmentScheduleLine.waived_at.is_(None))
+            .where(InstallmentScheduleLine.voided_at.is_(None))
+        )
+        count_stmt = select(func.count()).select_from(base_stmt.subquery())
+        total: int = self.db.execute(count_stmt).scalar_one()
+
+        rows_stmt = (
+            base_stmt.order_by(InstallmentScheduleLine.due_date)
+            .offset(skip)
+            .limit(limit)
+        )
+        rows = self.db.execute(rows_stmt).all()
+        items = [(row[0], row[1]) for row in rows]
+        return items, total
+
+    def sum_schedule_outstanding_for_company(self, company_id: UUID) -> Decimal:
+        """One aggregate query for the dashboard's "outstanding" KPI
+        (tasks.md T205): ``SUM(scheduled_amount) - SUM(net allocated)``
+        across every active line of every serviceable contract, via a
+        correlated subquery on ``installment_allocation_references`` —
+        never a Python loop over per-contract
+        ``InstallmentOutstandingService`` calls (which would be one
+        query per contract, the exact N+1 T213 forbids)."""
+        return self._sum_outstanding_for_statuses(
+            company_id, statuses=_SERVICEABLE_STATUSES
+        )
+
+    def sum_schedule_outstanding_for_statuses(
+        self, company_id: UUID, *, statuses: tuple[str, ...]
+    ) -> Decimal:
+        """Same aggregate as ``sum_schedule_outstanding_for_company`` but
+        for an arbitrary contract-status set (e.g. ``WRITTEN_OFF``)
+        rather than the hardcoded serviceable set — lets dashboard KPIs
+        for terminal-status balances (e.g. written-off balance) be a
+        single query instead of a per-contract loop (T213's N+1
+        prohibition applies to this KPI too, not just the paginated
+        report list endpoints)."""
+        return self._sum_outstanding_for_statuses(company_id, statuses=statuses)
+
+    def _sum_outstanding_for_statuses(
+        self, company_id: UUID, *, statuses: tuple[str, ...]
+    ) -> Decimal:
+        net_allocated_subq = (
+            select(
+                InstallmentAllocationReference.schedule_line_id.label("line_id"),
+                func.sum(
+                    case(
+                        (
+                            InstallmentAllocationReference.is_reversal,
+                            -InstallmentAllocationReference.allocated_amount,
+                        ),
+                        else_=InstallmentAllocationReference.allocated_amount,
+                    )
+                ).label("net_allocated"),
+            )
+            .where(InstallmentAllocationReference.company_id == company_id)
+            .group_by(InstallmentAllocationReference.schedule_line_id)
+            .subquery()
+        )
+        stmt = (
+            select(
+                func.coalesce(
+                    func.sum(
+                        InstallmentScheduleLine.scheduled_amount
+                        - func.coalesce(net_allocated_subq.c.net_allocated, 0)
+                    ),
+                    0,
+                )
+            )
+            .select_from(InstallmentScheduleLine)
+            .join(
+                InstallmentContract,
+                InstallmentContract.active_schedule_version_id
+                == InstallmentScheduleLine.schedule_version_id,
+            )
+            .outerjoin(
+                net_allocated_subq,
+                net_allocated_subq.c.line_id == InstallmentScheduleLine.id,
+            )
+            .where(InstallmentScheduleLine.company_id == company_id)
+            .where(InstallmentContract.company_id == company_id)
+            .where(InstallmentContract.status.in_(statuses))
+            .where(InstallmentContract.is_deleted == False)  # noqa: E712
+            .where(InstallmentScheduleLine.waived_at.is_(None))
+            .where(InstallmentScheduleLine.voided_at.is_(None))
+        )
+        return Decimal(self.db.execute(stmt).scalar_one())
