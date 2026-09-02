@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from modules.installments.repositories.allocation_reference import (
@@ -68,22 +69,40 @@ class InstallmentCustomerSummaryService:
         written_off_count = sum(1 for c in contracts if c.status == "WRITTEN_OFF")
         total_contractual = sum((c.contractual_total for c in contracts), Decimal("0"))
 
+        # Batch-loaded across every ACTIVE/DEFAULTED contract's schedule
+        # in two queries total, never one get_active_version()/
+        # get_lines()/get_net_allocated_by_line() round trip per contract
+        # (T213's N+1 prohibition) — active_schedule_version_id is read
+        # directly off each contract row, same technique as
+        # InstallmentDocumentService.get_customer_statement().
+        outstanding_eligible: list[tuple[Any, UUID]] = [
+            (c, c.active_schedule_version_id)
+            for c in contracts
+            if c.status in ("ACTIVE", "DEFAULTED")
+            and c.active_schedule_version_id is not None
+        ]
+        version_ids = [version_id for _c, version_id in outstanding_eligible]
+        lines_by_version = self._schedule.get_lines_for_versions(
+            company_id, version_ids
+        )
+        all_active_line_ids = [
+            line.id
+            for lines in lines_by_version.values()
+            for line in lines
+            if line.waived_at is None and line.voided_at is None
+        ]
+        net_allocated = self._allocation_refs.get_net_allocated_by_line(
+            company_id, all_active_line_ids
+        )
+
         total_outstanding = Decimal("0")
-        for contract in contracts:
-            if contract.status not in ("ACTIVE", "DEFAULTED"):
-                continue
-            version = self._schedule.get_active_version(company_id, contract.id)
-            if version is None:
-                continue
-            lines = self._schedule.get_lines(company_id, version.id)
+        for _contract, version_id in outstanding_eligible:
+            lines = lines_by_version.get(version_id, [])
             active_lines = [
                 line
                 for line in lines
                 if line.waived_at is None and line.voided_at is None
             ]
-            net_allocated = self._allocation_refs.get_net_allocated_by_line(
-                company_id, [line.id for line in active_lines]
-            )
             total_outstanding += sum(
                 (
                     line.scheduled_amount - net_allocated.get(line.id, Decimal("0"))

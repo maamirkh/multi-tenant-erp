@@ -278,6 +278,8 @@ def build_active_contract_with_schedule(
     grace_period_days: int = 0,
     late_charge_policy: dict | None = None,
     status: str = "ACTIVE",
+    company_id: uuid.UUID | None = None,
+    customer_id: uuid.UUID | None = None,
 ) -> dict:
     """Build a fully self-contained, real-Postgres-backed ACTIVE
     installment contract with an active schedule version, ready for
@@ -286,6 +288,13 @@ def build_active_contract_with_schedule(
     AccountingConfiguration, a real Accounting ``ARTransaction`` (the
     invoice), the contract row, and the schedule version+lines, all
     committed.
+
+    ``company_id``/``customer_id`` are optional overrides (default:
+    fresh random UUIDs, identical to every pre-existing caller's
+    behavior) — added for tenant-isolation tests that need two
+    contracts sharing a deliberately overlapping ``customer_id`` across
+    two DIFFERENT companies, or a specific pre-known ``company_id`` to
+    assert against. Zero behavior change for any caller that omits them.
     """
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
@@ -297,8 +306,8 @@ def build_active_contract_with_schedule(
             db=db_session, audit_repo=AccountingAuditLogRepository(db_session)
         ),
     )
-    company_id = uuid.uuid4()
-    customer_id = uuid.uuid4()
+    company_id = company_id if company_id is not None else uuid.uuid4()
+    customer_id = customer_id if customer_id is not None else uuid.uuid4()
     ar_account = account_repo.create(
         Account(
             company_id=company_id,

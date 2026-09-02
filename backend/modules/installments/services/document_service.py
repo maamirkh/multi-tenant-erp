@@ -131,28 +131,49 @@ class InstallmentDocumentService:
         self, company_id: UUID, customer_id: UUID
     ) -> dict[str, Any]:
         """Composes across every one of a customer's contracts, read-only
-        (plan.md §27's fourth document). Reuses the same batch-load
-        discipline the reporting service uses — one allocation-reference
-        lookup per contract's line set, never per line."""
+        (plan.md §27's fourth document). Batch-loads every contract's
+        schedule lines and net-allocated amounts in two queries total —
+        never one ``get_active_version()``/``get_lines()``/
+        ``get_net_allocated_by_line()`` round trip per contract (T213's
+        N+1 prohibition; ``active_schedule_version_id`` is read directly
+        off each contract row rather than re-queried via
+        ``get_active_version()``, exactly as
+        ``list_active_lines_for_company()``'s own join condition already
+        establishes as this module's canonical way to identify "the"
+        active version for a contract)."""
         self._authorize_read(company_id)
         customer_contracts, _total = self._contracts.list_filtered(
             company_id, customer_id=customer_id, skip=0, limit=1000
         )
 
+        version_ids = [
+            c.active_schedule_version_id
+            for c in customer_contracts
+            if c.active_schedule_version_id is not None
+        ]
+        lines_by_version = self._schedule.get_lines_for_versions(
+            company_id, version_ids
+        )
+        all_active_line_ids = [
+            line.id
+            for lines in lines_by_version.values()
+            for line in lines
+            if line.waived_at is None and line.voided_at is None
+        ]
+        net_allocated = self._allocation_refs.get_net_allocated_by_line(
+            company_id, all_active_line_ids
+        )
+
         contract_summaries: list[dict[str, Any]] = []
         for contract in customer_contracts:
-            version = self._schedule.get_active_version(company_id, contract.id)
             outstanding = None
-            if version is not None:
-                lines = self._schedule.get_lines(company_id, version.id)
+            if contract.active_schedule_version_id is not None:
+                lines = lines_by_version.get(contract.active_schedule_version_id, [])
                 active_lines = [
                     line
                     for line in lines
                     if line.waived_at is None and line.voided_at is None
                 ]
-                net_allocated = self._allocation_refs.get_net_allocated_by_line(
-                    company_id, [line.id for line in active_lines]
-                )
                 outstanding = str(
                     sum(
                         (

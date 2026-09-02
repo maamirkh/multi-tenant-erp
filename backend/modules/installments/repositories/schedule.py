@@ -96,6 +96,35 @@ class InstallmentScheduleRepository:
         )
         return list(self.db.execute(stmt).scalars().all())
 
+    def get_lines_for_versions(
+        self, company_id: UUID, schedule_version_ids: list[UUID]
+    ) -> dict[UUID, list[InstallmentScheduleLine]]:
+        """Batch line fetch for a SET of schedule versions in ONE query —
+        grouped by ``schedule_version_id`` — for callers that need every
+        line of every contract in a customer/company-wide set without a
+        per-contract ``get_lines()`` call (the exact N+1 pattern T213
+        forbids; found in ``InstallmentDocumentService
+        .get_customer_statement()``/``InstallmentCustomerSummaryService
+        .get_summary()`` and fixed by routing both through this method).
+        Returns an empty dict for an empty input list (no query issued)."""
+        if not schedule_version_ids:
+            return {}
+        stmt = (
+            select(InstallmentScheduleLine)
+            .where(InstallmentScheduleLine.company_id == company_id)
+            .where(
+                InstallmentScheduleLine.schedule_version_id.in_(schedule_version_ids)
+            )
+            .order_by(
+                InstallmentScheduleLine.schedule_version_id,
+                InstallmentScheduleLine.sequence,
+            )
+        )
+        lines_by_version: dict[UUID, list[InstallmentScheduleLine]] = {}
+        for line in self.db.execute(stmt).scalars().all():
+            lines_by_version.setdefault(line.schedule_version_id, []).append(line)
+        return lines_by_version
+
     def get_line_by_id(
         self, company_id: UUID, schedule_line_id: UUID
     ) -> InstallmentScheduleLine | None:
