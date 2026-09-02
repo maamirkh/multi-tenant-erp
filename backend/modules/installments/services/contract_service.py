@@ -321,9 +321,18 @@ class InstallmentContractService:
         return contract
 
     def list(
-        self, company_id: UUID, skip: int = 0, limit: int = 20
+        self,
+        company_id: UUID,
+        skip: int = 0,
+        limit: int = 20,
+        *,
+        status: str | None = None,
     ) -> tuple[list[InstallmentContract], int]:
         self._authorize(company_id, InstallmentOperationClass.READ)
+        if status is not None:
+            return self._repo.list_filtered(
+                company_id, status=status, skip=skip, limit=limit
+            )
         return self._repo.list(company_id, skip=skip, limit=limit)
 
     def get_active_schedule(

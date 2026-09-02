@@ -110,6 +110,15 @@ paths:
         "200": { description: StandardResponse<InstallmentContract> }
         "404": { description: not found or belongs to another tenant (indistinguishable) }
 
+  /contracts/{contractId}/audit:
+    get:
+      summary: Chronological, append-only audit history for a contract
+      x-permission: installments.contract.view
+      x-operation-class: READ
+      responses:
+        "200": { description: "StandardResponse<InstallmentAuditLog[]>" }
+        "404": { description: not found or belongs to another tenant (indistinguishable) }
+
   /contracts/{contractId}/submit:
     post:
       summary: DRAFT → PENDING_APPROVAL (or directly → APPROVED if no threshold applies)
@@ -267,6 +276,13 @@ paths:
     get: { summary: Latest settlement quotation document, x-permission: installments.contract.view, x-operation-class: READ, responses: { "200": { description: StandardResponse<InstallmentSettlementQuote> } } }
   /customers/{customerId}/statement:
     get: { summary: Cross-contract customer installment statement, x-permission: installments.contract.view, x-operation-class: READ, responses: { "200": { description: StandardResponse<InstallmentCustomerStatement> } } }
+
+  /my-permissions:
+    get:
+      summary: The current user's granted installments.* permission codes in this company (mirrors CRM's /my-permissions)
+      x-permission: none (authentication only)
+      x-operation-class: READ
+      responses: { "200": { description: StandardResponse<InstallmentsMyPermissions> } }
 
   /installments/status:
     get:

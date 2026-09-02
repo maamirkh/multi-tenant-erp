@@ -28,8 +28,9 @@ Endpoints:
 
     POST /quotes                       — generate a non-persisting quote/preview
 
-    GET  /contracts                    — list contracts (paginated)
+    GET  /contracts                    — list contracts (paginated, ?status=)
     GET  /contracts/{contractId}       — get full contract detail
+    GET  /contracts/{contractId}/audit — chronological audit history
     POST /contracts                    — create a DRAFT contract
 
     POST /contracts/{contractId}/submit  — DRAFT -> PENDING_APPROVAL|APPROVED
@@ -37,6 +38,8 @@ Endpoints:
     POST /contracts/{contractId}/reject  — PENDING_APPROVAL -> DRAFT
 
     GET  /eligibility?sales_invoice_id= — evaluate installment-offer eligibility
+
+    GET  /my-permissions               — current user's granted installments.* codes
 
     GET  /status   (admin_router)      — module toggle status
     POST /enable   (admin_router)      — enable the module
@@ -63,7 +66,9 @@ from core.logging.setup import REQUEST_ID_CONTEXT
 from core.schemas.pagination import PaginatedData, PaginatedResponse
 from core.schemas.response import ResponseMeta, StandardResponse
 from core.utils.datetime import utcnow
+from modules.installments.constants import ALL_INSTALLMENTS_PERMISSION_CODES
 from modules.installments.dependencies import (
+    get_installment_audit_service,
     get_installment_collection_service,
     get_installment_configuration_service,
     get_installment_contract_service,
@@ -77,7 +82,11 @@ from modules.installments.dependencies import (
     get_installments_feature_flag_service,
 )
 from modules.installments.exceptions import InstallmentNotFoundError
-from modules.installments.schemas.base import InstallmentsStatusRead
+from modules.installments.schemas.audit import InstallmentAuditLogRead
+from modules.installments.schemas.base import (
+    InstallmentsMyPermissions,
+    InstallmentsStatusRead,
+)
 from modules.installments.schemas.collection import (
     InstallmentCollectionCreate,
     InstallmentCollectionResultRead,
@@ -125,6 +134,7 @@ from modules.installments.schemas.settlement import (
     InstallmentSettlementQuoteRead,
     InstallmentSettlementQuoteRequest,
 )
+from modules.installments.services.audit_service import InstallmentAuditService
 from modules.installments.services.collection_service import (
     InstallmentCollectionService,
 )
@@ -159,6 +169,12 @@ from modules.installments.services.settlement_service import (
 )
 from modules.users_roles.constants import ADMIN_RANK
 from modules.users_roles.dependencies import require_rank
+from modules.users_roles.repositories.company_member_repository import (
+    CompanyMemberRepository,
+)
+from modules.users_roles.repositories.role_permission_repository import (
+    RolePermissionRepository,
+)
 
 router = APIRouter(tags=["installments"])
 admin_router = APIRouter(tags=["installments-admin"])
@@ -396,12 +412,18 @@ async def list_contracts(
     company_id: UUID = Path(..., description="Company identifier"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    status_filter: str | None = Query(None, alias="status"),
     current_user: CurrentUser = Depends(require_authenticated),
     db: Session = Depends(get_db),
     svc: InstallmentContractService = Depends(get_installment_contract_service),
 ) -> PaginatedResponse[InstallmentContractSummary]:
     _require_permission(db, company_id, current_user, "installments.contract.view")
-    items, total = svc.list(company_id, skip=(page - 1) * page_size, limit=page_size)
+    items, total = svc.list(
+        company_id,
+        skip=(page - 1) * page_size,
+        limit=page_size,
+        status=status_filter,
+    )
     pages = math.ceil(total / page_size) if total > 0 else 0
     return PaginatedResponse(
         data=PaginatedData(
@@ -918,6 +940,45 @@ async def get_schedule_version(
 
 
 # ---------------------------------------------------------------------------
+# Audit History (plan.md §16.1: installments.contract.view, READ). Thin
+# wrapper around the already-existing, tenant-scoped
+# ``InstallmentAuditService.list_for_entity()`` — added in Phase 13 as the
+# smallest safe fix for a gap discovered during frontend work: the
+# Contract Detail page's Audit-History section had no endpoint to read
+# from even though the service method backing it already existed.
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/contracts/{contractId}/audit",
+    response_model=StandardResponse[list[InstallmentAuditLogRead]],
+    summary="Audit history for a contract (chronological, append-only)",
+)
+async def get_contract_audit_history(
+    company_id: UUID = Path(..., description="Company identifier"),
+    contract_id: UUID = Path(..., alias="contractId"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    contract_svc: InstallmentContractService = Depends(
+        get_installment_contract_service
+    ),
+    audit_svc: InstallmentAuditService = Depends(get_installment_audit_service),
+) -> StandardResponse[list[InstallmentAuditLogRead]]:
+    _require_permission(db, company_id, current_user, "installments.contract.view")
+    # Confirms the contract exists AND belongs to this company before
+    # returning its audit trail — the same tenant-isolation guarantee
+    # ``get_contract()`` already provides, raising InstallmentNotFoundError
+    # (404) rather than leaking a cross-tenant entity_id's audit rows.
+    contract_svc.get(company_id, contract_id)
+    entries = audit_svc.list_for_entity(company_id, "InstallmentContract", contract_id)
+    return StandardResponse(
+        data=[InstallmentAuditLogRead.model_validate(e) for e in entries],
+        message="Contract audit history retrieved.",
+        meta=_meta(),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Eligibility (plan.md §16.1: installments.contract.create, ORIGINATION)
 # ---------------------------------------------------------------------------
 
@@ -1159,6 +1220,54 @@ async def get_customer_statement(
             ],
         ),
         message="Customer installment statement retrieved.",
+        meta=_meta(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Current user's Installments permissions — lets the frontend hide (not
+# just disable) actions the user can't perform, rather than showing every
+# action to everyone and only revealing a 403 after the fact. Mirrors
+# ``modules.crm.router.get_my_crm_permissions`` exactly (Phase 13, T216's
+# dependency — added here as the smallest safe fix for a gap discovered
+# during Phase 13: no earlier phase task created this endpoint even though
+# plan.md's frontend mapping table already specified the hook that needs
+# it).
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/my-permissions",
+    response_model=StandardResponse[InstallmentsMyPermissions],
+    summary="The current user's granted installments.* permission codes in this company",
+)
+async def get_my_installments_permissions(
+    company_id: UUID = Path(..., description="Company identifier"),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+) -> StandardResponse[InstallmentsMyPermissions]:
+    if current_user.roles and "super_admin" in current_user.roles:
+        permissions = sorted(ALL_INSTALLMENTS_PERMISSION_CODES)
+    elif current_user.user_id is None:
+        permissions = []
+    else:
+        member = CompanyMemberRepository(db).get_by_user_id(
+            user_id=current_user.user_id, company_id=company_id
+        )
+        if member is None or member.status != "active":
+            permissions = []
+        else:
+            role_permissions = RolePermissionRepository(db).get_permissions_for_role(
+                member.role_id
+            )
+            permissions = sorted(
+                rp.permission_id
+                for rp in role_permissions
+                if rp.permission_id.startswith("installments.")
+            )
+    return StandardResponse(
+        data=InstallmentsMyPermissions(permissions=permissions),
+        message="Current user's Installments permissions retrieved.",
         meta=_meta(),
     )
 

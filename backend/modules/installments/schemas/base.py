@@ -27,3 +27,13 @@ class InstallmentsStatusRead(InstallmentsBaseSchema):
     company. Mirrors ``CrmStatusRead`` exactly."""
 
     enabled: bool
+
+
+class InstallmentsMyPermissions(InstallmentsBaseSchema):
+    """The requesting user's granted ``installments.*`` permission codes
+    in this company — lets the frontend hide (not just disable) actions
+    the user cannot perform, instead of relying solely on the 403 the
+    backend already returns after the fact. Mirrors ``CrmMyPermissions``
+    exactly."""
+
+    permissions: list[str]

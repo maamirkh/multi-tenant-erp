@@ -232,3 +232,12 @@ INSTALLMENTS_PERMISSIONS: Final[tuple[InstallmentsPermissionDefinition, ...]] = 
         "View installment reports/dashboards",
     ),
 )
+
+#: All 16 ``installments.*`` permission codes, derived from
+#: ``INSTALLMENTS_PERMISSIONS`` (the single source of truth) rather than
+#: duplicated as a second literal list — used by the ``/my-permissions``
+#: endpoint's ``super_admin`` short-circuit, mirroring
+#: ``modules.crm.constants.ALL_CRM_PERMISSION_CODES``'s role.
+ALL_INSTALLMENTS_PERMISSION_CODES: Final[frozenset[str]] = frozenset(
+    definition.code for definition in INSTALLMENTS_PERMISSIONS
+)

@@ -387,28 +387,28 @@ Task IDs are suffixed (`T073A`–`T073E`) specifically so no existing task numbe
 
 **Purpose**: Operational UI following current (not legacy) frontend conventions — TanStack Query, stacked-section detail pages, the CRM entitlement-banner pattern. Ordered strictly after its corresponding backend endpoint exists.
 
-- [ ] T214 [P] `frontend/src/lib/api/installments.ts` — typed API client mirroring `src/lib/api/crm.ts`'s hand-mirrored-from-Pydantic-schema convention — Depends on: T051 (and progressively every later endpoint group as it lands)
-- [ ] T215 [P] `frontend/src/schemas/installments.ts` — zod schemas mirroring `src/schemas/users-roles.ts`'s convention — Depends on: T214
-- [ ] T216 [P] `frontend/src/hooks/installments/useInstallmentsPermissions.ts` + `useHasInstallmentsPermission()` — mirrors `useCrmPermissions.ts` exactly, fail-safe (hide on load failure) — Depends on: T214
-- [ ] T217 [P] `frontend/src/components/installments/apiErrors.ts` (`classifyInstallmentsError`) + `InstallmentsStateBanner.tsx` — mirrors `crm/apiErrors.ts` + `CrmStateBanner.tsx`, distinguishes `403 FEATURE_DISABLED` from ordinary `403 forbidden` — Depends on: T214
-- [ ] T218 [P] `frontend/src/components/installments/StatusBadge.tsx` — per-module status-color map (`INSTALLMENT_STATUS_COLORS`), matching `crm/StatusBadge.tsx`'s convention, no shared design-system `Badge` (none exists) — Depends on: T214
-- [ ] T219 [P] `frontend/src/app/(protected)/(installments)/layout.tsx` — pass-through placeholder, matches every other module — Depends on: T214
-- [ ] T220 `frontend/src/hooks/installments/{useContract,useContracts,useCreateContract}.ts` — real `useQuery`/`useMutation`, query keys `['contract', id]`/`['contracts', filters]`, mirrors `useCompany.ts` — Depends on: T214, T051
-- [ ] T221 `frontend/src/app/(protected)/(installments)/contracts/page.tsx` — list + filters + pagination — Depends on: T220, T216
-- [ ] T222 `frontend/src/app/(protected)/(installments)/contracts/new/page.tsx` — quote → draft creation form (RHF + zod) — Depends on: T215, T071, T216, T217
-- [ ] T223 `frontend/src/hooks/installments/{useSchedule,useCollections,useRecordCollection,useReverseCollection}.ts` — Depends on: T129, T127, T128
-- [ ] T224 `frontend/src/app/(protected)/(installments)/contracts/[contractId]/page.tsx` — **Contract Detail, the operational center**: header (contract number + status badge + permission-gated lifecycle action buttons) → summary cards → stacked bordered `<section>`s for Terms/Schedule/Payments/Delinquency/Audit-History/Documents (no `Tabs` component invented — none exists in the design system) → `LoadingState`/`EmptyState`/`ErrorState`/`PermissionDeniedState` from `platform-admin/DataState.tsx` — Depends on: T220, T223, T216, T218
-- [ ] T225 `frontend/src/app/(protected)/(installments)/contracts/[contractId]/collect/page.tsx` — record-collection form — Depends on: T223
-- [ ] T226 `frontend/src/app/(protected)/(installments)/contracts/[contractId]/reschedule/page.tsx` — reschedule form — Depends on: T173
-- [ ] T227 `frontend/src/app/(protected)/(installments)/approvals/page.tsx` — approval queue (list of `PENDING_APPROVAL` contracts, approve/reject actions) — Depends on: T080, T220
-- [ ] T228 `frontend/src/app/(protected)/(installments)/plans/page.tsx` — templates list/CRUD — Depends on: T037, T216, T217
-- [ ] T229 `frontend/src/app/(protected)/(installments)/configuration/page.tsx` — tenant policy config — Depends on: T036, T216, T217
-- [ ] T230 `frontend/src/app/(protected)/(installments)/installments-dashboard/page.tsx` — KPI cards, due/overdue summary — Depends on: T209
-- [ ] T231 `frontend/src/app/(protected)/(installments)/reports/page.tsx` — contract register/collection/overdue/aging/settlement/write-off reports — Depends on: T209
-- [ ] T232 Entitlement-disabled UI behavior: `contracts/new`, `plans`, `configuration` pages render `InstallmentsStateBanner`'s `featureDisabled` variant in place of form/list content on `403 FEATURE_DISABLED`; `contracts/[contractId]` and its collection/reversal/settlement actions remain fully reachable regardless (backend-authoritative, UI is guidance only) — Depends on: T217, T222, T224, T228, T229
-- [ ] T233 [P] Jest hook test for every new `useX` hook (mirroring `useCompany.test.ts`'s `renderHook`+mocked-api-client pattern) in `frontend/src/hooks/installments/__tests__/` — Depends on: T220, T223
-- [ ] T234 [P] Component test: `InstallmentsStateBanner` renders the correct variant for `FEATURE_DISABLED` vs. ordinary `403` vs. generic error — Depends on: T217
-- [ ] T235 [P] Component test: permission-gated action buttons on the Contract Detail page hide (not merely disable) when the corresponding permission is absent — Depends on: T224, T216
+- [X] T214 [P] `frontend/src/lib/api/installments.ts` — typed API client mirroring `src/lib/api/crm.ts`'s hand-mirrored-from-Pydantic-schema convention — Depends on: T051 (and progressively every later endpoint group as it lands)
+- [X] T215 [P] `frontend/src/schemas/installments.ts` — zod schemas mirroring `src/schemas/users-roles.ts`'s convention — Depends on: T214
+- [X] T216 [P] `frontend/src/hooks/installments/useInstallmentsPermissions.ts` + `useHasInstallmentsPermission()` — mirrors `useCrmPermissions.ts` exactly, fail-safe (hide on load failure) — Depends on: T214
+- [X] T217 [P] `frontend/src/components/installments/apiErrors.ts` (`classifyInstallmentsError`) + `InstallmentsStateBanner.tsx` — mirrors `crm/apiErrors.ts` + `CrmStateBanner.tsx`, distinguishes `403 FEATURE_DISABLED` from ordinary `403 forbidden` — Depends on: T214
+- [X] T218 [P] `frontend/src/components/installments/StatusBadge.tsx` — per-module status-color map (`INSTALLMENT_STATUS_COLORS`), matching `crm/StatusBadge.tsx`'s convention, no shared design-system `Badge` (none exists) — Depends on: T214
+- [X] T219 [P] `frontend/src/app/(protected)/(installments)/layout.tsx` — pass-through placeholder, matches every other module — Depends on: T214
+- [X] T220 `frontend/src/hooks/installments/{useContract,useContracts,useCreateContract}.ts` — real `useQuery`/`useMutation`, query keys `['contract', id]`/`['contracts', filters]`, mirrors `useCompany.ts` — Depends on: T214, T051
+- [X] T221 `frontend/src/app/(protected)/(installments)/contracts/page.tsx` — list + filters + pagination — Depends on: T220, T216
+- [X] T222 `frontend/src/app/(protected)/(installments)/contracts/new/page.tsx` — quote → draft creation form (RHF + zod) — Depends on: T215, T071, T216, T217
+- [X] T223 `frontend/src/hooks/installments/{useSchedule,useCollections,useRecordCollection,useReverseCollection}.ts` — Depends on: T129, T127, T128
+- [X] T224 `frontend/src/app/(protected)/(installments)/contracts/[contractId]/page.tsx` — **Contract Detail, the operational center**: header (contract number + status badge + permission-gated lifecycle action buttons) → summary cards → stacked bordered `<section>`s for Terms/Schedule/Payments/Delinquency/Audit-History/Documents (no `Tabs` component invented — none exists in the design system) → `LoadingState`/`EmptyState`/`ErrorState`/`PermissionDeniedState` from `platform-admin/DataState.tsx` — Depends on: T220, T223, T216, T218
+- [X] T225 `frontend/src/app/(protected)/(installments)/contracts/[contractId]/collect/page.tsx` — record-collection form — Depends on: T223
+- [X] T226 `frontend/src/app/(protected)/(installments)/contracts/[contractId]/reschedule/page.tsx` — reschedule form — Depends on: T173
+- [X] T227 `frontend/src/app/(protected)/(installments)/approvals/page.tsx` — approval queue (list of `PENDING_APPROVAL` contracts, approve/reject actions) — Depends on: T080, T220
+- [X] T228 `frontend/src/app/(protected)/(installments)/plans/page.tsx` — templates list/CRUD — Depends on: T037, T216, T217
+- [X] T229 `frontend/src/app/(protected)/(installments)/configuration/page.tsx` — tenant policy config — Depends on: T036, T216, T217
+- [X] T230 `frontend/src/app/(protected)/(installments)/installments-dashboard/page.tsx` — KPI cards, due/overdue summary — Depends on: T209
+- [X] T231 `frontend/src/app/(protected)/(installments)/reports/page.tsx` — contract register/collection/overdue/aging/settlement/write-off reports — Depends on: T209
+- [X] T232 Entitlement-disabled UI behavior: `contracts/new`, `plans`, `configuration` pages render `InstallmentsStateBanner`'s `featureDisabled` variant in place of form/list content on `403 FEATURE_DISABLED`; `contracts/[contractId]` and its collection/reversal/settlement actions remain fully reachable regardless (backend-authoritative, UI is guidance only) — Depends on: T217, T222, T224, T228, T229
+- [X] T233 [P] Jest hook test for every new `useX` hook (mirroring `useCompany.test.ts`'s `renderHook`+mocked-api-client pattern) in `frontend/src/__tests__/installments/hooks/` (repository convention: tests live under `src/__tests__/<module>/`, not colocated `__tests__/` — verified against the real `useCompany.test.ts`, not the task's literal suggested path) — Depends on: T220, T223
+- [X] T234 [P] Component test: `InstallmentsStateBanner` renders the correct variant for `FEATURE_DISABLED` vs. ordinary `403` vs. generic error — Depends on: T217
+- [X] T235 [P] Component test: permission-gated action buttons on the Contract Detail page hide (not merely disable) when the corresponding permission is absent — Depends on: T224, T216
 
 **PHASE 13 EXIT GATE**: Every user-facing workflow has its backend endpoint already implemented and tested before its frontend task begins (verified by the Depends-on chain above); entitlement-disabled state permits servicing while blocking origination in the UI, matching backend policy exactly; no new design-system primitives (Tabs, Badge, Table) were invented.
 
