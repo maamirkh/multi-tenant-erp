@@ -94,6 +94,20 @@ class AccountingIntegrationGateway:
         plan.md §9.3) — not consumed by Phase 3 itself."""
         return self._ar_service.get_transaction_by_id(company_id, ar_transaction_id)
 
+    def sum_ar_transactions_outstanding(
+        self, company_id: UUID, ar_transaction_ids: list[UUID]
+    ) -> Decimal:
+        """Bounded batch read of the summed outstanding amount across a
+        known set of ``ARTransaction`` ids — the batch counterpart to
+        calling ``get_ar_transaction()`` once per id, added so
+        ``InstallmentReportingService._sum_late_charge_outstanding()``
+        never performs a per-late-charge Accounting round-trip. One
+        aggregate query regardless of how many ids are passed; excludes
+        ``WRITTEN_OFF`` transactions and non-positive outstanding
+        amounts, matching the semantics a caller would get by fetching
+        each transaction individually and filtering the same way."""
+        return self._ar_service.sum_outstanding_by_ids(company_id, ar_transaction_ids)
+
     def get_invoice_ar_transaction_id(
         self, company_id: UUID, sales_invoice_id: UUID
     ) -> UUID | None:

@@ -14,7 +14,7 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from modules.accounting.models.ar import (
@@ -166,6 +166,31 @@ class ARTransactionRepository(BaseAccountingRepository[ARTransaction]):
             .where(ARTransaction.is_deleted == False)  # noqa: E712
         )
         return self.db.execute(stmt).scalars().one_or_none()
+
+    def sum_outstanding_excluding_written_off(
+        self, company_id: UUID, ids: list[UUID]
+    ) -> Decimal:
+        """One bounded aggregate query for a known set of transaction ids —
+        the batch counterpart to looping ``get_by_id_or_none()`` per id
+        (which is exactly the N+1 pattern this exists to replace; see
+        Installments' ``_sum_late_charge_outstanding()``). Reproduces the
+        same per-row semantics a caller would get by fetching each
+        transaction and filtering: company-scoped, not soft-deleted,
+        status not ``WRITTEN_OFF``, and only positive outstanding amounts
+        counted.
+        """
+        if not ids:
+            return Decimal("0")
+        stmt = (
+            select(func.coalesce(func.sum(ARTransaction.outstanding_amount), 0))
+            .where(ARTransaction.company_id == company_id)
+            .where(ARTransaction.id.in_(ids))
+            .where(ARTransaction.is_deleted == False)  # noqa: E712
+            .where(ARTransaction.status != "WRITTEN_OFF")
+            .where(ARTransaction.outstanding_amount > 0)
+        )
+        result = self.db.execute(stmt).scalar_one()
+        return Decimal(result)
 
     def get_by_id_locked(self, id: UUID, company_id: UUID) -> ARTransaction | None:
         """``SELECT ... FOR UPDATE`` row lock (tasks.md T207) — serializes

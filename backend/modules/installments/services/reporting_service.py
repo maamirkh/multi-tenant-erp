@@ -564,18 +564,17 @@ class InstallmentReportingService:
         )
 
     def _sum_late_charge_outstanding(self, company_id: UUID) -> Decimal:
-        total = Decimal("0")
-        for charge in self._late_charges.list_for_company(company_id):
-            if charge.accounting_ar_transaction_id is None:
-                continue
-            ar_transaction = self._accounting.get_ar_transaction(
-                company_id, charge.accounting_ar_transaction_id
-            )
-            if ar_transaction is None or ar_transaction.status == "WRITTEN_OFF":
-                continue
-            if ar_transaction.outstanding_amount > Decimal("0"):
-                total += ar_transaction.outstanding_amount
-        return total
+        """Bounded — one Installments query plus one Accounting aggregate
+        query, never one Accounting round-trip per late charge (tasks.md
+        T213)."""
+        ar_transaction_ids = [
+            charge.accounting_ar_transaction_id
+            for charge in self._late_charges.list_for_company(company_id)
+            if charge.accounting_ar_transaction_id is not None
+        ]
+        return self._accounting.sum_ar_transactions_outstanding(
+            company_id, ar_transaction_ids
+        )
 
     def _sum_outstanding_for_statuses(
         self, company_id: UUID, *, statuses: tuple[str, ...]

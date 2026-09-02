@@ -205,6 +205,17 @@ class AccountsReceivableService:
             id=ar_transaction_id, company_id=company_id
         )
 
+    def sum_outstanding_by_ids(
+        self, company_id: UUID, ar_transaction_ids: list[UUID]
+    ) -> Decimal:
+        """Bounded batch counterpart to calling ``get_transaction_by_id()``
+        once per id and summing ``outstanding_amount`` for the non-
+        ``WRITTEN_OFF``, positive-outstanding ones — one aggregate query
+        regardless of how many ids are passed. Read-only, no commit."""
+        return self._transactions.sum_outstanding_excluding_written_off(
+            company_id, ar_transaction_ids
+        )
+
     # ------------------------------------------------------------------
     # Sales integration (T141/T142) — GL posting + ARTransaction creation
     # in ONE atomic transaction, via PostingEngine's staging primitives.
