@@ -60,8 +60,10 @@ describe('T233 — useContractLifecycleActions', () => {
     });
 
     await waitFor(() => expect(result.current.submit.isSuccess).toBe(true));
-    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['contract', 'contract-1'] });
-    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['contracts'] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['contract', 'company-1', 'contract-1'],
+    });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['contracts', 'company-1'] });
   });
 
   it('activate() passes a client-generated Idempotency-Key', async () => {

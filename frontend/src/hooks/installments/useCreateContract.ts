@@ -18,7 +18,7 @@ export function useCreateContract() {
   return useMutation<InstallmentContractRead, unknown, InstallmentContractCreate>({
     mutationFn: async (data) => (await createInstallmentContract(companyId, data)).data,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['contracts'] });
+      void queryClient.invalidateQueries({ queryKey: ['contracts', companyId] });
     },
   });
 }

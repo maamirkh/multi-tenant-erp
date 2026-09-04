@@ -10,6 +10,7 @@ import {
 } from "@/lib/api/installments";
 import {
   InstallmentConfigurationSchema,
+  INSTALLMENT_SUPPORTED_FREQUENCIES,
   type InstallmentConfigurationFormData,
 } from "@/schemas/installments";
 import { getCompanyId, classifyInstallmentsError } from "@/components/installments/apiErrors";
@@ -19,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LoadingState, PermissionDeniedState } from "@/components/platform-admin/DataState";
 
-const ALL_FREQUENCIES = ["WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY"];
+const ALL_FREQUENCIES = INSTALLMENT_SUPPORTED_FREQUENCIES;
 
 export default function InstallmentConfigurationPage() {
   const companyId = getCompanyId();
@@ -28,7 +29,7 @@ export default function InstallmentConfigurationPage() {
   const canManage = useHasInstallmentsPermission(permissionsState, "installments.config.manage");
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["installmentConfig"],
+    queryKey: ["installmentConfig", companyId],
     queryFn: async () => (await getInstallmentConfiguration(companyId)).data,
     enabled: companyId !== "" && canManage,
     retry: false,
@@ -58,7 +59,15 @@ export default function InstallmentConfigurationPage() {
   useEffect(() => {
     if (!data) return;
     reset({
-      allowed_frequencies: data.allowed_frequencies,
+      // Filter out any legacy stored value outside the current supported
+      // set (e.g. a pre-fix BIWEEKLY) — it was explicitly edited by this
+      // very form, so dropping it here (rather than round-tripping, as we
+      // do for the unrelated policy-object fields below) is the correct
+      // cleanup, not a silent-erasure risk.
+      allowed_frequencies: data.allowed_frequencies.filter(
+        (f): f is (typeof INSTALLMENT_SUPPORTED_FREQUENCIES)[number] =>
+          (INSTALLMENT_SUPPORTED_FREQUENCIES as readonly string[]).includes(f)
+      ),
       min_term: data.min_term,
       max_term: data.max_term,
       min_down_payment_pct: data.min_down_payment_pct ?? "",
@@ -77,6 +86,16 @@ export default function InstallmentConfigurationPage() {
   const allowedFrequencies = watch("allowed_frequencies");
 
   const upsertMutation = useMutation({
+    // `PUT /config` is a full-replace endpoint (see configuration_service.py's
+    // upsert_config, which setattr's every key of the request body onto the
+    // existing row). This form has no controls for the five policy-object
+    // fields (late_charge_policy, early_settlement_policy,
+    // cancellation_policy, default_policy, eligibility_rules) — they're
+    // opaque, arbitrarily-shaped dicts with no UI editor yet, and we do not
+    // invent fake values for them. So every save round-trips whatever was
+    // last read from GET /config verbatim, preserving them exactly instead
+    // of omitting the keys (which the backend would otherwise interpret as
+    // "set to null", silently erasing previously-configured policy data).
     mutationFn: (formData: InstallmentConfigurationFormData) =>
       upsertInstallmentConfiguration(companyId, {
         allowed_frequencies: formData.allowed_frequencies,
@@ -87,13 +106,18 @@ export default function InstallmentConfigurationPage() {
         max_financed_amount: formData.max_financed_amount || null,
         rounding_policy: formData.rounding_policy,
         grace_period_days: Number(formData.grace_period_days),
+        late_charge_policy: data?.late_charge_policy ?? null,
+        early_settlement_policy: data?.early_settlement_policy ?? null,
         approval_threshold_amount: formData.approval_threshold_amount || null,
         backdating_allowed: formData.backdating_allowed,
         backdating_max_days: formData.backdating_max_days ?? null,
+        cancellation_policy: data?.cancellation_policy ?? null,
+        default_policy: data?.default_policy ?? null,
         writeoff_requires_permission: formData.writeoff_requires_permission,
         cure_enabled: formData.cure_enabled,
+        eligibility_rules: data?.eligibility_rules ?? null,
       }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["installmentConfig"] }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["installmentConfig", companyId] }),
   });
 
   if (permissionsState.isReady && !canManage) {

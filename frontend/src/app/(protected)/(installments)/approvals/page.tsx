@@ -26,13 +26,13 @@ function ApprovalRow({ contract }: { contract: InstallmentContractSummary }) {
 
   const approveMutation = useMutation({
     mutationFn: () => approveInstallmentContract(companyId, contract.id),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["contracts"] }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["contracts", companyId] }),
     onError: (err) => setError(classifyInstallmentsError(err).message),
   });
 
   const rejectMutation = useMutation({
     mutationFn: () => rejectInstallmentContract(companyId, contract.id, reason),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["contracts"] }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["contracts", companyId] }),
     onError: (err) => setError(classifyInstallmentsError(err).message),
   });
 
@@ -94,7 +94,7 @@ export default function InstallmentApprovalsPage() {
   const canApprove = useHasInstallmentsPermission(permissionsState, "installments.contract.approve");
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["contracts", { status: "PENDING_APPROVAL" }],
+    queryKey: ["contracts", companyId, { status: "PENDING_APPROVAL" }],
     queryFn: async () =>
       (await listInstallmentContracts(companyId, 1, 100, "PENDING_APPROVAL")).data,
     enabled: companyId !== "" && canApprove,

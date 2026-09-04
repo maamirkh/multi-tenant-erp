@@ -10,6 +10,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { getInstallmentReport, type InstallmentReportRow } from '@/lib/api/installments';
 import { getCompanyId } from '@/components/installments/apiErrors';
+import { installmentsKeys } from '@/hooks/installments/queryKeys';
 import type { UseQueryResult } from '@tanstack/react-query';
 
 export function useDelinquency(
@@ -17,7 +18,7 @@ export function useDelinquency(
 ): UseQueryResult<InstallmentReportRow[]> {
   const companyId = getCompanyId();
   return useQuery<InstallmentReportRow[]>({
-    queryKey: ['delinquency', contractId],
+    queryKey: installmentsKeys.delinquency(companyId, contractId ?? ''),
     queryFn: async () => {
       const res = await getInstallmentReport(companyId, 'overdue', 1, 100);
       return res.data.items.filter((row) => row['contract_id'] === contractId);

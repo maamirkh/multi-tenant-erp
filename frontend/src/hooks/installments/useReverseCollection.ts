@@ -13,6 +13,7 @@ import {
   type InstallmentCollectionResultRead,
 } from '@/lib/api/installments';
 import { getCompanyId } from '@/components/installments/apiErrors';
+import { installmentsKeys } from '@/hooks/installments/queryKeys';
 
 export function useReverseCollection(contractId: string) {
   const queryClient = useQueryClient();
@@ -27,9 +28,15 @@ export function useReverseCollection(contractId: string) {
         await reverseInstallmentCollection(companyId, collectionId, reason, newIdempotencyKey())
       ).data,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['contract', contractId] });
-      void queryClient.invalidateQueries({ queryKey: ['schedule', contractId] });
-      void queryClient.invalidateQueries({ queryKey: ['collections', contractId] });
+      void queryClient.invalidateQueries({
+        queryKey: installmentsKeys.contract(companyId, contractId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: installmentsKeys.schedule(companyId, contractId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: installmentsKeys.collections(companyId, contractId),
+      });
     },
   });
 }

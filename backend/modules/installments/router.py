@@ -66,7 +66,10 @@ from core.logging.setup import REQUEST_ID_CONTEXT
 from core.schemas.pagination import PaginatedData, PaginatedResponse
 from core.schemas.response import ResponseMeta, StandardResponse
 from core.utils.datetime import utcnow
-from modules.installments.constants import ALL_INSTALLMENTS_PERMISSION_CODES
+from modules.installments.constants import (
+    ALL_INSTALLMENTS_PERMISSION_CODES,
+    InstallmentContractStatus,
+)
 from modules.installments.dependencies import (
     get_installment_audit_service,
     get_installment_collection_service,
@@ -412,7 +415,11 @@ async def list_contracts(
     company_id: UUID = Path(..., description="Company identifier"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    status_filter: str | None = Query(None, alias="status"),
+    status_filter: InstallmentContractStatus | None = Query(
+        None,
+        alias="status",
+        description="Filter to contracts in this lifecycle status. Unknown values are rejected (422), not silently ignored.",
+    ),
     current_user: CurrentUser = Depends(require_authenticated),
     db: Session = Depends(get_db),
     svc: InstallmentContractService = Depends(get_installment_contract_service),
@@ -422,7 +429,7 @@ async def list_contracts(
         company_id,
         skip=(page - 1) * page_size,
         limit=page_size,
-        status=status_filter,
+        status=status_filter.value if status_filter is not None else None,
     )
     pages = math.ceil(total / page_size) if total > 0 else 0
     return PaginatedResponse(

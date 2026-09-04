@@ -26,7 +26,7 @@ export default function InstallmentReportsPage() {
   const canView = useHasInstallmentsPermission(permissionsState, "installments.report.view");
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["installmentReport", reportType],
+    queryKey: ["installmentReport", companyId, reportType],
     queryFn: async () => (await getInstallmentReport(companyId, reportType, 1, 100)).data,
     enabled: companyId !== "" && canView,
   });

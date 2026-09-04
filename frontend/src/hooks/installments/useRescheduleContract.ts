@@ -11,6 +11,7 @@ import {
   type InstallmentContractRead,
 } from '@/lib/api/installments';
 import { getCompanyId } from '@/components/installments/apiErrors';
+import { installmentsKeys } from '@/hooks/installments/queryKeys';
 
 export function useRescheduleContract(contractId: string) {
   const queryClient = useQueryClient();
@@ -21,8 +22,12 @@ export function useRescheduleContract(contractId: string) {
         await rescheduleInstallmentContract(companyId, contractId, data, newIdempotencyKey())
       ).data,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['contract', contractId] });
-      void queryClient.invalidateQueries({ queryKey: ['schedule', contractId] });
+      void queryClient.invalidateQueries({
+        queryKey: installmentsKeys.contract(companyId, contractId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: installmentsKeys.schedule(companyId, contractId),
+      });
     },
   });
 }

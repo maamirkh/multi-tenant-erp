@@ -12,6 +12,7 @@ import {
 } from "@/lib/api/installments";
 import {
   InstallmentPlanTemplateSchema,
+  INSTALLMENT_SUPPORTED_FREQUENCIES,
   type InstallmentPlanTemplateFormData,
 } from "@/schemas/installments";
 import { getCompanyId, classifyInstallmentsError, type InstallmentsErrorState } from "@/components/installments/apiErrors";
@@ -21,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LoadingState } from "@/components/platform-admin/DataState";
 
-const FREQUENCIES = ["WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY"];
+const FREQUENCIES = INSTALLMENT_SUPPORTED_FREQUENCIES;
 
 function NewTemplateForm({ onCreated }: { onCreated: () => void }) {
   const companyId = getCompanyId();
@@ -33,7 +34,7 @@ function NewTemplateForm({ onCreated }: { onCreated: () => void }) {
         description: data.description || null,
         frequency: data.frequency,
         installment_count: Number(data.installment_count),
-        down_payment_rule: { type: data.down_payment_type, amount: data.down_payment_value },
+        down_payment_rule: data.down_payment_rule,
         grace_period_days: data.grace_period_days ?? null,
         requires_approval: data.requires_approval ?? false,
       }),
@@ -55,8 +56,7 @@ function NewTemplateForm({ onCreated }: { onCreated: () => void }) {
       name: "",
       frequency: "MONTHLY",
       installment_count: 12,
-      down_payment_type: "PERCENTAGE",
-      down_payment_value: "0",
+      down_payment_rule: { type: "PERCENTAGE", amount: "0" },
       grace_period_days: 0,
       requires_approval: false,
     },
@@ -91,14 +91,17 @@ function NewTemplateForm({ onCreated }: { onCreated: () => void }) {
         </div>
         <div>
           <label className="block text-xs text-gray-500 mb-1">Down Payment Type</label>
-          <select {...register("down_payment_type")} className="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm h-9">
+          <select {...register("down_payment_rule.type")} className="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm h-9">
             <option value="PERCENTAGE">Percentage</option>
             <option value="FIXED">Fixed</option>
           </select>
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Down Payment Value</label>
-          <Input {...register("down_payment_value")} />
+          <label className="block text-xs text-gray-500 mb-1">Down Payment Amount</label>
+          <Input {...register("down_payment_rule.amount")} />
+          {errors.down_payment_rule?.amount && (
+            <p className="text-xs text-red-600 mt-1">{errors.down_payment_rule.amount.message}</p>
+          )}
         </div>
         <div>
           <label className="block text-xs text-gray-500 mb-1">Grace Period (days)</label>
@@ -120,14 +123,14 @@ export default function InstallmentPlansPage() {
   const [showNew, setShowNew] = useState(false);
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["planTemplates"],
+    queryKey: ["planTemplates", companyId],
     queryFn: async () => (await listPlanTemplates(companyId, 1, 100)).data,
     enabled: companyId !== "",
   });
 
   const deactivateMutation = useMutation({
     mutationFn: (planId: string) => deactivatePlanTemplate(companyId, planId),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["planTemplates"] }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["planTemplates", companyId] }),
   });
 
   const templates = data?.items ?? [];
@@ -159,7 +162,7 @@ export default function InstallmentPlansPage() {
         <NewTemplateForm
           onCreated={() => {
             setShowNew(false);
-            void queryClient.invalidateQueries({ queryKey: ["planTemplates"] });
+            void queryClient.invalidateQueries({ queryKey: ["planTemplates", companyId] });
           }}
         />
       )}

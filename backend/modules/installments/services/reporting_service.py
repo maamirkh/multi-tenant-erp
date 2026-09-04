@@ -167,8 +167,22 @@ class InstallmentReportingService:
         limit: int = 20,
     ) -> tuple[list[dict[str, Any]], int]:
         self._authorize_read(company_id)
+        # `include_reversals=True`: this report is the sole read path the
+        # frontend contract-detail page's "Payments" section uses
+        # (`useCollections`, see its own docstring) — the default-False
+        # base query exists for callers that want net-collections-only
+        # (e.g. a "collected today" KPI sum), but a report showing
+        # collection *history* must include reversal rows or a reversed
+        # collection appears to stay active forever, with its "Reverse"
+        # action still offered on an already-reversed row (Phase-13
+        # verification finding).
         references, total = self._allocation_refs.list_for_company(
-            company_id, since=since, until=until, skip=skip, limit=limit
+            company_id,
+            since=since,
+            until=until,
+            include_reversals=True,
+            skip=skip,
+            limit=limit,
         )
 
         # Batch-load the authoritative Accounting payment/line data for

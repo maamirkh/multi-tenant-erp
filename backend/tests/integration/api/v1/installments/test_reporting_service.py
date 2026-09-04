@@ -122,6 +122,60 @@ class TestCollectionReport:
         assert rows[0]["accounting_payment_id"] == result["accounting_payment_id"]
         assert rows[0]["payment_method"] == "BANK_TRANSFER"
 
+    def test_collection_report_includes_reversal_rows(
+        self, db_session: Session
+    ) -> None:
+        """[Phase-13-closure real-browser verification finding]
+        ``get_collection_report`` is the sole read path the frontend
+        contract-detail page's "Payments" section uses — before this
+        fix it called ``list_for_company()`` without
+        ``include_reversals=True`` (default ``False``), so a
+        successfully-reversed collection (proven here via the real
+        ``reverse_collection()`` service call, not a direct DB write)
+        vanished from the report exactly as if it had never been
+        reversed, and its "Reverse" action stayed offered on an
+        already-reversed row.
+
+        Two installments so the collection below is a partial payment —
+        ``record_collection()`` auto-completes the contract at zero
+        outstanding (its own docstring), and ``reverse_collection()``
+        correctly refuses to reverse against a COMPLETED contract; the
+        collection here must leave the contract ACTIVE for the reversal
+        itself (not the report-visibility fix under test) to succeed."""
+        ctx = build_active_contract_with_schedule(
+            db_session, installment_count=2, installment_amount=Decimal("100.00")
+        )
+        collection_svc = build_collection_service(db_session)
+        result = collection_svc.record_collection(
+            ctx["company_id"],
+            ctx["contract"].id,
+            amount=Decimal("100.00"),
+            payment_method="BANK_TRANSFER",
+            idempotency_key=str(uuid.uuid4()),
+            actor_id=None,
+            bank_account_id=ctx["bank_account"].id,
+        )
+        collection_svc.reverse_collection(
+            ctx["company_id"],
+            uuid.UUID(result["accounting_payment_id"]),
+            reason="Test reversal",
+            idempotency_key=str(uuid.uuid4()),
+            actor_id=None,
+        )
+        svc = _build_reporting_service(db_session)
+
+        rows, total = svc.get_collection_report(ctx["company_id"], skip=0, limit=20)
+
+        assert total == 2
+        reversal_rows = [r for r in rows if r["is_reversal"]]
+        original_rows = [r for r in rows if not r["is_reversal"]]
+        assert len(reversal_rows) == 1
+        assert len(original_rows) == 1
+        assert (
+            reversal_rows[0]["accounting_payment_id"] == result["accounting_payment_id"]
+        )
+        assert reversal_rows[0]["allocated_amount"] == "100.000000"
+
 
 class TestDueOverdueReports:
     def test_due_report_includes_line_due_today(

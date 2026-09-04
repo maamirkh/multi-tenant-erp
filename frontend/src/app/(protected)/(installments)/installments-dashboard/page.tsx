@@ -19,7 +19,7 @@ export default function InstallmentsDashboardPage() {
   const companyId = getCompanyId();
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["installmentsDashboard"],
+    queryKey: ["installmentsDashboard", companyId],
     queryFn: async () => (await getInstallmentDashboard(companyId)).data,
     enabled: companyId !== "",
   });

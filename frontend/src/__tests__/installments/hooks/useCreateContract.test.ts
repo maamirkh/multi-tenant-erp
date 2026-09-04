@@ -70,7 +70,7 @@ describe('T233 — useCreateContract', () => {
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['contracts'] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['contracts', 'company-1'] });
   });
 
   it('exposes error state when the API fails', async () => {

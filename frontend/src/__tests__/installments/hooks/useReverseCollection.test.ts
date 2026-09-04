@@ -54,7 +54,9 @@ describe('T233 — useReverseCollection', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(reversalResult);
-    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['contract', 'contract-1'] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['contract', 'company-1', 'contract-1'],
+    });
   });
 
   it('exposes error state when the API fails', async () => {

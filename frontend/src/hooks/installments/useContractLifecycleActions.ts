@@ -22,15 +22,22 @@ import {
   type InstallmentCancelRequest,
 } from '@/lib/api/installments';
 import { getCompanyId } from '@/components/installments/apiErrors';
+import { installmentsKeys } from '@/hooks/installments/queryKeys';
 
 export function useContractLifecycleActions(contractId: string) {
   const queryClient = useQueryClient();
   const companyId = getCompanyId();
 
   function invalidate() {
-    void queryClient.invalidateQueries({ queryKey: ['contract', contractId] });
-    void queryClient.invalidateQueries({ queryKey: ['contracts'] });
-    void queryClient.invalidateQueries({ queryKey: ['auditHistory', contractId] });
+    void queryClient.invalidateQueries({
+      queryKey: installmentsKeys.contract(companyId, contractId),
+    });
+    // Prefix-only match (no filters element) — invalidates every cached
+    // page/filter combination for this company's contract list.
+    void queryClient.invalidateQueries({ queryKey: ['contracts', companyId] });
+    void queryClient.invalidateQueries({
+      queryKey: installmentsKeys.auditHistory(companyId, contractId),
+    });
   }
 
   const submit = useMutation<InstallmentContractRead, unknown, void>({

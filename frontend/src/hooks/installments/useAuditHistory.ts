@@ -10,6 +10,7 @@ import {
   type InstallmentAuditLogRead,
 } from '@/lib/api/installments';
 import { getCompanyId } from '@/components/installments/apiErrors';
+import { installmentsKeys } from '@/hooks/installments/queryKeys';
 import type { UseQueryResult } from '@tanstack/react-query';
 
 export function useAuditHistory(
@@ -17,7 +18,7 @@ export function useAuditHistory(
 ): UseQueryResult<InstallmentAuditLogRead[]> {
   const companyId = getCompanyId();
   return useQuery<InstallmentAuditLogRead[]>({
-    queryKey: ['auditHistory', contractId],
+    queryKey: installmentsKeys.auditHistory(companyId, contractId ?? ''),
     queryFn: async () => (await getInstallmentContractAuditHistory(companyId, contractId!)).data,
     enabled: contractId !== undefined && contractId !== '' && companyId !== '',
   });

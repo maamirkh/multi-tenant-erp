@@ -9,6 +9,7 @@ import { useCollections } from "@/hooks/installments/useCollections";
 import { useDelinquency } from "@/hooks/installments/useDelinquency";
 import { useAuditHistory } from "@/hooks/installments/useAuditHistory";
 import { useContractLifecycleActions } from "@/hooks/installments/useContractLifecycleActions";
+import { useReverseCollection } from "@/hooks/installments/useReverseCollection";
 import {
   getInstallmentAgreementDocument,
   getInstallmentScheduleDocument,
@@ -89,6 +90,10 @@ export default function InstallmentContractDetailPage() {
   const canDefault = useHasInstallmentsPermission(permissionsState, "installments.contract.default");
   const canCure = useHasInstallmentsPermission(permissionsState, "installments.contract.cure");
   const canWriteoff = useHasInstallmentsPermission(permissionsState, "installments.contract.writeoff");
+  const canReverse = useHasInstallmentsPermission(permissionsState, "installments.collection.reverse");
+  const canSettle = useHasInstallmentsPermission(permissionsState, "installments.settlement.execute");
+  const canCollect = useHasInstallmentsPermission(permissionsState, "installments.collection.create");
+  const canReschedule = useHasInstallmentsPermission(permissionsState, "installments.contract.reschedule");
 
   const contractQuery = useContract(contractId);
   const scheduleQuery = useSchedule(contractId);
@@ -96,6 +101,7 @@ export default function InstallmentContractDetailPage() {
   const delinquencyQuery = useDelinquency(contractId);
   const auditQuery = useAuditHistory(contractId);
   const actions = useContractLifecycleActions(contractId ?? "");
+  const reverseCollection = useReverseCollection(contractId ?? "");
   const [agreement, setAgreement] = useState<InstallmentAgreementView | null>(null);
   const [scheduleDoc, setScheduleDoc] = useState<InstallmentScheduleDocument | null>(null);
   const [docError, setDocError] = useState<string | null>(null);
@@ -177,16 +183,27 @@ export default function InstallmentContractDetailPage() {
           )}
           {status === "ACTIVE" && (
             <>
-              <Link href={`${contractId}/collect`}>
-                <Button size="sm" variant="outline">
-                  Record Collection
-                </Button>
-              </Link>
-              <Link href={`${contractId}/reschedule`}>
-                <Button size="sm" variant="outline">
-                  Reschedule
-                </Button>
-              </Link>
+              {canCollect && (
+                <Link href={`${contractId}/collect`}>
+                  <Button size="sm" variant="outline">
+                    Record Collection
+                  </Button>
+                </Link>
+              )}
+              {canReschedule && (
+                <Link href={`${contractId}/reschedule`}>
+                  <Button size="sm" variant="outline">
+                    Reschedule
+                  </Button>
+                </Link>
+              )}
+              {canSettle && (
+                <Link href={`${contractId}/settlement`}>
+                  <Button size="sm" variant="outline">
+                    Settle Early
+                  </Button>
+                </Link>
+              )}
             </>
           )}
           {status === "ACTIVE" && canDefault && (
@@ -313,18 +330,51 @@ export default function InstallmentContractDetailPage() {
 
       <section className="mb-6 border border-gray-200 rounded-md p-4">
         <h2 className="text-sm font-semibold text-gray-700 mb-3 border-b border-gray-200 pb-2">Payments</h2>
+        {reverseCollection.isError && (
+          <InstallmentsStateBanner state={classifyInstallmentsError(reverseCollection.error)} />
+        )}
         {collectionsQuery.isLoading ? (
           <p className="text-sm text-gray-500">Loading…</p>
         ) : (collectionsQuery.data ?? []).length === 0 ? (
           <p className="text-sm text-gray-500">No collections recorded yet.</p>
         ) : (
-          <ul className="space-y-1 text-sm">
-            {(collectionsQuery.data ?? []).map((row, idx) => (
-              <li key={idx} className="flex justify-between">
-                <span>{String(row["collected_at"] ?? row["due_date"] ?? "—")}</span>
-                <span>{String(row["amount"] ?? row["outstanding_amount"] ?? "—")}</span>
-              </li>
-            ))}
+          <ul className="space-y-2 text-sm">
+            {(collectionsQuery.data ?? []).map((row, idx) => {
+              // `reverse_collection`'s `collection_id` path param is the
+              // Accounting Payment.id the original collection created
+              // (`collection_service.py::reverse_collection`'s own
+              // docstring) — exactly `accounting_payment_id` here, not a
+              // separate "collection" primary key (the report row has
+              // none).
+              const paymentId = row["accounting_payment_id"];
+              const isReversal = row["is_reversal"] === true;
+              return (
+                <li
+                  key={idx}
+                  className="flex items-center justify-between border-b border-gray-100 pb-2 last:border-0 last:pb-0"
+                >
+                  <div>
+                    <span className={isReversal ? "text-red-700" : "text-gray-900"}>
+                      {isReversal ? "Reversal — " : ""}
+                      {String(row["allocated_amount"] ?? "—")}
+                    </span>
+                    <span className="text-gray-500 ml-2">
+                      {String(row["allocated_at"] ?? "—")}
+                      {row["payment_method"] ? ` · ${String(row["payment_method"])}` : ""}
+                    </span>
+                  </div>
+                  {canReverse && !isReversal && typeof paymentId === "string" && (
+                    <ReasonAction
+                      label="Reverse"
+                      pending={reverseCollection.isPending}
+                      onConfirm={(reason) =>
+                        reverseCollection.mutate({ collectionId: paymentId, reason })
+                      }
+                    />
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

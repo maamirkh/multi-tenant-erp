@@ -7,6 +7,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { getActiveInstallmentSchedule, type InstallmentScheduleRead } from '@/lib/api/installments';
 import { getCompanyId } from '@/components/installments/apiErrors';
+import { installmentsKeys } from '@/hooks/installments/queryKeys';
 import type { UseQueryResult } from '@tanstack/react-query';
 
 export function useSchedule(
@@ -14,7 +15,7 @@ export function useSchedule(
 ): UseQueryResult<InstallmentScheduleRead> {
   const companyId = getCompanyId();
   return useQuery<InstallmentScheduleRead>({
-    queryKey: ['schedule', contractId],
+    queryKey: installmentsKeys.schedule(companyId, contractId ?? ''),
     queryFn: async () => (await getActiveInstallmentSchedule(companyId, contractId!)).data,
     enabled: contractId !== undefined && contractId !== '' && companyId !== '',
   });

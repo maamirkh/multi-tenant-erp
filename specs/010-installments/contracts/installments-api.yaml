@@ -91,7 +91,17 @@ paths:
       summary: List/search contracts (status, customer, branch, plan, collector filters)
       x-permission: installments.contract.view
       x-operation-class: READ
-      responses: { "200": { description: PaginatedResponse<InstallmentContractSummary> } }
+      parameters:
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: page_size, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - name: status
+          in: query
+          required: false
+          description: Filter to contracts in this lifecycle status. Additive to the mandatory company_id (tenant) scope, never a replacement for it. An unrecognized value is rejected with 422, never silently ignored.
+          schema: { type: string, enum: [DRAFT, PENDING_APPROVAL, APPROVED, ACTIVE, DEFAULTED, COMPLETED, CANCELLED, WRITTEN_OFF] }
+      responses:
+        "200": { description: PaginatedResponse<InstallmentContractSummary> }
+        "422": { description: unrecognized status value }
     post:
       summary: Create a DRAFT contract (from template or custom terms)
       x-permission: installments.contract.create
@@ -284,15 +294,15 @@ paths:
       x-operation-class: READ
       responses: { "200": { description: StandardResponse<InstallmentsMyPermissions> } }
 
-  /installments/status:
+  /status:
     get:
       summary: Tenant module toggle status (reachable regardless of entitlement — chicken-and-egg)
       x-permission: rank-based (ADMIN_RANK), mirrors CRM admin_router
       x-operation-class: ADMIN
       responses: { "200": { description: StandardResponse<InstallmentsModuleStatus> } }
-  /installments/enable:
+  /enable:
     post: { summary: Enable the tenant module toggle, x-operation-class: ADMIN, responses: { "200": { description: StandardResponse<InstallmentsModuleStatus> } } }
-  /installments/disable:
+  /disable:
     post: { summary: Disable the tenant module toggle, x-operation-class: ADMIN, responses: { "200": { description: StandardResponse<InstallmentsModuleStatus> } } }
 
 components:

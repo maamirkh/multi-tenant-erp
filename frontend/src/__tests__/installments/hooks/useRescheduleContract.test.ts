@@ -59,7 +59,9 @@ describe('T233 — useRescheduleContract', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(contract);
-    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['schedule', 'contract-1'] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['schedule', 'company-1', 'contract-1'],
+    });
   });
 
   it('exposes error state when maker-checker is violated', async () => {

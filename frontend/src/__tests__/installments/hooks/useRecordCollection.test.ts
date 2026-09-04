@@ -63,9 +63,15 @@ describe('T233 — useRecordCollection', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(collectionResult);
-    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['contract', 'contract-1'] });
-    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['schedule', 'contract-1'] });
-    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['collections', 'contract-1'] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['contract', 'company-1', 'contract-1'],
+    });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['schedule', 'company-1', 'contract-1'],
+    });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['collections', 'company-1', 'contract-1'],
+    });
   });
 
   it('passes a client-generated Idempotency-Key to the API call', async () => {

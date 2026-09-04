@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   InstallmentContractCreateSchema,
+  INSTALLMENT_SUPPORTED_FREQUENCIES,
   type InstallmentContractCreateFormData,
 } from "@/schemas/installments";
 import {
@@ -23,7 +24,7 @@ import { useInstallmentsPermissions, useHasInstallmentsPermission } from "@/hook
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-const FREQUENCIES = ["WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY"];
+const FREQUENCIES = INSTALLMENT_SUPPORTED_FREQUENCIES;
 
 export default function NewInstallmentContractPage() {
   const router = useRouter();
