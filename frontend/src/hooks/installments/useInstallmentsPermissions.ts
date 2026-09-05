@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { getMyInstallmentsPermissions } from "@/lib/api/installments";
 import { getCompanyId } from "@/components/installments/apiErrors";
 import { ACTIVE_COMPANY_CHANGED_EVENT } from "@/contexts/CompanyContext";
+import { useAuthContext } from "@/contexts/AuthContext";
 
 export interface InstallmentsPermissionsState {
   /** Granted installments.* permission codes; empty while loading or on error. */
@@ -30,8 +31,21 @@ export interface InstallmentsPermissionsState {
  * (`permissions: []`, `isReady: false`) before fetching the new company's
  * permissions — a Tenant-A-only action can never remain visible under
  * Tenant B, even for an instance that was already mounted at switch time.
+ *
+ * Waits for `AuthContext`'s own session hydration (`isLoading`) before
+ * firing: the access token lives only in an in-memory module variable
+ * (`lib/auth/tokenStorage.ts`), so on a hard page load it starts out
+ * `null` and is repopulated asynchronously from the stored refresh token.
+ * Firing the permissions request before that hydration resolves sends it
+ * with no Authorization header, and — unlike `useContract`/TanStack
+ * Query's automatic retry — this hand-rolled fetch does not retry, so a
+ * transient unauthenticated 401 during that window would otherwise
+ * permanently fail-close `isReady`/`permissions` for the life of the
+ * mount (Phase 15 E2E Scenario A: a different user logs in and hard-
+ * navigates straight to a contract needing their approval).
  */
 export function useInstallmentsPermissions(): InstallmentsPermissionsState {
+  const { isLoading: authIsLoading } = useAuthContext();
   const [companyId, setCompanyId] = useState<string>(() => getCompanyId());
   const [permissions, setPermissions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -55,6 +69,13 @@ export function useInstallmentsPermissions(): InstallmentsPermissionsState {
 
   useEffect(() => {
     let cancelled = false;
+
+    // Auth session hydration (in-memory access token) is still in
+    // flight — wait rather than firing a request with no token.
+    if (authIsLoading) {
+      return;
+    }
+
     if (!companyId) {
       setPermissions([]);
       setIsLoading(false);
@@ -81,7 +102,7 @@ export function useInstallmentsPermissions(): InstallmentsPermissionsState {
     return () => {
       cancelled = true;
     };
-  }, [companyId]);
+  }, [companyId, authIsLoading]);
 
   return { permissions, isLoading, isReady };
 }

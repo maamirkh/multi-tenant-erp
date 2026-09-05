@@ -86,7 +86,7 @@ _REPETITIONS = 10
 @pytest.fixture
 def pg_engine(request: pytest.FixtureRequest):
     pg_url = request.getfixturevalue("pg_test_db")
-    alembic_upgrade(pg_url, "071")
+    alembic_upgrade(pg_url, "072")
     engine = db_engine(pg_url)
     try:
         yield engine

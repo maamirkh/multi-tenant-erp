@@ -24,6 +24,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -139,3 +140,15 @@ class InstallmentContract(TenantBaseModel):
         DateTime(timezone=True), nullable=True
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    requires_review: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default="false",
+        doc=(
+            "Non-terminal flag (plan.md §13): set true when the "
+            "originating Sales invoice is corrected post-activation "
+            "(credit note issued / invoice cancelled). Never auto-"
+            "cancels or auto-adjusts the contract — an authorized human "
+            "action resolves it (Scenario H, FR-INST-241)."
+        ),
+    )

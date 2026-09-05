@@ -88,6 +88,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         register_crm_integration_handlers()
 
+        # Installments integration event handlers: subscribes Installments'
+        # 2 handlers (invoice credit-note issued / invoice cancelled) to
+        # Sales's own event bus so a post-activation invoice correction
+        # flags the referencing contract requires_review=true (plan.md
+        # §13, Scenario H) — never an auto-cancel/auto-adjustment.
+        from modules.installments.handlers.sales_integration_handlers import (
+            register_installments_sales_integration_handlers,
+        )
+
+        register_installments_sales_integration_handlers()
+
         # Accounting background scheduler (recurring journals, AR/AP overdue
         # checks). Skipped in the test environment to avoid background
         # threads racing against the per-test rolled-back session (plan.md

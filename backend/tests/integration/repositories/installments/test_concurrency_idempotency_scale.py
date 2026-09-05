@@ -41,7 +41,7 @@ _CONCURRENCY = 20
 @pytest.fixture
 def pg_engine(request: pytest.FixtureRequest):
     pg_url = request.getfixturevalue("pg_test_db")
-    alembic_upgrade(pg_url, "071")
+    alembic_upgrade(pg_url, "072")
     # Unlike this suite's other pg_engine fixtures (2-10 concurrent
     # sessions, comfortably inside the shared db_engine() helper's
     # default pool_size=5+max_overflow=10=15 connection ceiling), this

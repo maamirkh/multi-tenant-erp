@@ -35,7 +35,7 @@ from tests.integration.migrations.conftest import (  # noqa: F401 — pg_test_db
 @pytest.fixture
 def db_session(request: pytest.FixtureRequest):
     pg_url = request.getfixturevalue("pg_test_db")
-    alembic_upgrade(pg_url, "071")
+    alembic_upgrade(pg_url, "072")
     engine = db_engine(pg_url)
     session_factory = sessionmaker(bind=engine)
     session = session_factory()

@@ -9,7 +9,7 @@
  *   apiClient → authClient → apiClient
  */
 
-import { clearTokens, getRefreshToken, storeTokens } from './tokenStorage';
+import { clearTokens, getEpoch, getRefreshToken, storeTokens } from './tokenStorage';
 
 const DEFAULT_BASE_URL = 'http://localhost:8000';
 
@@ -60,15 +60,24 @@ async function executeRefresh(): Promise<RefreshResult> {
  */
 export function acquireRefreshLock(): Promise<RefreshResult> {
   if (!_refreshPromise) {
+    // Captured before the request goes out: if a newer storeTokens()/
+    // clearTokens() call (e.g. a fresh login) lands before this refresh
+    // resolves, its result is stale and must not overwrite the newer
+    // session's tokens.
+    const epochAtStart = getEpoch();
     _refreshPromise = executeRefresh()
       .then((result) => {
-        storeTokens(result.access_token, result.refresh_token);
+        if (getEpoch() === epochAtStart) {
+          storeTokens(result.access_token, result.refresh_token);
+        }
         return result;
       })
       .catch((err: unknown) => {
-        clearTokens();
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new Event('session-expired'));
+        if (getEpoch() === epochAtStart) {
+          clearTokens();
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('session-expired'));
+          }
         }
         throw err;
       })

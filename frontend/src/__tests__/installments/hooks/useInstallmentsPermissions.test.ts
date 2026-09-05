@@ -23,11 +23,41 @@ jest.mock('@/components/installments/apiErrors', () => ({
   getCompanyId: () => mockGetCompanyId(),
 }));
 
+let mockAuthIsLoading = false;
+jest.mock('@/contexts/AuthContext', () => ({
+  useAuthContext: () => ({
+    user: null,
+    isAuthenticated: true,
+    isLoading: mockAuthIsLoading,
+    login: jest.fn(),
+    logout: jest.fn(),
+  }),
+}));
+
 describe('T233 — useInstallmentsPermissions', () => {
   beforeEach(() => {
     mockGetMyInstallmentsPermissions.mockReset();
     mockGetCompanyId.mockReset();
     mockGetCompanyId.mockReturnValue('company-1');
+    mockAuthIsLoading = false;
+  });
+
+  it('waits for auth session hydration before fetching — a hard-navigated page never fires a request with no token', async () => {
+    mockAuthIsLoading = true;
+    mockGetMyInstallmentsPermissions.mockResolvedValueOnce({
+      data: { permissions: ['installments.contract.approve'] },
+    });
+
+    const { result, rerender } = renderHook(() => useInstallmentsPermissions());
+
+    expect(result.current.isReady).toBe(false);
+    expect(mockGetMyInstallmentsPermissions).not.toHaveBeenCalled();
+
+    mockAuthIsLoading = false;
+    rerender();
+
+    await waitFor(() => expect(result.current.isReady).toBe(true));
+    expect(result.current.permissions).toEqual(['installments.contract.approve']);
   });
 
   it('returns granted permission codes on success', async () => {
