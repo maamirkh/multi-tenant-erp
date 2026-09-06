@@ -105,9 +105,9 @@ class TestTerminalStatuses:
 
     def test_terminal_statuses_have_no_outgoing_transitions(self) -> None:
         for status in _TERMINAL_STATUSES:
-            assert (
-                _VALID_TRANSITIONS.get(status, []) == []
-            ), f"Terminal status {status!r} must have no outgoing transitions"
+            assert _VALID_TRANSITIONS.get(status, []) == [], (
+                f"Terminal status {status!r} must have no outgoing transitions"
+            )
 
 
 # ---------------------------------------------------------------------------

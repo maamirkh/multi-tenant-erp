@@ -150,9 +150,9 @@ class TestCustomerContactSoftDelete:
             headers=_auth(token),
         ).json()["data"]
         after_items = _list_items(after)
-        assert not any(
-            c["id"] == contact_id for c in after_items
-        ), "Soft-deleted contact still appears in contact list"
+        assert not any(c["id"] == contact_id for c in after_items), (
+            "Soft-deleted contact still appears in contact list"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -216,9 +216,9 @@ class TestCustomerAddressSoftDelete:
                 headers=_auth(token),
             ).json()["data"]
         )
-        assert not any(
-            a["id"] == addr_id for a in after
-        ), "Soft-deleted address still in list"
+        assert not any(a["id"] == addr_id for a in after), (
+            "Soft-deleted address still in list"
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -404,9 +404,9 @@ class TestRescheduleIdempotency:
             .scalars()
             .all()
         )
-        assert (
-            len(lines_after_replay) == line_count_after_first
-        ), "replay must create ZERO new schedule lines"
+        assert len(lines_after_replay) == line_count_after_first, (
+            "replay must create ZERO new schedule lines"
+        )
 
         audit_after_replay = (
             db_session.execute(
@@ -436,9 +436,9 @@ class TestRescheduleIdempotency:
             .scalars()
             .all()
         )
-        assert (
-            len(reservations_after_replay) == 1
-        ), "replay must create ZERO new idempotency reservations"
+        assert len(reservations_after_replay) == 1, (
+            "replay must create ZERO new idempotency reservations"
+        )
 
     def test_conflict_with_different_terms_creates_no_additional_version(
         self, db_session
@@ -491,9 +491,9 @@ class TestRescheduleIdempotency:
             .scalars()
             .all()
         )
-        assert (
-            len(versions_after_conflict) == 2
-        ), "a rejected conflicting request must create ZERO additional versions"
+        assert len(versions_after_conflict) == 2, (
+            "a rejected conflicting request must create ZERO additional versions"
+        )
 
     def test_forced_failure_before_commit_leaves_nothing_committed_and_retry_succeeds(
         self, db_session

@@ -104,6 +104,6 @@ class TestNoBootstrapInMigrations:
         # 061 is Epic 9A's own chain-end: nothing else in the repository
         # declares down_revision="061" other than Epic 10's approved 062.
         children_of_061 = {rev for rev, down in down_revisions.items() if down == "061"}
-        assert children_of_061 <= {
-            "062"
-        }, f"Unexpected migration(s) branching from 061: {children_of_061}"
+        assert children_of_061 <= {"062"}, (
+            f"Unexpected migration(s) branching from 061: {children_of_061}"
+        )

@@ -144,9 +144,9 @@ class TestListPerformance:
         print(
             f"Lead list p95 over {_SAMPLE_ROWS} rows (SQLite guard): {p95 * 1000:.1f}ms"
         )
-        assert (
-            p95 < _TARGET_SECONDS
-        ), f"Lead list p95 {p95:.3f}s exceeds {_TARGET_SECONDS}s guard"
+        assert p95 < _TARGET_SECONDS, (
+            f"Lead list p95 {p95:.3f}s exceeds {_TARGET_SECONDS}s guard"
+        )
 
     def test_opportunity_list_p95_under_target(self, db_session: Session) -> None:
         company_id = uuid.uuid4()
@@ -194,9 +194,9 @@ class TestListPerformance:
             f"Opportunity list p95 over {_SAMPLE_ROWS} rows (SQLite guard): "
             f"{p95 * 1000:.1f}ms"
         )
-        assert (
-            p95 < _TARGET_SECONDS
-        ), f"Opportunity list p95 {p95:.3f}s exceeds {_TARGET_SECONDS}s guard"
+        assert p95 < _TARGET_SECONDS, (
+            f"Opportunity list p95 {p95:.3f}s exceeds {_TARGET_SECONDS}s guard"
+        )
 
     def test_activity_list_p95_under_target(self, db_session: Session) -> None:
         company_id = uuid.uuid4()
@@ -226,6 +226,6 @@ class TestListPerformance:
             f"Activity list p95 over {_SAMPLE_ROWS} rows (SQLite guard): "
             f"{p95 * 1000:.1f}ms"
         )
-        assert (
-            p95 < _TARGET_SECONDS
-        ), f"Activity list p95 {p95:.3f}s exceeds {_TARGET_SECONDS}s guard"
+        assert p95 < _TARGET_SECONDS, (
+            f"Activity list p95 {p95:.3f}s exceeds {_TARGET_SECONDS}s guard"
+        )

@@ -68,6 +68,6 @@ class TestNullWatermarkAllowsAllFiveBusinessModules:
         ]
         for path in endpoints:
             response = test_client.get(path, headers=headers)
-            assert (
-                response.status_code == 200
-            ), f"{path} -> {response.status_code}: {response.text}"
+            assert response.status_code == 200, (
+                f"{path} -> {response.status_code}: {response.text}"
+            )

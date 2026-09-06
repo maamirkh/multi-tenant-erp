@@ -97,9 +97,9 @@ class TestFirstSuccessfulBootstrap:
                 == administrator.id
             )
         ).scalar_one()
-        assert (
-            assignment.assigned_by is None
-        ), "bootstrap-created first assignment must have assigned_by=NULL"
+        assert assignment.assigned_by is None, (
+            "bootstrap-created first assignment must have assigned_by=NULL"
+        )
 
 
 # NOTE on test isolation: the shared `db_session` fixture's SAVEPOINT

@@ -1273,9 +1273,9 @@ class TestNoEndpointAccessibleWithoutAuth:
             resp = test_client.get(url)
         else:
             resp = test_client.post(url, json=body if body is not None else {})
-        assert (
-            resp.status_code == 401
-        ), f"{method} {path} returned {resp.status_code}, expected 401"
+        assert resp.status_code == 401, (
+            f"{method} {path} returned {resp.status_code}, expected 401"
+        )
 
     def test_garbage_token_returns_401(self, test_client: TestClient) -> None:
         cid = str(uuid.uuid4())

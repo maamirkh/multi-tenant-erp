@@ -136,9 +136,9 @@ class TestGLReportCursorPagination:
             pages += 1
             for row in result["items"]:
                 key = (row["journal_entry_id"], row["line_number"])
-                assert (
-                    key not in seen_journal_line_keys
-                ), "cursor pagination duplicated a row"
+                assert key not in seen_journal_line_keys, (
+                    "cursor pagination duplicated a row"
+                )
                 seen_journal_line_keys.add(key)
             if not result["has_more"]:
                 assert result["next_cursor"] is None

@@ -126,9 +126,9 @@ class TestReadEndpointsRequireAuth:
     ):
         cid = str(uuid.uuid4())
         resp = test_client.get(f"{_base(cid)}{path_suffix}")
-        assert (
-            resp.status_code == 401
-        ), f"GET {path_suffix} returned {resp.status_code}, expected 401"
+        assert resp.status_code == 401, (
+            f"GET {path_suffix} returned {resp.status_code}, expected 401"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -174,9 +174,9 @@ class TestCreateEndpointsRequireAuth:
     ):
         cid = str(uuid.uuid4())
         resp = test_client.post(f"{_base(cid)}{path_suffix}", json=payload)
-        assert (
-            resp.status_code == 401
-        ), f"POST {path_suffix} returned {resp.status_code}, expected 401"
+        assert resp.status_code == 401, (
+            f"POST {path_suffix} returned {resp.status_code}, expected 401"
+        )
 
 
 # ---------------------------------------------------------------------------

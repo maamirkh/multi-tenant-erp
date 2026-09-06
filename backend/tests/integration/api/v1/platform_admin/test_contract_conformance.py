@@ -125,9 +125,9 @@ class TestContractConformance:
         total_operations = sum(
             1 for methods in paths.values() for m in methods if m in _HTTP_METHODS
         )
-        assert (
-            total_operations == 33
-        ), f"expected 33 operations, found {total_operations}"
+        assert total_operations == 33, (
+            f"expected 33 operations, found {total_operations}"
+        )
 
     def test_every_contract_operation_is_implemented_with_matching_permission(
         self,
@@ -164,6 +164,6 @@ class TestContractConformance:
         actual_ops = _load_actual_platform_operations()
 
         undeclared = sorted(k for k in actual_ops if k not in contract_ops)
-        assert (
-            undeclared == []
-        ), f"Implemented-but-undeclared routes (not in contract): {undeclared}"
+        assert undeclared == [], (
+            f"Implemented-but-undeclared routes (not in contract): {undeclared}"
+        )

@@ -265,6 +265,6 @@ class TestAllEventsHaveCorrectAggregateType:
             ),
         ]
         for ev in events:
-            assert (
-                ev.aggregate_type == "PurchaseOrder"
-            ), f"{ev.__class__.__name__} has wrong aggregate_type"
+            assert ev.aggregate_type == "PurchaseOrder", (
+                f"{ev.__class__.__name__} has wrong aggregate_type"
+            )

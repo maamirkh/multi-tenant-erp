@@ -73,9 +73,9 @@ class TestNoApiSurfaceMutatesAuditRecords:
                 if method.lower() in _MUTATING_HTTP_METHODS:
                     offending.append(f"{method.upper()} {path}")
 
-        assert (
-            offending == []
-        ), f"Found mutating HTTP operation(s) on a Platform audit path: {offending}"
+        assert offending == [], (
+            f"Found mutating HTTP operation(s) on a Platform audit path: {offending}"
+        )
 
     def test_platform_audit_path_now_exists_and_is_get_only(
         self, test_client: TestClient

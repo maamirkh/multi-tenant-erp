@@ -52,6 +52,6 @@ class TestRefreshPerformance:
         print(
             f"\nRefresh p95 latency: {p95_ms:.1f}ms (threshold: {_P95_THRESHOLD_MS}ms)"
         )
-        assert (
-            p95_ms < _P95_THRESHOLD_MS
-        ), f"p95 refresh latency {p95_ms:.1f}ms exceeds {_P95_THRESHOLD_MS}ms threshold"
+        assert p95_ms < _P95_THRESHOLD_MS, (
+            f"p95 refresh latency {p95_ms:.1f}ms exceeds {_P95_THRESHOLD_MS}ms threshold"
+        )

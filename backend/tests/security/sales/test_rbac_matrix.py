@@ -112,9 +112,9 @@ class TestReadOperationsRequireAuth:
     def test_get_requires_auth(self, test_client: TestClient, path_suffix: str) -> None:
         cid = str(uuid.uuid4())
         resp = test_client.get(_sales_url(cid, path_suffix))
-        assert (
-            resp.status_code == 401
-        ), f"GET {path_suffix} returned {resp.status_code}, expected 401"
+        assert resp.status_code == 401, (
+            f"GET {path_suffix} returned {resp.status_code}, expected 401"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -189,9 +189,9 @@ class TestWriteOperationsRequireAuth:
     ) -> None:
         cid = str(uuid.uuid4())
         resp = test_client.post(_sales_url(cid, path_suffix), json=body)
-        assert (
-            resp.status_code == 401
-        ), f"POST {path_suffix} returned {resp.status_code}, expected 401"
+        assert resp.status_code == 401, (
+            f"POST {path_suffix} returned {resp.status_code}, expected 401"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -229,9 +229,9 @@ class TestLifecycleTransitionsRequireAuth:
     ) -> None:
         cid = str(uuid.uuid4())
         resp = test_client.post(_sales_url(cid, path_suffix), json={})
-        assert (
-            resp.status_code == 401
-        ), f"POST {path_suffix} returned {resp.status_code}, expected 401"
+        assert resp.status_code == 401, (
+            f"POST {path_suffix} returned {resp.status_code}, expected 401"
+        )
 
 
 # ---------------------------------------------------------------------------

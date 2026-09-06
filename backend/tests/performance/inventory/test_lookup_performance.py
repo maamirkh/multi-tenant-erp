@@ -184,9 +184,9 @@ class TestLookupPerformance:
         print(
             f"\nBarcode lookup p95: {p95_ms:.1f}ms (threshold: {_P95_THRESHOLD_MS}ms)"
         )
-        assert (
-            p95_ms < _P95_THRESHOLD_MS
-        ), f"Barcode lookup p95 {p95_ms:.1f}ms exceeds {_P95_THRESHOLD_MS}ms"
+        assert p95_ms < _P95_THRESHOLD_MS, (
+            f"Barcode lookup p95 {p95_ms:.1f}ms exceeds {_P95_THRESHOLD_MS}ms"
+        )
 
     def test_sku_lookup_p95_under_threshold(
         self, test_client: TestClient, db_session: Session
@@ -211,9 +211,9 @@ class TestLookupPerformance:
 
         p95_ms = _p95(latencies)
         print(f"\nSKU lookup p95: {p95_ms:.1f}ms (threshold: {_P95_THRESHOLD_MS}ms)")
-        assert (
-            p95_ms < _P95_THRESHOLD_MS
-        ), f"SKU lookup p95 {p95_ms:.1f}ms exceeds {_P95_THRESHOLD_MS}ms"
+        assert p95_ms < _P95_THRESHOLD_MS, (
+            f"SKU lookup p95 {p95_ms:.1f}ms exceeds {_P95_THRESHOLD_MS}ms"
+        )
 
     def test_label_data_p95_under_threshold(
         self, test_client: TestClient, db_session: Session
@@ -254,6 +254,6 @@ class TestLookupPerformance:
         print(
             f"\nLabel data p95: {p95_ms:.1f}ms (threshold: {_LABEL_DATA_THRESHOLD_MS}ms)"
         )
-        assert (
-            p95_ms < _LABEL_DATA_THRESHOLD_MS
-        ), f"Label data p95 {p95_ms:.1f}ms exceeds {_LABEL_DATA_THRESHOLD_MS}ms"
+        assert p95_ms < _LABEL_DATA_THRESHOLD_MS, (
+            f"Label data p95 {p95_ms:.1f}ms exceeds {_LABEL_DATA_THRESHOLD_MS}ms"
+        )

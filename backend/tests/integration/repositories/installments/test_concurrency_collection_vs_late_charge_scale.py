@@ -142,9 +142,9 @@ class TestConcurrentCollectionVsLateChargeAtScale:
             if late_charge_outcome == "success":
                 assert contract_status_seen == "ACTIVE", f"repetition {rep}: {results}"
             else:
-                assert (
-                    contract_status_seen == "COMPLETED"
-                ), f"repetition {rep}: {results}"
+                assert contract_status_seen == "COMPLETED", (
+                    f"repetition {rep}: {results}"
+                )
                 assert isinstance(
                     late_charge_payload, InstallmentActivationFailedError
                 ), f"repetition {rep}: {results}"

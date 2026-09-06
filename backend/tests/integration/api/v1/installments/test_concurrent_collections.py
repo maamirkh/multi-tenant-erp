@@ -77,9 +77,9 @@ class TestConcurrentFullAmountCollections:
         session_b.close()
 
         outcomes = [results["a"][0], results["b"][0]]
-        assert (
-            outcomes.count("success") == 1
-        ), f"expected exactly one success, got: {results}"
+        assert outcomes.count("success") == 1, (
+            f"expected exactly one success, got: {results}"
+        )
         assert outcomes.count("error") == 1
 
         loser_label = "a" if results["a"][0] == "error" else "b"
@@ -126,9 +126,9 @@ class TestConcurrentFullAmountCollections:
                 .scalars()
                 .all()
             )
-            assert (
-                len(payments) == 1
-            ), f"expected exactly 1 Payment, found {len(payments)}"
+            assert len(payments) == 1, (
+                f"expected exactly 1 Payment, found {len(payments)}"
+            )
             assert payments[0].id == winning_payment_id
             assert payments[0].amount_foreign == Decimal("500.00")
 
@@ -191,9 +191,9 @@ class TestConcurrentFullAmountCollections:
                 .scalars()
                 .all()
             )
-            assert (
-                len(all_refs_for_company) == 1
-            ), f"expected exactly 1 InstallmentAllocationReference, found {len(all_refs_for_company)}"
+            assert len(all_refs_for_company) == 1, (
+                f"expected exactly 1 InstallmentAllocationReference, found {len(all_refs_for_company)}"
+            )
 
             all_payment_journal_entries = (
                 verify_session.execute(
@@ -204,9 +204,9 @@ class TestConcurrentFullAmountCollections:
                 .scalars()
                 .all()
             )
-            assert (
-                len(all_payment_journal_entries) == 1
-            ), f"expected exactly 1 payment-sourced JournalEntry, found {len(all_payment_journal_entries)}"
+            assert len(all_payment_journal_entries) == 1, (
+                f"expected exactly 1 payment-sourced JournalEntry, found {len(all_payment_journal_entries)}"
+            )
             assert all_payment_journal_entries[0].id == winning_payment_journal_entry_id
 
             all_payment_ar_transactions = (
@@ -219,9 +219,9 @@ class TestConcurrentFullAmountCollections:
                 .scalars()
                 .all()
             )
-            assert (
-                len(all_payment_ar_transactions) == 1
-            ), f"expected exactly 1 payment-sourced ARTransaction, found {len(all_payment_ar_transactions)}"
+            assert len(all_payment_ar_transactions) == 1, (
+                f"expected exactly 1 payment-sourced ARTransaction, found {len(all_payment_ar_transactions)}"
+            )
             assert (
                 all_payment_ar_transactions[0].source_document_id == winning_payment_id
             )

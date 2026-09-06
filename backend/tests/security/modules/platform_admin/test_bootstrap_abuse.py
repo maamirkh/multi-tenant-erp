@@ -71,9 +71,9 @@ class TestNoNonPlatformCodeTouchesPlatformAuthority:
             text = py_file.read_text(encoding="utf-8")
             if "platform_administrator" in text.lower():
                 offenders.append(str(py_file.relative_to(_BACKEND_ROOT)))
-        assert (
-            offenders == []
-        ), f"backend/modules/auth/ references Platform authority: {offenders}"
+        assert offenders == [], (
+            f"backend/modules/auth/ references Platform authority: {offenders}"
+        )
 
 
 def _make_tenant_access_token(db: Session) -> str:

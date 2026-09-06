@@ -142,9 +142,9 @@ class TestSupplierSoftDelete:
         assert del_resp.status_code in (200, 204), del_resp.text
 
         resp = client.get(f"{_base(cid)}/suppliers/{sid}", headers=_auth(token))
-        assert (
-            resp.status_code == 404
-        ), f"Expected 404 for deleted supplier, got {resp.status_code}"
+        assert resp.status_code == 404, (
+            f"Expected 404 for deleted supplier, got {resp.status_code}"
+        )
 
     def test_deleted_supplier_persists_in_db_with_is_deleted_true(self, sd_auth):
         """Soft delete must set is_deleted=True, not remove the row."""
@@ -165,9 +165,9 @@ class TestSupplierSoftDelete:
             # Might be hard-deleted — warn but don't fail if endpoint not implemented
             pytest.skip("Supplier row not found in DB after deletion")
 
-        assert (
-            row[0] is True or row[0] == 1
-        ), "Soft delete must set is_deleted=True, not remove the row"
+        assert row[0] is True or row[0] == 1, (
+            "Soft delete must set is_deleted=True, not remove the row"
+        )
 
     def test_active_supplier_not_visible_after_colleague_deletes_it(self, sd_auth):
         """Deleted supplier is invisible regardless of which request checks."""
@@ -226,9 +226,9 @@ class TestPurchaseOrderCancellation:
         # Check the PO detail directly — it should be CANCELLED
         resp = client.get(f"{_base(cid)}/purchase-orders/{po_id}", headers=_auth(token))
         assert resp.status_code == 200
-        assert (
-            resp.json()["data"]["status"] == "CANCELLED"
-        ), "PO should be CANCELLED after cancellation"
+        assert resp.json()["data"]["status"] == "CANCELLED", (
+            "PO should be CANCELLED after cancellation"
+        )
 
 
 # ---------------------------------------------------------------------------

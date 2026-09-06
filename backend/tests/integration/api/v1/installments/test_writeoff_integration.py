@@ -236,12 +236,12 @@ class TestWriteoffIdempotency:
         )
         assert second.id == first.id
         assert second.status == "WRITTEN_OFF"
-        assert (
-            counting_ar_service.stage_write_off_calls == 1
-        ), "replay must make ZERO additional stage_write_off() calls"
-        assert (
-            counting_ar_service.finalize_write_off_calls == 1
-        ), "replay must make ZERO additional finalize_write_off() calls"
+        assert counting_ar_service.stage_write_off_calls == 1, (
+            "replay must make ZERO additional stage_write_off() calls"
+        )
+        assert counting_ar_service.finalize_write_off_calls == 1, (
+            "replay must make ZERO additional finalize_write_off() calls"
+        )
 
         assert (
             len(
@@ -326,9 +326,9 @@ class TestWriteoffIdempotency:
                 actor_id=None,
             )
 
-        assert (
-            counting_ar_service.stage_write_off_calls == 1
-        ), "a rejected conflicting request must make ZERO Accounting calls"
+        assert counting_ar_service.stage_write_off_calls == 1, (
+            "a rejected conflicting request must make ZERO Accounting calls"
+        )
         assert counting_ar_service.finalize_write_off_calls == 1
 
         refreshed = (

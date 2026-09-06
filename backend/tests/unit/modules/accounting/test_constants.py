@@ -44,21 +44,21 @@ class TestAccountingPermissions:
 
     def test_permission_codes_are_unique(self) -> None:
         codes = [p.code for p in ACCOUNTING_PERMISSIONS]
-        assert len(codes) == len(
-            set(codes)
-        ), f"Duplicate codes: {[c for c in codes if codes.count(c) > 1]}"
+        assert len(codes) == len(set(codes)), (
+            f"Duplicate codes: {[c for c in codes if codes.count(c) > 1]}"
+        )
 
     def test_all_permissions_follow_naming_convention(self) -> None:
         for p in ACCOUNTING_PERMISSIONS:
-            assert p.code.startswith(
-                "accounting."
-            ), f"Permission '{p.code}' does not start with 'accounting.'"
+            assert p.code.startswith("accounting."), (
+                f"Permission '{p.code}' does not start with 'accounting.'"
+            )
 
     def test_all_permissions_have_module_accounting(self) -> None:
         for p in ACCOUNTING_PERMISSIONS:
-            assert (
-                p.module == "accounting"
-            ), f"Permission '{p.code}' has module='{p.module}'"
+            assert p.module == "accounting", (
+                f"Permission '{p.code}' has module='{p.module}'"
+            )
 
     def test_lookup_dict_contains_all_permissions(self) -> None:
         assert len(ACCOUNTING_PERMISSION_BY_CODE) == len(ACCOUNTING_PERMISSIONS)
@@ -82,15 +82,15 @@ class TestAccountingFeatureFlags:
 
     def test_flag_keys_are_unique(self) -> None:
         keys = [f.key for f in ACCOUNTING_FEATURE_FLAGS]
-        assert len(keys) == len(
-            set(keys)
-        ), f"Duplicate keys: {[k for k in keys if keys.count(k) > 1]}"
+        assert len(keys) == len(set(keys)), (
+            f"Duplicate keys: {[k for k in keys if keys.count(k) > 1]}"
+        )
 
     def test_all_flags_follow_naming_convention(self) -> None:
         for f in ACCOUNTING_FEATURE_FLAGS:
-            assert f.key.startswith(
-                "accounting."
-            ), f"Flag '{f.key}' does not start with 'accounting.'"
+            assert f.key.startswith("accounting."), (
+                f"Flag '{f.key}' does not start with 'accounting.'"
+            )
 
     def test_lookup_dict_contains_all_flags(self) -> None:
         assert len(ACCOUNTING_FLAG_BY_KEY) == len(ACCOUNTING_FEATURE_FLAGS)

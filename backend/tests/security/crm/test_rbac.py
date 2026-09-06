@@ -213,6 +213,6 @@ class TestCrmPermissionMatrix:
             db_session, company_id, user.id, permission_code
         )
 
-        assert (
-            result is expected
-        ), f"{role_slug} / {permission_code}: expected {expected}, got {result}"
+        assert result is expected, (
+            f"{role_slug} / {permission_code}: expected {expected}, got {result}"
+        )

@@ -88,9 +88,9 @@ class TestAuthenticationEnforcement:
         cid = str(uuid.uuid4())
         url = f"{_base(cid)}{path_suffix}"
         resp = getattr(test_client, method.lower())(url)
-        assert (
-            resp.status_code == 401
-        ), f"{method} {url} returned {resp.status_code}, expected 401"
+        assert resp.status_code == 401, (
+            f"{method} {url} returned {resp.status_code}, expected 401"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -149,9 +149,9 @@ class TestSQLInjectionResistance:
             params={"q": payload},
         )
         # Any response except 5xx is acceptable — the server must not crash
-        assert (
-            resp.status_code < 500
-        ), f"SQL injection payload caused {resp.status_code}: {payload!r}"
+        assert resp.status_code < 500, (
+            f"SQL injection payload caused {resp.status_code}: {payload!r}"
+        )
 
     @pytest.mark.parametrize("payload", SQL_INJECTION_PAYLOADS)
     def test_po_list_sql_injection_in_status(self, sec_auth, payload: str):
@@ -161,9 +161,9 @@ class TestSQLInjectionResistance:
             headers=_auth(token),
             params={"status": payload},
         )
-        assert (
-            resp.status_code < 500
-        ), f"SQL injection in status caused {resp.status_code}: {payload!r}"
+        assert resp.status_code < 500, (
+            f"SQL injection in status caused {resp.status_code}: {payload!r}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -228,9 +228,9 @@ class TestCompanyIdPathEnforcement:
             # All returned items should be scoped to the fake_cid — none from cid
             for item in data:
                 company = item.get("company_id", "")
-                assert (
-                    company == "" or company == fake_cid
-                ), f"Cross-tenant data leak: got company_id={company!r}"
+                assert company == "" or company == fake_cid, (
+                    f"Cross-tenant data leak: got company_id={company!r}"
+                )
 
     def test_invalid_uuid_company_id_returns_4xx(self, sec_auth):
         client, token, _ = sec_auth

@@ -230,9 +230,9 @@ class TestNoMutationRouteForJournals:
             if getattr(route, "path", "").lower().startswith("/journals")
             and "/lines" in getattr(route, "path", "").lower()
         ]
-        assert (
-            line_routes == []
-        ), f"Unexpected dedicated journal-line route(s): {line_routes}"
+        assert line_routes == [], (
+            f"Unexpected dedicated journal-line route(s): {line_routes}"
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -143,9 +143,9 @@ class TestConversionPerformance:
 
         p95 = _p95(samples)
         print(f"\nNew-customer conversion p95 over {_SAMPLE_SIZE} runs: {p95:.3f}s")
-        assert (
-            p95 < _TARGET_SECONDS
-        ), f"New-customer conversion p95 {p95:.3f}s exceeds {_TARGET_SECONDS}s"
+        assert p95 < _TARGET_SECONDS, (
+            f"New-customer conversion p95 {p95:.3f}s exceeds {_TARGET_SECONDS}s"
+        )
 
     def test_matched_customer_path_p95_under_target(self, db_session: Session) -> None:
         company_id = uuid4()
@@ -162,6 +162,6 @@ class TestConversionPerformance:
 
         p95 = _p95(samples)
         print(f"\nMatched-customer conversion p95 over {_SAMPLE_SIZE} runs: {p95:.3f}s")
-        assert (
-            p95 < _TARGET_SECONDS
-        ), f"Matched-customer conversion p95 {p95:.3f}s exceeds {_TARGET_SECONDS}s"
+        assert p95 < _TARGET_SECONDS, (
+            f"Matched-customer conversion p95 {p95:.3f}s exceeds {_TARGET_SECONDS}s"
+        )

@@ -44,23 +44,23 @@ class TestArgon2Params:
     def test_memory_cost_meets_owasp_minimum(self) -> None:
         """Configured m >= 19456 KiB (OWASP recommendation)."""
         settings = _get_settings()
-        assert (
-            settings.ARGON2_MEMORY_COST >= 19456
-        ), f"ARGON2_MEMORY_COST={settings.ARGON2_MEMORY_COST} is below OWASP minimum 19456 KiB"
+        assert settings.ARGON2_MEMORY_COST >= 19456, (
+            f"ARGON2_MEMORY_COST={settings.ARGON2_MEMORY_COST} is below OWASP minimum 19456 KiB"
+        )
 
     def test_time_cost_meets_owasp_minimum(self) -> None:
         """Configured t >= 2 iterations."""
         settings = _get_settings()
-        assert (
-            settings.ARGON2_TIME_COST >= 2
-        ), f"ARGON2_TIME_COST={settings.ARGON2_TIME_COST} is below OWASP minimum 2"
+        assert settings.ARGON2_TIME_COST >= 2, (
+            f"ARGON2_TIME_COST={settings.ARGON2_TIME_COST} is below OWASP minimum 2"
+        )
 
     def test_parallelism_meets_owasp_minimum(self) -> None:
         """Configured p >= 1 thread."""
         settings = _get_settings()
-        assert (
-            settings.ARGON2_PARALLELISM >= 1
-        ), f"ARGON2_PARALLELISM={settings.ARGON2_PARALLELISM} is below OWASP minimum 1"
+        assert settings.ARGON2_PARALLELISM >= 1, (
+            f"ARGON2_PARALLELISM={settings.ARGON2_PARALLELISM} is below OWASP minimum 1"
+        )
 
     def test_encoded_hash_contains_correct_params(self) -> None:
         """The encoded hash string reflects the configured parameters."""
@@ -86,9 +86,9 @@ class TestArgon2Params:
             parallelism=settings.ARGON2_PARALLELISM,
         )
         encoded = hasher.hash(_TEST_PASSWORD)
-        assert encoded.startswith(
-            "$argon2id$"
-        ), f"Hash variant is not argon2id: {encoded[:20]!r}"
+        assert encoded.startswith("$argon2id$"), (
+            f"Hash variant is not argon2id: {encoded[:20]!r}"
+        )
 
     @pytest.mark.slow
     def test_hash_timing_sufficient_for_brute_force_resistance(self) -> None:

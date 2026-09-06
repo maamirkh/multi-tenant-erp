@@ -148,9 +148,9 @@ class TestCustomerTenantIsolation:
             _sales_url(cid_b, f"/customers/{cust_id}"),
             headers=_auth(tok_b),
         )
-        assert (
-            resp.status_code == 404
-        ), f"Company B accessed Company A's customer: {resp.status_code}"
+        assert resp.status_code == 404, (
+            f"Company B accessed Company A's customer: {resp.status_code}"
+        )
 
 
 # ---------------------------------------------------------------------------

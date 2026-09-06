@@ -91,14 +91,14 @@ class TestSQLInjectionPrevention:
                 headers=headers,
             )
             # Must not return 500 (would indicate unhandled execution)
-            assert (
-                resp.status_code != 500
-            ), f"SQL injection payload caused 500: {payload!r}"
+            assert resp.status_code != 500, (
+                f"SQL injection payload caused 500: {payload!r}"
+            )
             # Must return valid JSON (not raw SQL error)
             data = resp.json()
-            assert (
-                "data" in data or "detail" in data
-            ), f"Unexpected response for payload {payload!r}: {data}"
+            assert "data" in data or "detail" in data, (
+                f"Unexpected response for payload {payload!r}: {data}"
+            )
 
     def test_company_id_path_param_validated(
         self, test_client: TestClient, db_session: Session
@@ -114,9 +114,9 @@ class TestSQLInjectionPrevention:
             "/api/v1/companies/not-a-uuid/inventory/products",
             headers=headers,
         )
-        assert (
-            resp.status_code == 422
-        ), f"Expected 422 for non-UUID company_id, got {resp.status_code}"
+        assert resp.status_code == 422, (
+            f"Expected 422 for non-UUID company_id, got {resp.status_code}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -171,9 +171,9 @@ class TestXSSPrevention:
             if resp.status_code == 201:
                 # If accepted, the response must return the raw string (not execute it)
                 returned_name = resp.json()["data"]["name"]
-                assert (
-                    "<script>" not in returned_name or returned_name == payload
-                ), "XSS payload was modified unexpectedly"
+                assert "<script>" not in returned_name or returned_name == payload, (
+                    "XSS payload was modified unexpectedly"
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -220,9 +220,9 @@ class TestMassAssignmentPrevention:
         data = resp.json()["data"]
 
         # Product must be created in DRAFT status regardless of injected "status"
-        assert (
-            data["status"] == "DRAFT"
-        ), f"Mass assignment allowed status override: {data['status']}"
+        assert data["status"] == "DRAFT", (
+            f"Mass assignment allowed status override: {data['status']}"
+        )
 
     def test_warehouse_create_ignores_extra_fields(
         self, test_client: TestClient, db_session: Session
@@ -245,9 +245,9 @@ class TestMassAssignmentPrevention:
         )
         assert resp.status_code == 201, f"Warehouse create failed: {resp.text}"
         data = resp.json()["data"]
-        assert (
-            data["status"] == "ACTIVE"
-        ), f"Mass assignment allowed status override: {data['status']}"
+        assert data["status"] == "ACTIVE", (
+            f"Mass assignment allowed status override: {data['status']}"
+        )
 
 
 # ---------------------------------------------------------------------------

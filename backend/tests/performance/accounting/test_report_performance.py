@@ -198,23 +198,23 @@ class TestReportPerformance:
         tb_elapsed = time.perf_counter() - start
         print(f"Trial balance over {_SAMPLE_ENTRIES} lines: {tb_elapsed:.3f}s")
         assert trial_balance["is_balanced"] is True
-        assert (
-            tb_elapsed < _TARGET_SECONDS
-        ), f"Trial balance took {tb_elapsed:.2f}s (regression guard: {_TARGET_SECONDS}s)"
+        assert tb_elapsed < _TARGET_SECONDS, (
+            f"Trial balance took {tb_elapsed:.2f}s (regression guard: {_TARGET_SECONDS}s)"
+        )
 
         start = time.perf_counter()
         service.get_balance_sheet(company_id, posting_date)
         bs_elapsed = time.perf_counter() - start
         print(f"Balance sheet over {_SAMPLE_ENTRIES} lines: {bs_elapsed:.3f}s")
-        assert (
-            bs_elapsed < _TARGET_SECONDS
-        ), f"Balance sheet took {bs_elapsed:.2f}s (regression guard: {_TARGET_SECONDS}s)"
+        assert bs_elapsed < _TARGET_SECONDS, (
+            f"Balance sheet took {bs_elapsed:.2f}s (regression guard: {_TARGET_SECONDS}s)"
+        )
 
         start = time.perf_counter()
         pl = service.get_pl(company_id, posting_date, posting_date)
         pl_elapsed = time.perf_counter() - start
         print(f"P&L over {_SAMPLE_ENTRIES} lines: {pl_elapsed:.3f}s")
-        assert (
-            pl_elapsed < _TARGET_SECONDS
-        ), f"P&L took {pl_elapsed:.2f}s (regression guard: {_TARGET_SECONDS}s)"
+        assert pl_elapsed < _TARGET_SECONDS, (
+            f"P&L took {pl_elapsed:.2f}s (regression guard: {_TARGET_SECONDS}s)"
+        )
         assert pl["total_revenue"] >= 0

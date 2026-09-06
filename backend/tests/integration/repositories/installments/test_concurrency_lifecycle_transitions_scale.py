@@ -362,15 +362,17 @@ class TestCureWriteoffRaceAtScale:
             # code-level proof neither ordering can silently overwrite
             # the other.
             if loser_key == "writeoff":
-                assert isinstance(
-                    loser_exc, InstallmentIllegalTransitionError
-                ), f"repetition {rep}: unexpected writeoff-loser exception type: {loser_exc}"
+                assert isinstance(loser_exc, InstallmentIllegalTransitionError), (
+                    f"repetition {rep}: unexpected writeoff-loser exception type: {loser_exc}"
+                )
             else:
                 assert isinstance(
                     loser_exc,
                     InstallmentIllegalTransitionError
                     | InstallmentConcurrentModificationError,
-                ), f"repetition {rep}: unexpected cure-loser exception type: {loser_exc}"
+                ), (
+                    f"repetition {rep}: unexpected cure-loser exception type: {loser_exc}"
+                )
 
             verify_session = session_factory()
             try:
@@ -469,13 +471,13 @@ class TestWriteoffCollectionRaceAtScale:
             )
             loser_exc = results[loser_key][1]
             if loser_key == "writeoff":
-                assert isinstance(
-                    loser_exc, InstallmentIllegalTransitionError
-                ), f"repetition {rep}: {results}"
+                assert isinstance(loser_exc, InstallmentIllegalTransitionError), (
+                    f"repetition {rep}: {results}"
+                )
             else:
-                assert isinstance(
-                    loser_exc, InstallmentActivationFailedError
-                ), f"repetition {rep}: {results}"
+                assert isinstance(loser_exc, InstallmentActivationFailedError), (
+                    f"repetition {rep}: {results}"
+                )
 
             verify_session = session_factory()
             try:

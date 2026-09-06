@@ -328,9 +328,9 @@ class TestPOAmendmentAuditTrail:
         )
         # Amendment endpoint may return 200/201 (amendment created) or 422 (payload issues)
         # but must not 500
-        assert (
-            amend_resp.status_code < 500
-        ), f"Amendment endpoint caused server error: {amend_resp.status_code}"
+        assert amend_resp.status_code < 500, (
+            f"Amendment endpoint caused server error: {amend_resp.status_code}"
+        )
 
     def test_approved_po_cannot_be_directly_edited(self, audit_auth):
         """Approved POs must not allow direct line edits — amendment workflow required."""

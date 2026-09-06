@@ -156,6 +156,6 @@ class TestPipelineReportPerformance:
             f"Pipeline report p95 over {_SAMPLE_ROWS} open opportunities "
             f"(SQLite guard): {p95 * 1000:.1f}ms"
         )
-        assert (
-            p95 < _TARGET_SECONDS
-        ), f"Pipeline report p95 {p95:.3f}s exceeds {_TARGET_SECONDS}s guard"
+        assert p95 < _TARGET_SECONDS, (
+            f"Pipeline report p95 {p95:.3f}s exceeds {_TARGET_SECONDS}s guard"
+        )

@@ -119,9 +119,9 @@ class TestCompanyReadPerformance:
             f" (threshold: {_P95_GET_THRESHOLD_MS}ms,"
             f" samples: {_SAMPLE_COUNT})"
         )
-        assert (
-            p95_ms < _P95_GET_THRESHOLD_MS
-        ), f"p95 GET latency {p95_ms:.1f}ms exceeds {_P95_GET_THRESHOLD_MS}ms threshold"
+        assert p95_ms < _P95_GET_THRESHOLD_MS, (
+            f"p95 GET latency {p95_ms:.1f}ms exceeds {_P95_GET_THRESHOLD_MS}ms threshold"
+        )
 
 
 @pytest.mark.slow
@@ -159,6 +159,6 @@ class TestCompanyUpdatePerformance:
             f" (threshold: {_P95_PATCH_THRESHOLD_MS}ms,"
             f" samples: {_SAMPLE_COUNT})"
         )
-        assert (
-            p95_ms < _P95_PATCH_THRESHOLD_MS
-        ), f"p95 PATCH latency {p95_ms:.1f}ms exceeds {_P95_PATCH_THRESHOLD_MS}ms threshold"
+        assert p95_ms < _P95_PATCH_THRESHOLD_MS, (
+            f"p95 PATCH latency {p95_ms:.1f}ms exceeds {_P95_PATCH_THRESHOLD_MS}ms threshold"
+        )

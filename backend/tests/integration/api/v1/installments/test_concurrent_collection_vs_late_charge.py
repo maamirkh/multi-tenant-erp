@@ -125,9 +125,9 @@ class TestConcurrentCollectionVsLateCharge:
             # it — the late charge must have lost with the documented
             # servicing-status guard, never a generic/unexpected error.
             assert contract_status_seen == "COMPLETED", results
-            assert isinstance(
-                late_charge_payload, InstallmentActivationFailedError
-            ), results
+            assert isinstance(late_charge_payload, InstallmentActivationFailedError), (
+                results
+            )
 
         # Authoritative invariant, independent of which ordering
         # occurred: never observe a COMPLETED contract with an open,
