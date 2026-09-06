@@ -6,7 +6,9 @@
  */
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface ReorderRule {
   id: string;
@@ -20,8 +22,10 @@ interface ReorderRule {
 }
 
 export default function ReorderRulesPage() {
-  const params = useParams<{ company_id: string }>();
-  const companyId = params?.company_id;
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
 
   const [rules, setRules] = useState<ReorderRule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,8 +42,8 @@ export default function ReorderRulesPage() {
   function fetchRules() {
     if (!companyId) return;
     setLoading(true);
-    fetch(`/api/v1/companies/${companyId}/inventory/reorder-rules?limit=200`, {
-      credentials: "include",
+    fetch(`${API_BASE}/api/v1/companies/${companyId}/inventory/reorder-rules?limit=200`, {
+      headers: { Authorization: `Bearer ${getAccessToken()}` },
     })
       .then((r) => r.json())
       .then((body) => {
@@ -64,11 +68,13 @@ export default function ReorderRulesPage() {
     setError(null);
     try {
       const res = await fetch(
-        `/api/v1/companies/${companyId}/inventory/reorder-rules`,
+        `${API_BASE}/api/v1/companies/${companyId}/inventory/reorder-rules`,
         {
           method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getAccessToken()}`,
+          },
           body: JSON.stringify({
             product_id: productId,
             warehouse_id: warehouseId || null,
@@ -99,11 +105,13 @@ export default function ReorderRulesPage() {
   async function toggleRule(rule: ReorderRule) {
     if (!companyId) return;
     await fetch(
-      `/api/v1/companies/${companyId}/inventory/reorder-rules/${rule.id}`,
+      `${API_BASE}/api/v1/companies/${companyId}/inventory/reorder-rules/${rule.id}`,
       {
         method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getAccessToken()}`,
+        },
         body: JSON.stringify({ is_active: !rule.is_active }),
       }
     );
@@ -113,8 +121,11 @@ export default function ReorderRulesPage() {
   async function deleteRule(ruleId: string) {
     if (!companyId) return;
     await fetch(
-      `/api/v1/companies/${companyId}/inventory/reorder-rules/${ruleId}`,
-      { method: "DELETE", credentials: "include" }
+      `${API_BASE}/api/v1/companies/${companyId}/inventory/reorder-rules/${ruleId}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${getAccessToken()}` },
+      }
     );
     fetchRules();
   }

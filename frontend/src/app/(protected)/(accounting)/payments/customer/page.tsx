@@ -10,10 +10,6 @@ import {
   getCustomerPayments,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 const emptyForm = {
   customer_id: "",
   payment_method: "BANK_TRANSFER",
@@ -37,8 +33,11 @@ const emptyAllocationForm = {
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T217
  */
-export default function CustomerPaymentPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function CustomerPaymentPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [searchCustomerId, setSearchCustomerId] = useState("");
   const [payments, setPayments] = useState<PaymentResponse[]>([]);
   const [form, setForm] = useState(emptyForm);

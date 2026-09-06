@@ -9,18 +9,17 @@ import {
   getBankBookReport,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 /**
  * Bank Book report: opening balance, transactions, closing balance for a
  * bank account and date range.
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T266
  */
-export default function BankBookPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function BankBookPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
 
   const [accounts, setAccounts] = useState<BankAccountResponse[]>([]);
   const [bankAccountId, setBankAccountId] = useState("");

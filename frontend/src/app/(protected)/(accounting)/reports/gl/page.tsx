@@ -9,18 +9,17 @@ import {
   getGLReport,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 /**
  * GL Report page — searchable/filterable General Ledger with account and
  * date filters; drill-down to the source document on row click.
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T106
  */
-export default function GLReportPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function GLReportPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [accounts, setAccounts] = useState<AccountResponse[]>([]);
   const [rows, setRows] = useState<GLReportRow[]>([]);
   const [loading, setLoading] = useState(false);

@@ -3,17 +3,16 @@
 import { useState } from "react";
 import { TaxSummaryReport, getTaxSummaryReport } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 /**
  * Tax Summary Report: output tax, input tax, and net payable by tax code.
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T241
  */
-export default function TaxSummaryReportPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function TaxSummaryReportPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [periodStart, setPeriodStart] = useState(
     new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10)
   );

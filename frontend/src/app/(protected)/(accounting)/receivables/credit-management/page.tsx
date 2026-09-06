@@ -10,10 +10,6 @@ import {
   setCreditLimit,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 const CREDIT_STATUS_STYLES: Record<string, string> = {
   GOOD: "bg-green-100 text-green-800",
   WARNING: "bg-yellow-100 text-yellow-800",
@@ -204,8 +200,11 @@ function CreditManagementForm({ companyId }: { companyId: string }) {
   );
 }
 
-export default function CreditManagementPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function CreditManagementPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   return (
     <Suspense fallback={<div className="py-8 text-center text-gray-500">Loading...</div>}>
       <CreditManagementForm companyId={companyId} />

@@ -7,6 +7,9 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type TransferStatus = "DRAFT" | "IN_TRANSIT" | "COMPLETED" | "CANCELLED";
 
@@ -60,8 +63,11 @@ function Field({ label, value }: { label: string; value?: string | null }) {
 }
 
 export default function TransferDetailPage() {
-  const params = useParams<{ company_id: string; id: string }>();
-  const companyId = params?.company_id;
+  const params = useParams<{ id: string }>();
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const transferId = params?.id;
   const router = useRouter();
 
@@ -75,8 +81,8 @@ export default function TransferDetailPage() {
     if (!companyId || !transferId) return;
     setLoading(true);
     fetch(
-      `/api/v1/companies/${companyId}/inventory/stock-transfers/${transferId}`,
-      { credentials: "include" }
+      `${API_BASE}/api/v1/companies/${companyId}/inventory/stock-transfers/${transferId}`,
+      { headers: { Authorization: `Bearer ${getAccessToken()}` } }
     )
       .then((r) => r.json())
       .then((body) => {
@@ -102,11 +108,13 @@ export default function TransferDetailPage() {
     setError(null);
     try {
       const resp = await fetch(
-        `/api/v1/companies/${companyId}/inventory/stock-transfers/${transferId}/${action}`,
+        `${API_BASE}/api/v1/companies/${companyId}/inventory/stock-transfers/${transferId}/${action}`,
         {
           method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getAccessToken()}`,
+          },
           body: JSON.stringify(body),
         }
       );

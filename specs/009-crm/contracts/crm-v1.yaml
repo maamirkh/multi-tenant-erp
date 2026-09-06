@@ -1,0 +1,3656 @@
+openapi: 3.1.0
+info:
+  title: DevSphere ERP - CRM API
+  version: 1.0.0
+  description: Epic 9 - CRM module API surface, generated from the live FastAPI app's OpenAPI schema (backend/main.py
+    create_app()) and filtered to /crm paths + their referenced schemas.
+paths:
+  /api/v1/companies/{company_id}/crm/lead-sources:
+    get:
+      tags:
+      - health
+      - crm
+      summary: List lead sources
+      operationId: list_lead_sources_api_v1_companies__company_id__crm_lead_sources_get
+      parameters:
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      - name: is_active
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Active
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Page Size
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse_LeadSourceRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - health
+      - crm
+      summary: Create a lead source
+      operationId: create_lead_source_api_v1_companies__company_id__crm_lead_sources_post
+      parameters:
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeadSourceCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_LeadSourceRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/lead-sources/{source_id}:
+    patch:
+      tags:
+      - health
+      - crm
+      summary: Update a lead source
+      operationId: update_lead_source_api_v1_companies__company_id__crm_lead_sources__source_id__patch
+      parameters:
+      - name: source_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Source Id
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeadSourceUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_LeadSourceRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/leads:
+    post:
+      tags:
+      - health
+      - crm
+      summary: Capture a new Lead
+      operationId: create_lead_api_v1_companies__company_id__crm_leads_post
+      parameters:
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeadCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_LeadRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - health
+      - crm
+      summary: List / filter Leads
+      operationId: list_leads_api_v1_companies__company_id__crm_leads_get
+      parameters:
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+      - name: source_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Source Id
+      - name: owner_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Owner Id
+      - name: created_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: ISO datetime, inclusive
+          title: Created From
+        description: ISO datetime, inclusive
+      - name: created_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: ISO datetime, inclusive
+          title: Created To
+        description: ISO datetime, inclusive
+      - name: search
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Matches name, company name, email, or phone
+          title: Search
+        description: Matches name, company name, email, or phone
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Page Size
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse_LeadRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/leads/{lead_id}:
+    get:
+      tags:
+      - health
+      - crm
+      summary: Get a Lead
+      operationId: get_lead_api_v1_companies__company_id__crm_leads__lead_id__get
+      parameters:
+      - name: lead_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Lead Id
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_LeadRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - health
+      - crm
+      summary: Update a Lead (including qualify/disqualify via status)
+      operationId: update_lead_api_v1_companies__company_id__crm_leads__lead_id__patch
+      parameters:
+      - name: lead_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Lead Id
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeadUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_LeadRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - health
+      - crm
+      summary: Soft-delete a Lead
+      operationId: delete_lead_api_v1_companies__company_id__crm_leads__lead_id__delete
+      parameters:
+      - name: lead_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Lead Id
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/leads/{lead_id}/assign:
+    post:
+      tags:
+      - health
+      - crm
+      summary: Reassign a Lead's owner
+      operationId: assign_lead_api_v1_companies__company_id__crm_leads__lead_id__assign_post
+      parameters:
+      - name: lead_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Lead Id
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeadAssignRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_LeadRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/leads/{lead_id}/convert:
+    post:
+      tags:
+      - health
+      - crm
+      summary: Convert a QUALIFIED Lead into a Customer + Opportunity
+      operationId: convert_lead_api_v1_companies__company_id__crm_leads__lead_id__convert_post
+      parameters:
+      - name: lead_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Lead Id
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_ConversionResult_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/pipelines:
+    get:
+      tags:
+      - health
+      - crm
+      summary: List pipelines
+      operationId: list_pipelines_api_v1_companies__company_id__crm_pipelines_get
+      parameters:
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_list_PipelineRead__'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - health
+      - crm
+      summary: Create a pipeline
+      operationId: create_pipeline_api_v1_companies__company_id__crm_pipelines_post
+      parameters:
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PipelineCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_PipelineRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/pipelines/{pipeline_id}:
+    patch:
+      tags:
+      - health
+      - crm
+      summary: Update a pipeline
+      operationId: update_pipeline_api_v1_companies__company_id__crm_pipelines__pipeline_id__patch
+      parameters:
+      - name: pipeline_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Pipeline Id
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PipelineUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_PipelineRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/pipelines/{pipeline_id}/stages:
+    get:
+      tags:
+      - health
+      - crm
+      summary: List a pipeline's stages
+      operationId: list_pipeline_stages_api_v1_companies__company_id__crm_pipelines__pipeline_id__stages_get
+      parameters:
+      - name: pipeline_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Pipeline Id
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_list_PipelineStageRead__'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - health
+      - crm
+      summary: Create a pipeline stage
+      operationId: create_pipeline_stage_api_v1_companies__company_id__crm_pipelines__pipeline_id__stages_post
+      parameters:
+      - name: pipeline_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Pipeline Id
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PipelineStageCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_PipelineStageRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/pipeline-stages/{stage_id}:
+    patch:
+      tags:
+      - health
+      - crm
+      summary: Update a pipeline stage
+      operationId: update_pipeline_stage_api_v1_companies__company_id__crm_pipeline_stages__stage_id__patch
+      parameters:
+      - name: stage_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Stage Id
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PipelineStageUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_PipelineStageRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/opportunities:
+    post:
+      tags:
+      - health
+      - crm
+      summary: Create an Opportunity directly against an existing Customer
+      operationId: create_opportunity_api_v1_companies__company_id__crm_opportunities_post
+      parameters:
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpportunityCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_OpportunityRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - health
+      - crm
+      summary: List / filter Opportunities
+      operationId: list_opportunities_api_v1_companies__company_id__crm_opportunities_get
+      parameters:
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+      - name: stage_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Stage Id
+      - name: owner_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Owner Id
+      - name: customer_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Customer Id
+      - name: expected_close_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Expected Close From
+      - name: expected_close_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Expected Close To
+      - name: min_value
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Min Value
+      - name: max_value
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Max Value
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Page Size
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse_OpportunityRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/opportunities/{opportunity_id}:
+    get:
+      tags:
+      - health
+      - crm
+      summary: Get an Opportunity
+      operationId: get_opportunity_api_v1_companies__company_id__crm_opportunities__opportunity_id__get
+      parameters:
+      - name: opportunity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Opportunity Id
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_OpportunityRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - health
+      - crm
+      summary: Update an Opportunity's metadata
+      operationId: update_opportunity_api_v1_companies__company_id__crm_opportunities__opportunity_id__patch
+      parameters:
+      - name: opportunity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Opportunity Id
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpportunityUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_OpportunityRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - health
+      - crm
+      summary: Soft-delete an Opportunity (only while OPEN)
+      operationId: delete_opportunity_api_v1_companies__company_id__crm_opportunities__opportunity_id__delete
+      parameters:
+      - name: opportunity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Opportunity Id
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/opportunities/{opportunity_id}/assign:
+    post:
+      tags:
+      - health
+      - crm
+      summary: Reassign an Opportunity's owner
+      operationId: assign_opportunity_api_v1_companies__company_id__crm_opportunities__opportunity_id__assign_post
+      parameters:
+      - name: opportunity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Opportunity Id
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpportunityAssignRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_OpportunityRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/opportunities/{opportunity_id}/stage:
+    post:
+      tags:
+      - health
+      - crm
+      summary: Change an Opportunity's pipeline stage
+      operationId: change_opportunity_stage_api_v1_companies__company_id__crm_opportunities__opportunity_id__stage_post
+      parameters:
+      - name: opportunity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Opportunity Id
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpportunityStageChangeRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_OpportunityRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/opportunities/{opportunity_id}/win:
+    post:
+      tags:
+      - health
+      - crm
+      summary: Mark an Opportunity WON
+      operationId: win_opportunity_api_v1_companies__company_id__crm_opportunities__opportunity_id__win_post
+      parameters:
+      - name: opportunity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Opportunity Id
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_OpportunityRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/opportunities/{opportunity_id}/lose:
+    post:
+      tags:
+      - health
+      - crm
+      summary: Mark an Opportunity LOST
+      operationId: lose_opportunity_api_v1_companies__company_id__crm_opportunities__opportunity_id__lose_post
+      parameters:
+      - name: opportunity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Opportunity Id
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpportunityLoseRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_OpportunityRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/activities:
+    post:
+      tags:
+      - health
+      - crm
+      summary: Log a new Activity
+      operationId: create_activity_api_v1_companies__company_id__crm_activities_post
+      parameters:
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActivityCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_ActivityRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - health
+      - crm
+      summary: List / filter Activities
+      operationId: list_activities_api_v1_companies__company_id__crm_activities_get
+      parameters:
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      - name: activity_type
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Activity Type
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+      - name: assigned_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Assigned To
+      - name: lead_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Lead Id
+      - name: customer_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Customer Id
+      - name: opportunity_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Opportunity Id
+      - name: due_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Due From
+      - name: due_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Due To
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Page Size
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse_ActivityRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/activities/{activity_id}:
+    get:
+      tags:
+      - health
+      - crm
+      summary: Get an Activity
+      operationId: get_activity_api_v1_companies__company_id__crm_activities__activity_id__get
+      parameters:
+      - name: activity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Activity Id
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_ActivityRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - health
+      - crm
+      summary: Update an Activity
+      operationId: update_activity_api_v1_companies__company_id__crm_activities__activity_id__patch
+      parameters:
+      - name: activity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Activity Id
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActivityUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_ActivityRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - health
+      - crm
+      summary: Soft-delete an Activity
+      operationId: delete_activity_api_v1_companies__company_id__crm_activities__activity_id__delete
+      parameters:
+      - name: activity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Activity Id
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/activities/{activity_id}/complete:
+    post:
+      tags:
+      - health
+      - crm
+      summary: Complete an Activity (cascades Lead last_contact_date/status)
+      operationId: complete_activity_api_v1_companies__company_id__crm_activities__activity_id__complete_post
+      parameters:
+      - name: activity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Activity Id
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_ActivityRead_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/customers/{customer_id}/360:
+    get:
+      tags:
+      - health
+      - crm
+      summary: Customer 360 — composed CRM + Sales + Accounting view
+      operationId: get_customer_360_api_v1_companies__company_id__crm_customers__customer_id__360_get
+      parameters:
+      - name: customer_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Customer Id
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_Customer360_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/dashboard:
+    get:
+      tags:
+      - health
+      - crm
+      summary: CRM dashboard — current-month KPI summary
+      operationId: get_dashboard_api_v1_companies__company_id__crm_dashboard_get
+      parameters:
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_CrmDashboard_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/reports/pipeline:
+    get:
+      tags:
+      - health
+      - crm
+      summary: Pipeline report — value by stage/owner/source, win rate, cycle time
+      operationId: get_pipeline_report_api_v1_companies__company_id__crm_reports_pipeline_get
+      parameters:
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      - name: date_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date From
+      - name: date_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date To
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_PipelineReport_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/reports/leads:
+    get:
+      tags:
+      - health
+      - crm
+      summary: Lead report — counts by status/source, conversion rate
+      operationId: get_lead_report_api_v1_companies__company_id__crm_reports_leads_get
+      parameters:
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      - name: date_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date From
+      - name: date_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date To
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_LeadReport_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/companies/{company_id}/crm/reports/activities:
+    get:
+      tags:
+      - health
+      - crm
+      summary: Activity report — completed by type, overdue by owner
+      operationId: get_activity_report_api_v1_companies__company_id__crm_reports_activities_get
+      parameters:
+      - name: company_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Company Id
+      - name: date_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date From
+      - name: date_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date To
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse_ActivityReport_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    ActivityCreate:
+      properties:
+        activity_type:
+          type: string
+          title: Activity Type
+        subject:
+          type: string
+          maxLength: 300
+          minLength: 1
+          title: Subject
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        priority:
+          type: string
+          title: Priority
+          default: MEDIUM
+        due_date:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Due Date
+        assigned_to:
+          type: string
+          format: uuid
+          title: Assigned To
+        lead_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Lead Id
+        customer_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Customer Id
+        opportunity_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Opportunity Id
+      type: object
+      required:
+      - activity_type
+      - subject
+      - assigned_to
+      title: ActivityCreate
+      description: Request body for logging a new Activity (spec.md §19.1).
+    ActivityRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        company_id:
+          type: string
+          format: uuid
+          title: Company Id
+        activity_type:
+          type: string
+          title: Activity Type
+        subject:
+          type: string
+          title: Subject
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        status:
+          type: string
+          title: Status
+        priority:
+          type: string
+          title: Priority
+        due_date:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Due Date
+        completed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Completed At
+        assigned_to:
+          type: string
+          format: uuid
+          title: Assigned To
+        lead_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Lead Id
+        customer_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Customer Id
+        opportunity_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Opportunity Id
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - company_id
+      - activity_type
+      - subject
+      - description
+      - status
+      - priority
+      - due_date
+      - completed_at
+      - assigned_to
+      - lead_id
+      - customer_id
+      - opportunity_id
+      - created_at
+      - updated_at
+      title: ActivityRead
+      description: Response body for an Activity.
+    ActivityReport:
+      properties:
+        completed_count:
+          type: integer
+          title: Completed Count
+        completed_by_type:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Completed By Type
+        overdue_count:
+          type: integer
+          title: Overdue Count
+        overdue_by_owner:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Overdue By Owner
+        date_from:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date From
+        date_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date To
+      type: object
+      required:
+      - completed_count
+      - completed_by_type
+      - overdue_count
+      - overdue_by_owner
+      - date_from
+      - date_to
+      title: ActivityReport
+      description: spec.md §40.3.
+    ActivityUpdate:
+      properties:
+        subject:
+          anyOf:
+          - type: string
+            maxLength: 300
+            minLength: 1
+          - type: 'null'
+          title: Subject
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+        priority:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Priority
+        due_date:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Due Date
+        assigned_to:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Assigned To
+      type: object
+      title: ActivityUpdate
+      description: Request body for updating an Activity. All fields optional.
+    ConversionResult:
+      properties:
+        lead_id:
+          type: string
+          format: uuid
+          title: Lead Id
+        customer_id:
+          type: string
+          format: uuid
+          title: Customer Id
+        opportunity_id:
+          type: string
+          format: uuid
+          title: Opportunity Id
+        customer_matched:
+          type: boolean
+          title: Customer Matched
+      type: object
+      required:
+      - lead_id
+      - customer_id
+      - opportunity_id
+      - customer_matched
+      title: ConversionResult
+      description: Response body for POST /crm/leads/{id}/convert (spec.md §16, §38.1).
+    CrmDashboard:
+      properties:
+        open_pipeline_value:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Open Pipeline Value
+        weighted_pipeline_value:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Weighted Pipeline Value
+        lead_count:
+          type: integer
+          title: Lead Count
+        conversion_rate:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Conversion Rate
+        win_rate:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Win Rate
+        overdue_follow_up_count:
+          type: integer
+          title: Overdue Follow Up Count
+        activities_completed:
+          type: integer
+          title: Activities Completed
+        period_from:
+          type: string
+          format: date
+          title: Period From
+        period_to:
+          type: string
+          format: date
+          title: Period To
+      type: object
+      required:
+      - open_pipeline_value
+      - weighted_pipeline_value
+      - lead_count
+      - conversion_rate
+      - win_rate
+      - overdue_follow_up_count
+      - activities_completed
+      - period_from
+      - period_to
+      title: CrmDashboard
+      description: 'spec.md §41 — the single-call dashboard KPI set, for the current
+
+        calendar month unless the module is later extended with an explicit
+
+        period parameter.'
+    Customer360:
+      properties:
+        customer:
+          $ref: '#/components/schemas/CustomerSummary'
+        converted_leads:
+          items:
+            $ref: '#/components/schemas/LeadRead'
+          type: array
+          title: Converted Leads
+        opportunities:
+          items:
+            $ref: '#/components/schemas/OpportunityRead'
+          type: array
+          title: Opportunities
+        activities:
+          items:
+            $ref: '#/components/schemas/ActivityRead'
+          type: array
+          title: Activities
+        sales_history:
+          $ref: '#/components/schemas/SalesHistorySummary'
+        financial_summary:
+          $ref: '#/components/schemas/FinancialSummary'
+        last_interaction:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Interaction
+        next_follow_up:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Next Follow Up
+      type: object
+      required:
+      - customer
+      - converted_leads
+      - opportunities
+      - activities
+      - sales_history
+      - financial_summary
+      - last_interaction
+      - next_follow_up
+      title: Customer360
+      description: Response body for ``GET /crm/customers/{customer_id}/360``.
+    CustomerSummary:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        customer_code:
+          type: string
+          title: Customer Code
+        legal_name:
+          type: string
+          title: Legal Name
+        trading_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Trading Name
+        status:
+          type: string
+          title: Status
+        currency_code:
+          type: string
+          title: Currency Code
+      type: object
+      required:
+      - id
+      - customer_code
+      - legal_name
+      - trading_name
+      - status
+      - currency_code
+      title: CustomerSummary
+      description: 'Core Customer identity fields, read live from Sales'' ``Customer`` —
+
+        never duplicated/persisted CRM-side (§20.1).'
+    FinancialSummary:
+      properties:
+        total_outstanding_base:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Total Outstanding Base
+        credit_limit:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Credit Limit
+        credit_status:
+          type: string
+          title: Credit Status
+        as_of_date:
+          type: string
+          format: date
+          title: As Of Date
+        current:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Current
+        days_1_30:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Days 1 30
+        days_31_60:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Days 31 60
+        days_61_90:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Days 61 90
+        days_91_120:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Days 91 120
+        days_120_plus:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Days 120 Plus
+      type: object
+      required:
+      - total_outstanding_base
+      - credit_limit
+      - credit_status
+      - as_of_date
+      - current
+      - days_1_30
+      - days_31_60
+      - days_61_90
+      - days_91_120
+      - days_120_plus
+      title: FinancialSummary
+      description: 'Live Accounts Receivable figures — always fetched fresh from
+
+        ``AccountsReceivableService`` on every request, never cached (§20.2,
+
+        AC-16). A Customer with no AR activity yet (no ``CustomerLedger`` row)
+
+        degrades to all-zero/``GOOD`` values rather than a 404 (AC-17).'
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    LeadAssignRequest:
+      properties:
+        owner_id:
+          type: string
+          format: uuid
+          title: Owner Id
+      type: object
+      required:
+      - owner_id
+      title: LeadAssignRequest
+      description: Request body for POST /crm/leads/{id}/assign.
+    LeadCreate:
+      properties:
+        first_name:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: First Name
+        last_name:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Last Name
+        lead_company_name:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Lead Company Name
+        email:
+          anyOf:
+          - type: string
+            maxLength: 255
+          - type: 'null'
+          title: Email
+        phone:
+          anyOf:
+          - type: string
+            maxLength: 30
+          - type: 'null'
+          title: Phone
+        mobile:
+          anyOf:
+          - type: string
+            maxLength: 30
+          - type: 'null'
+          title: Mobile
+        address_line1:
+          anyOf:
+          - type: string
+            maxLength: 300
+          - type: 'null'
+          title: Address Line1
+        address_line2:
+          anyOf:
+          - type: string
+            maxLength: 300
+          - type: 'null'
+          title: Address Line2
+        city:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: City
+        state:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: State
+        postal_code:
+          anyOf:
+          - type: string
+            maxLength: 20
+          - type: 'null'
+          title: Postal Code
+        country_code:
+          anyOf:
+          - type: string
+            maxLength: 2
+          - type: 'null'
+          title: Country Code
+        source_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Source Id
+        score:
+          anyOf:
+          - type: integer
+            maximum: 100.0
+            minimum: 0.0
+          - type: 'null'
+          title: Score
+        notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notes
+        next_follow_up_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Next Follow Up Date
+        qualification_notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Qualification Notes
+      type: object
+      title: LeadCreate
+      description: Request body for capturing a new Lead (spec.md §14.1).
+    LeadRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        company_id:
+          type: string
+          format: uuid
+          title: Company Id
+        first_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: First Name
+        last_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Last Name
+        lead_company_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Lead Company Name
+        email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Email
+        phone:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Phone
+        mobile:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Mobile
+        address_line1:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Address Line1
+        address_line2:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Address Line2
+        city:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: City
+        state:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: State
+        postal_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Postal Code
+        country_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Country Code
+        source_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Source Id
+        status:
+          type: string
+          title: Status
+        score:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Score
+        owner_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Owner Id
+        notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notes
+        last_contact_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Last Contact Date
+        next_follow_up_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Next Follow Up Date
+        qualification_notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Qualification Notes
+        disqualification_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Disqualification Reason
+        converted_customer_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Converted Customer Id
+        converted_opportunity_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Converted Opportunity Id
+        converted_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Converted At
+        version:
+          type: integer
+          title: Version
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - company_id
+      - first_name
+      - last_name
+      - lead_company_name
+      - email
+      - phone
+      - mobile
+      - address_line1
+      - address_line2
+      - city
+      - state
+      - postal_code
+      - country_code
+      - source_id
+      - status
+      - score
+      - owner_id
+      - notes
+      - last_contact_date
+      - next_follow_up_date
+      - qualification_notes
+      - disqualification_reason
+      - converted_customer_id
+      - converted_opportunity_id
+      - converted_at
+      - version
+      - created_at
+      - updated_at
+      title: LeadRead
+      description: Response body for a Lead.
+    LeadReport:
+      properties:
+        total_count:
+          type: integer
+          title: Total Count
+        count_by_status:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Count By Status
+        count_by_source:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Count By Source
+        conversion_rate:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Conversion Rate
+        qualified_to_close_rate:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Qualified To Close Rate
+        date_from:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date From
+        date_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date To
+      type: object
+      required:
+      - total_count
+      - count_by_status
+      - count_by_source
+      - conversion_rate
+      - qualified_to_close_rate
+      - date_from
+      - date_to
+      title: LeadReport
+      description: 'spec.md §40.2. Dict keys are string-coerced (UUID -> str, unset ->
+
+        ``"none"``) since JSON object keys must be strings.'
+    LeadSourceCreate:
+      properties:
+        code:
+          type: string
+          maxLength: 30
+          minLength: 1
+          title: Code
+        name:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Name
+        is_active:
+          type: boolean
+          title: Is Active
+          default: true
+      type: object
+      required:
+      - code
+      - name
+      title: LeadSourceCreate
+      description: Request body for creating a Lead Source.
+    LeadSourceRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        company_id:
+          type: string
+          format: uuid
+          title: Company Id
+        code:
+          type: string
+          title: Code
+        name:
+          type: string
+          title: Name
+        is_active:
+          type: boolean
+          title: Is Active
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - company_id
+      - code
+      - name
+      - is_active
+      - created_at
+      - updated_at
+      title: LeadSourceRead
+      description: Response body for a Lead Source.
+    LeadSourceUpdate:
+      properties:
+        code:
+          anyOf:
+          - type: string
+            maxLength: 30
+            minLength: 1
+          - type: 'null'
+          title: Code
+        name:
+          anyOf:
+          - type: string
+            maxLength: 100
+            minLength: 1
+          - type: 'null'
+          title: Name
+        is_active:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Active
+      type: object
+      title: LeadSourceUpdate
+      description: Request body for updating a Lead Source. All fields optional.
+    LeadUpdate:
+      properties:
+        first_name:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: First Name
+        last_name:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Last Name
+        lead_company_name:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Lead Company Name
+        email:
+          anyOf:
+          - type: string
+            maxLength: 255
+          - type: 'null'
+          title: Email
+        phone:
+          anyOf:
+          - type: string
+            maxLength: 30
+          - type: 'null'
+          title: Phone
+        mobile:
+          anyOf:
+          - type: string
+            maxLength: 30
+          - type: 'null'
+          title: Mobile
+        address_line1:
+          anyOf:
+          - type: string
+            maxLength: 300
+          - type: 'null'
+          title: Address Line1
+        address_line2:
+          anyOf:
+          - type: string
+            maxLength: 300
+          - type: 'null'
+          title: Address Line2
+        city:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: City
+        state:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: State
+        postal_code:
+          anyOf:
+          - type: string
+            maxLength: 20
+          - type: 'null'
+          title: Postal Code
+        country_code:
+          anyOf:
+          - type: string
+            maxLength: 2
+          - type: 'null'
+          title: Country Code
+        source_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Source Id
+        status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+        score:
+          anyOf:
+          - type: integer
+            maximum: 100.0
+            minimum: 0.0
+          - type: 'null'
+          title: Score
+        notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notes
+        last_contact_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Last Contact Date
+        next_follow_up_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Next Follow Up Date
+        qualification_notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Qualification Notes
+        disqualification_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Disqualification Reason
+      type: object
+      title: LeadUpdate
+      description: 'Request body for updating a Lead''s fields and/or status.
+
+
+        Qualify/disqualify are exposed here via the ``status`` field rather than
+
+        as separate endpoints (spec.md §15) — the service layer validates the
+
+        transition against spec.md §14.2''s state machine.'
+    OpportunityAssignRequest:
+      properties:
+        owner_id:
+          type: string
+          format: uuid
+          title: Owner Id
+      type: object
+      required:
+      - owner_id
+      title: OpportunityAssignRequest
+      description: Request body for POST /crm/opportunities/{id}/assign.
+    OpportunityCreate:
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        customer_id:
+          type: string
+          format: uuid
+          title: Customer Id
+        owner_id:
+          type: string
+          format: uuid
+          title: Owner Id
+        pipeline_id:
+          type: string
+          format: uuid
+          title: Pipeline Id
+        stage_id:
+          type: string
+          format: uuid
+          title: Stage Id
+        value:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Value
+          default: '0'
+        currency_code:
+          anyOf:
+          - type: string
+            maxLength: 3
+            minLength: 3
+          - type: 'null'
+          title: Currency Code
+        probability:
+          anyOf:
+          - type: integer
+            maximum: 100.0
+            minimum: 0.0
+          - type: 'null'
+          title: Probability
+        expected_close_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Expected Close Date
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+      type: object
+      required:
+      - name
+      - customer_id
+      - owner_id
+      - pipeline_id
+      - stage_id
+      title: OpportunityCreate
+      description: 'Request body for creating an Opportunity directly against an
+
+        existing Customer (spec.md §17.1) — independent of Lead conversion.'
+    OpportunityLoseRequest:
+      properties:
+        lost_reason:
+          type: string
+          minLength: 1
+          title: Lost Reason
+      type: object
+      required:
+      - lost_reason
+      title: OpportunityLoseRequest
+      description: Request body for POST /crm/opportunities/{id}/lose.
+    OpportunityRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        company_id:
+          type: string
+          format: uuid
+          title: Company Id
+        name:
+          type: string
+          title: Name
+        customer_id:
+          type: string
+          format: uuid
+          title: Customer Id
+        owner_id:
+          type: string
+          format: uuid
+          title: Owner Id
+        pipeline_id:
+          type: string
+          format: uuid
+          title: Pipeline Id
+        stage_id:
+          type: string
+          format: uuid
+          title: Stage Id
+        value:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Value
+        currency_code:
+          type: string
+          title: Currency Code
+        probability:
+          type: integer
+          title: Probability
+        expected_close_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Expected Close Date
+        source_lead_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Source Lead Id
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        status:
+          type: string
+          title: Status
+        lost_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Lost Reason
+        won_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Won At
+        lost_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Lost At
+        quotation_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Quotation Id
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+        weighted_value:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Weighted Value
+          description: '``value * probability / 100`` (spec.md §17.1, BR-010) — always
+
+            computed here, never accepted as input, never stored.'
+          readOnly: true
+      type: object
+      required:
+      - id
+      - company_id
+      - name
+      - customer_id
+      - owner_id
+      - pipeline_id
+      - stage_id
+      - value
+      - currency_code
+      - probability
+      - expected_close_date
+      - source_lead_id
+      - description
+      - status
+      - lost_reason
+      - won_at
+      - lost_at
+      - quotation_id
+      - created_at
+      - updated_at
+      - weighted_value
+      title: OpportunityRead
+      description: Response body for an Opportunity.
+    OpportunityStageChangeRequest:
+      properties:
+        stage_id:
+          type: string
+          format: uuid
+          title: Stage Id
+        probability:
+          anyOf:
+          - type: integer
+            maximum: 100.0
+            minimum: 0.0
+          - type: 'null'
+          title: Probability
+          description: Override; defaults to the stage's own
+      type: object
+      required:
+      - stage_id
+      title: OpportunityStageChangeRequest
+      description: Request body for POST /crm/opportunities/{id}/stage.
+    OpportunityUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 200
+            minLength: 1
+          - type: 'null'
+          title: Name
+        value:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Value
+        probability:
+          anyOf:
+          - type: integer
+            maximum: 100.0
+            minimum: 0.0
+          - type: 'null'
+          title: Probability
+        expected_close_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Expected Close Date
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        quotation_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Quotation Id
+      type: object
+      title: OpportunityUpdate
+      description: 'Request body for updating an Opportunity''s metadata. Rejected (409)
+
+        once the Opportunity is WON or LOST (BR-003).
+
+
+        ``quotation_id`` is the Opportunity -> Quotation link-back (spec.md
+
+        §21.1, plan.md §15.2): the frontend creates the Quotation directly in
+
+        Sales, then PATCHes the resulting ``quotation_id`` back here as a pure
+
+        CRM-side field update — CRM never creates the Quotation row itself.'
+    PaginatedData_ActivityRead_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/ActivityRead'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        page_size:
+          type: integer
+          title: Page Size
+        pages:
+          type: integer
+          title: Pages
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - page_size
+      - pages
+      title: PaginatedData[ActivityRead]
+    PaginatedData_LeadRead_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/LeadRead'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        page_size:
+          type: integer
+          title: Page Size
+        pages:
+          type: integer
+          title: Pages
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - page_size
+      - pages
+      title: PaginatedData[LeadRead]
+    PaginatedData_LeadSourceRead_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/LeadSourceRead'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        page_size:
+          type: integer
+          title: Page Size
+        pages:
+          type: integer
+          title: Pages
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - page_size
+      - pages
+      title: PaginatedData[LeadSourceRead]
+    PaginatedData_OpportunityRead_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/OpportunityRead'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        page_size:
+          type: integer
+          title: Page Size
+        pages:
+          type: integer
+          title: Pages
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - page_size
+      - pages
+      title: PaginatedData[OpportunityRead]
+    PaginatedResponse_ActivityRead_:
+      properties:
+        data:
+          $ref: '#/components/schemas/PaginatedData_ActivityRead_'
+        message:
+          type: string
+          title: Message
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      type: object
+      required:
+      - data
+      - message
+      - meta
+      title: PaginatedResponse[ActivityRead]
+    PaginatedResponse_LeadRead_:
+      properties:
+        data:
+          $ref: '#/components/schemas/PaginatedData_LeadRead_'
+        message:
+          type: string
+          title: Message
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      type: object
+      required:
+      - data
+      - message
+      - meta
+      title: PaginatedResponse[LeadRead]
+    PaginatedResponse_LeadSourceRead_:
+      properties:
+        data:
+          $ref: '#/components/schemas/PaginatedData_LeadSourceRead_'
+        message:
+          type: string
+          title: Message
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      type: object
+      required:
+      - data
+      - message
+      - meta
+      title: PaginatedResponse[LeadSourceRead]
+    PaginatedResponse_OpportunityRead_:
+      properties:
+        data:
+          $ref: '#/components/schemas/PaginatedData_OpportunityRead_'
+        message:
+          type: string
+          title: Message
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      type: object
+      required:
+      - data
+      - message
+      - meta
+      title: PaginatedResponse[OpportunityRead]
+    PipelineCreate:
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Name
+        is_default:
+          type: boolean
+          title: Is Default
+          default: false
+        is_active:
+          type: boolean
+          title: Is Active
+          default: true
+      type: object
+      required:
+      - name
+      title: PipelineCreate
+      description: Request body for creating a Pipeline.
+    PipelineOwnerValue:
+      properties:
+        owner_id:
+          type: string
+          format: uuid
+          title: Owner Id
+        value:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Value
+      type: object
+      required:
+      - owner_id
+      - value
+      title: PipelineOwnerValue
+    PipelineRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        company_id:
+          type: string
+          format: uuid
+          title: Company Id
+        name:
+          type: string
+          title: Name
+        is_default:
+          type: boolean
+          title: Is Default
+        is_active:
+          type: boolean
+          title: Is Active
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - company_id
+      - name
+      - is_default
+      - is_active
+      - created_at
+      - updated_at
+      title: PipelineRead
+      description: Response body for a Pipeline.
+    PipelineReport:
+      properties:
+        value_by_stage:
+          items:
+            $ref: '#/components/schemas/PipelineStageValue'
+          type: array
+          title: Value By Stage
+        value_by_owner:
+          items:
+            $ref: '#/components/schemas/PipelineOwnerValue'
+          type: array
+          title: Value By Owner
+        value_by_source:
+          items:
+            $ref: '#/components/schemas/PipelineSourceValue'
+          type: array
+          title: Value By Source
+        won_value:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Won Value
+        lost_value:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Lost Value
+        win_rate:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Win Rate
+        avg_deal_size:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Avg Deal Size
+        avg_sales_cycle_days:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Avg Sales Cycle Days
+        date_from:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date From
+        date_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date To
+      type: object
+      required:
+      - value_by_stage
+      - value_by_owner
+      - value_by_source
+      - won_value
+      - lost_value
+      - win_rate
+      - avg_deal_size
+      - avg_sales_cycle_days
+      - date_from
+      - date_to
+      title: PipelineReport
+      description: spec.md §40.1.
+    PipelineSourceValue:
+      properties:
+        source_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Source Id
+        value:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Value
+      type: object
+      required:
+      - source_id
+      - value
+      title: PipelineSourceValue
+      description: '``source_id`` is ``None`` for Opportunities not created via Lead
+
+        conversion (no originating source to attribute).'
+    PipelineStageCreate:
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Name
+        sequence:
+          type: integer
+          minimum: 1.0
+          title: Sequence
+        probability:
+          type: integer
+          maximum: 100.0
+          minimum: 0.0
+          title: Probability
+        is_won_stage:
+          type: boolean
+          title: Is Won Stage
+          default: false
+        is_lost_stage:
+          type: boolean
+          title: Is Lost Stage
+          default: false
+        is_active:
+          type: boolean
+          title: Is Active
+          default: true
+      type: object
+      required:
+      - name
+      - sequence
+      - probability
+      title: PipelineStageCreate
+      description: Request body for creating a Pipeline Stage.
+    PipelineStageRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        company_id:
+          type: string
+          format: uuid
+          title: Company Id
+        pipeline_id:
+          type: string
+          format: uuid
+          title: Pipeline Id
+        name:
+          type: string
+          title: Name
+        sequence:
+          type: integer
+          title: Sequence
+        probability:
+          type: integer
+          title: Probability
+        is_won_stage:
+          type: boolean
+          title: Is Won Stage
+        is_lost_stage:
+          type: boolean
+          title: Is Lost Stage
+        is_active:
+          type: boolean
+          title: Is Active
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - company_id
+      - pipeline_id
+      - name
+      - sequence
+      - probability
+      - is_won_stage
+      - is_lost_stage
+      - is_active
+      - created_at
+      - updated_at
+      title: PipelineStageRead
+      description: Response body for a Pipeline Stage.
+    PipelineStageUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 100
+            minLength: 1
+          - type: 'null'
+          title: Name
+        sequence:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Sequence
+        probability:
+          anyOf:
+          - type: integer
+            maximum: 100.0
+            minimum: 0.0
+          - type: 'null'
+          title: Probability
+        is_won_stage:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Won Stage
+        is_lost_stage:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Lost Stage
+        is_active:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Active
+      type: object
+      title: PipelineStageUpdate
+      description: 'Request body for updating a Pipeline Stage. All fields optional.
+
+
+        Setting ``is_active=False`` is rejected (409) when any OPEN Opportunity
+
+        currently occupies the stage (BR-007).'
+    PipelineStageValue:
+      properties:
+        stage_id:
+          type: string
+          format: uuid
+          title: Stage Id
+        value:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Value
+      type: object
+      required:
+      - stage_id
+      - value
+      title: PipelineStageValue
+    PipelineUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 100
+            minLength: 1
+          - type: 'null'
+          title: Name
+        is_default:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Default
+        is_active:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Active
+      type: object
+      title: PipelineUpdate
+      description: Request body for updating a Pipeline. All fields optional.
+    ResponseMeta:
+      properties:
+        request_id:
+          type: string
+          title: Request Id
+        timestamp:
+          type: string
+          format: date-time
+          title: Timestamp
+      type: object
+      required:
+      - request_id
+      - timestamp
+      title: ResponseMeta
+      description: "Metadata attached to every API response for observability.\n\nFields:\n    request_id:\
+        \ Correlates the response to a specific log entry and to\n                the ``X-Request-ID``\
+        \ response header.\n    timestamp:  UTC datetime when the response was generated."
+    SalesHistorySummary:
+      properties:
+        quotation_count:
+          type: integer
+          title: Quotation Count
+        order_count:
+          type: integer
+          title: Order Count
+        invoice_count:
+          type: integer
+          title: Invoice Count
+        delivery_count:
+          type: integer
+          title: Delivery Count
+      type: object
+      required:
+      - quotation_count
+      - order_count
+      - invoice_count
+      - delivery_count
+      title: SalesHistorySummary
+      description: Counts only — never full document fetches (spec.md §20.1).
+    StandardResponse_ActivityRead_:
+      properties:
+        data:
+          $ref: '#/components/schemas/ActivityRead'
+        message:
+          type: string
+          title: Message
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      type: object
+      required:
+      - data
+      - message
+      - meta
+      title: StandardResponse[ActivityRead]
+    StandardResponse_ActivityReport_:
+      properties:
+        data:
+          $ref: '#/components/schemas/ActivityReport'
+        message:
+          type: string
+          title: Message
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      type: object
+      required:
+      - data
+      - message
+      - meta
+      title: StandardResponse[ActivityReport]
+    StandardResponse_ConversionResult_:
+      properties:
+        data:
+          $ref: '#/components/schemas/ConversionResult'
+        message:
+          type: string
+          title: Message
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      type: object
+      required:
+      - data
+      - message
+      - meta
+      title: StandardResponse[ConversionResult]
+    StandardResponse_CrmDashboard_:
+      properties:
+        data:
+          $ref: '#/components/schemas/CrmDashboard'
+        message:
+          type: string
+          title: Message
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      type: object
+      required:
+      - data
+      - message
+      - meta
+      title: StandardResponse[CrmDashboard]
+    StandardResponse_Customer360_:
+      properties:
+        data:
+          $ref: '#/components/schemas/Customer360'
+        message:
+          type: string
+          title: Message
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      type: object
+      required:
+      - data
+      - message
+      - meta
+      title: StandardResponse[Customer360]
+    StandardResponse_LeadRead_:
+      properties:
+        data:
+          $ref: '#/components/schemas/LeadRead'
+        message:
+          type: string
+          title: Message
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      type: object
+      required:
+      - data
+      - message
+      - meta
+      title: StandardResponse[LeadRead]
+    StandardResponse_LeadReport_:
+      properties:
+        data:
+          $ref: '#/components/schemas/LeadReport'
+        message:
+          type: string
+          title: Message
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      type: object
+      required:
+      - data
+      - message
+      - meta
+      title: StandardResponse[LeadReport]
+    StandardResponse_LeadSourceRead_:
+      properties:
+        data:
+          $ref: '#/components/schemas/LeadSourceRead'
+        message:
+          type: string
+          title: Message
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      type: object
+      required:
+      - data
+      - message
+      - meta
+      title: StandardResponse[LeadSourceRead]
+    StandardResponse_OpportunityRead_:
+      properties:
+        data:
+          $ref: '#/components/schemas/OpportunityRead'
+        message:
+          type: string
+          title: Message
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      type: object
+      required:
+      - data
+      - message
+      - meta
+      title: StandardResponse[OpportunityRead]
+    StandardResponse_PipelineRead_:
+      properties:
+        data:
+          $ref: '#/components/schemas/PipelineRead'
+        message:
+          type: string
+          title: Message
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      type: object
+      required:
+      - data
+      - message
+      - meta
+      title: StandardResponse[PipelineRead]
+    StandardResponse_PipelineReport_:
+      properties:
+        data:
+          $ref: '#/components/schemas/PipelineReport'
+        message:
+          type: string
+          title: Message
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      type: object
+      required:
+      - data
+      - message
+      - meta
+      title: StandardResponse[PipelineReport]
+    StandardResponse_PipelineStageRead_:
+      properties:
+        data:
+          $ref: '#/components/schemas/PipelineStageRead'
+        message:
+          type: string
+          title: Message
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      type: object
+      required:
+      - data
+      - message
+      - meta
+      title: StandardResponse[PipelineStageRead]
+    StandardResponse_list_PipelineRead__:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/PipelineRead'
+          type: array
+          title: Data
+        message:
+          type: string
+          title: Message
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      type: object
+      required:
+      - data
+      - message
+      - meta
+      title: StandardResponse[list[PipelineRead]]
+    StandardResponse_list_PipelineStageRead__:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/PipelineStageRead'
+          type: array
+          title: Data
+        message:
+          type: string
+          title: Message
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+      type: object
+      required:
+      - data
+      - message
+      - meta
+      title: StandardResponse[list[PipelineStageRead]]
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError

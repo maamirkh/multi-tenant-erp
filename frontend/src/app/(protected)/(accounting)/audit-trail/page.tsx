@@ -5,10 +5,6 @@ import ExportButton from "@/components/accounting/ExportButton";
 import { ApiClientError } from "@/lib/api/client";
 import { AuditLogEntry, getAuditLog } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 const PAGE_SIZE = 50;
 
 /** Deterministic color per action string, so the same action always reads the same. */
@@ -90,8 +86,11 @@ function EntityIdCell({ entityId }: { entityId: string }) {
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T281
  */
-export default function AuditTrailPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function AuditTrailPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
 
   const [entityType, setEntityType] = useState("");
   const [actorUserId, setActorUserId] = useState("");

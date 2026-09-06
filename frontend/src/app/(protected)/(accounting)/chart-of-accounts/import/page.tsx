@@ -4,10 +4,6 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { bulkImportAccounts, COAImportResultRow } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 const TEMPLATE_HEADER = "account_code,account_name,account_type,account_group_code,is_leaf";
 const TEMPLATE_EXAMPLE =
   "1005,Petty Cash Box,ASSET,CUR-AST,true";
@@ -35,8 +31,11 @@ function parseCsv(text: string): Record<string, string>[] {
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T062
  */
-export default function COABulkImportPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function COABulkImportPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const fileRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);

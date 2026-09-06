@@ -11,7 +11,7 @@ const PAYMENT_TERMS = ["IMMEDIATE", "NET7", "NET15", "NET30", "NET45", "NET60", 
 
 export default function NewCustomerPage() {
   const router = useRouter();
-  const companyId = typeof window !== "undefined" ? (localStorage.getItem("company_id") ?? "") : "";
+  const companyId = typeof window !== "undefined" ? (localStorage.getItem("erp_active_company_id") ?? "") : "";
   const token = typeof window !== "undefined" ? (localStorage.getItem("access_token") ?? undefined) : undefined;
 
   const [categories, setCategories] = useState<CustomerCategoryRead[]>([]);

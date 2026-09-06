@@ -7,6 +7,8 @@
  * Spec ref: specs/006-purchase-management/spec.md §23 Functional Requirements
  */
 
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // ---------------------------------------------------------------------------
@@ -109,9 +111,11 @@ async function apiFetch<T>(
   path: string,
   options?: RequestInit
 ): Promise<StandardResponse<T>> {
+  const token = getAccessToken();
   const res = await fetch(`${API_BASE}/api/v1${path}`, {
     headers: {
       "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options?.headers ?? {}),
     },
     ...options,

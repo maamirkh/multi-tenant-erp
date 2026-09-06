@@ -8,10 +8,6 @@ import {
   getBankAccounts,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 const emptyForm = {
   bank_name: "",
   branch_name: "",
@@ -27,8 +23,11 @@ const emptyForm = {
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T187
  */
-export default function BankAccountsPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function BankAccountsPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [accounts, setAccounts] = useState<BankAccountResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

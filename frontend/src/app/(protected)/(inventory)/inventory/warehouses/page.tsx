@@ -1,7 +1,10 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface WarehouseResponse {
   id: string;
@@ -28,8 +31,10 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function WarehousesPage() {
-  const params = useParams<{ company_id: string }>();
-  const companyId = params?.company_id;
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const router = useRouter();
 
   const [warehouses, setWarehouses] = useState<WarehouseResponse[]>([]);
@@ -47,7 +52,8 @@ export default function WarehousesPage() {
     setLoading(true);
     try {
       const resp = await fetch(
-        `/api/v1/companies/${companyId}/inventory/warehouses`
+        `${API_BASE}/api/v1/companies/${companyId}/inventory/warehouses`,
+        { headers: { Authorization: `Bearer ${getAccessToken()}` } }
       );
       if (!resp.ok) throw new Error(await resp.text());
       const data = await resp.json();
@@ -68,10 +74,13 @@ export default function WarehousesPage() {
     setSaving(true);
     try {
       const resp = await fetch(
-        `/api/v1/companies/${companyId}/inventory/warehouses`,
+        `${API_BASE}/api/v1/companies/${companyId}/inventory/warehouses`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getAccessToken()}`,
+          },
           body: JSON.stringify(createForm),
         }
       );

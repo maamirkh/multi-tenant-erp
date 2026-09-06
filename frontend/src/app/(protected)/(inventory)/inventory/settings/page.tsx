@@ -10,7 +10,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
 import { listBrands, listUOMs, type BrandResponse, type UOMResponse } from '@/lib/api/inventory';
 
 function TableSkeleton({ cols }: { cols: number }) {
@@ -147,8 +146,10 @@ function UOMSection({ companyId }: { companyId: string }) {
 }
 
 export default function InventorySettingsPage() {
-  const params = useParams<{ companyId: string }>();
-  const companyId = params?.companyId ?? '';
+  const companyId =
+    typeof window !== 'undefined'
+      ? localStorage.getItem('erp_active_company_id') ?? ''
+      : '';
 
   return (
     <div className="space-y-10">

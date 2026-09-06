@@ -2,6 +2,9 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface WarehouseResponse {
   id: string;
@@ -39,8 +42,11 @@ const STATUS_ACTIONS: Record<string, { label: string; endpoint: string }[]> = {
 };
 
 export default function WarehouseDetailPage() {
-  const params = useParams<{ company_id: string; warehouse_id: string }>();
-  const companyId = params?.company_id;
+  const params = useParams<{ warehouse_id: string }>();
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const warehouseId = params?.warehouse_id;
   const router = useRouter();
 
@@ -57,15 +63,16 @@ export default function WarehouseDetailPage() {
   });
   const [saving, setSaving] = useState(false);
 
-  const baseUrl = `/api/v1/companies/${companyId}/inventory/warehouses/${warehouseId}`;
+  const baseUrl = `${API_BASE}/api/v1/companies/${companyId}/inventory/warehouses/${warehouseId}`;
+  const authHeaders = { Authorization: `Bearer ${getAccessToken()}` };
 
   const fetchData = async () => {
     setLoading(true);
     setError(null);
     try {
       const [whResp, locResp] = await Promise.all([
-        fetch(baseUrl),
-        fetch(`${baseUrl}/locations`),
+        fetch(baseUrl, { headers: authHeaders }),
+        fetch(`${baseUrl}/locations`, { headers: authHeaders }),
       ]);
       if (!whResp.ok) throw new Error(await whResp.text());
       if (!locResp.ok) throw new Error(await locResp.text());
@@ -86,7 +93,10 @@ export default function WarehouseDetailPage() {
 
   const handleStatusAction = async (endpoint: string) => {
     try {
-      const resp = await fetch(`${baseUrl}/${endpoint}`, { method: "POST" });
+      const resp = await fetch(`${baseUrl}/${endpoint}`, {
+        method: "POST",
+        headers: authHeaders,
+      });
       if (!resp.ok) throw new Error(await resp.text());
       await fetchData();
     } catch (err) {
@@ -100,7 +110,7 @@ export default function WarehouseDetailPage() {
     try {
       const resp = await fetch(`${baseUrl}/locations`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({
           location_code: locForm.location_code.trim(),
           aisle: locForm.aisle || null,
@@ -123,7 +133,7 @@ export default function WarehouseDetailPage() {
     try {
       const resp = await fetch(`${baseUrl}/locations/${loc.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({ is_active: !loc.is_active }),
       });
       if (!resp.ok) throw new Error(await resp.text());

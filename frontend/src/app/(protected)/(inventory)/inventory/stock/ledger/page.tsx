@@ -1,7 +1,10 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface StockMovement {
   id: string;
@@ -40,8 +43,10 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 export default function StockLedgerPage() {
-  const params = useParams<{ company_id: string }>();
-  const companyId = params?.company_id;
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const router = useRouter();
 
   const [movements, setMovements] = useState<StockMovement[]>([]);
@@ -50,13 +55,15 @@ export default function StockLedgerPage() {
   const [limit] = useState(100);
   const [offset, setOffset] = useState(0);
 
-  const baseUrl = `/api/v1/companies/${companyId}/inventory/stock`;
+  const baseUrl = `${API_BASE}/api/v1/companies/${companyId}/inventory/stock`;
 
   const fetchMovements = async (off = offset) => {
     setLoading(true);
     setError(null);
     try {
-      const resp = await fetch(`${baseUrl}/movements?limit=${limit}&offset=${off}`);
+      const resp = await fetch(`${baseUrl}/movements?limit=${limit}&offset=${off}`, {
+        headers: { Authorization: `Bearer ${getAccessToken()}` },
+      });
       if (!resp.ok) throw new Error(await resp.text());
       const data = await resp.json();
       setMovements(data.data ?? []);

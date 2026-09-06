@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface GRLineInput {
   po_line_id: string;
@@ -44,7 +47,7 @@ export default function NewGoodsReceiptPage() {
     setError(null);
 
     try {
-      const companyId = localStorage.getItem("company_id") ?? "";
+      const companyId = localStorage.getItem("erp_active_company_id") ?? "";
       const payload = {
         po_id: poId,
         delivery_note_number: deliveryNoteNumber || null,
@@ -60,10 +63,13 @@ export default function NewGoodsReceiptPage() {
       };
 
       const res = await fetch(
-        `/api/v1/companies/${companyId}/purchase/goods-receipts`,
+        `${API_BASE}/api/v1/companies/${companyId}/purchase/goods-receipts`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getAccessToken()}`,
+          },
           body: JSON.stringify(payload),
         }
       );

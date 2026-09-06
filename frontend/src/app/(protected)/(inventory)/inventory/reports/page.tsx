@@ -6,7 +6,9 @@
  */
 
 import { useState } from "react";
-import { useParams } from "next/navigation";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type ReportType =
   | "inventory-summary"
@@ -86,8 +88,10 @@ const REPORTS: ReportConfig[] = [
 ];
 
 export default function ReportsPage() {
-  const params = useParams();
-  const companyId = params?.company_id as string;
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [selectedReport, setSelectedReport] = useState<ReportType | null>(null);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -97,12 +101,8 @@ export default function ReportsPage() {
   const [exportLoading, setExportLoading] = useState(false);
   const [exportUrl, setExportUrl] = useState<string | null>(null);
 
-  const token =
-    typeof window !== "undefined"
-      ? localStorage.getItem("access_token") ?? ""
-      : "";
-
   function authHeader(): HeadersInit {
+    const token = getAccessToken();
     return token ? { Authorization: `Bearer ${token}` } : {};
   }
 
@@ -117,7 +117,7 @@ export default function ReportsPage() {
       if (dateFrom) params.set("date_from", dateFrom);
       if (dateTo) params.set("date_to", dateTo);
       const res = await fetch(
-        `/api/v1/companies/${companyId}/inventory/reports/${type}?${params}`,
+        `${API_BASE}/api/v1/companies/${companyId}/inventory/reports/${type}?${params}`,
         { headers: authHeader() }
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -136,7 +136,7 @@ export default function ReportsPage() {
     setExportUrl(null);
     try {
       const res = await fetch(
-        `/api/v1/companies/${companyId}/inventory/reports/${selectedReport}/export`,
+        `${API_BASE}/api/v1/companies/${companyId}/inventory/reports/${selectedReport}/export`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json", ...authHeader() },
@@ -163,7 +163,7 @@ export default function ReportsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Inventory Reports</h1>
         <a
-          href={`/inventory/${companyId}/reports/kpis`}
+          href={`/inventory/reports/kpis`}
           className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700"
         >
           KPI Dashboard

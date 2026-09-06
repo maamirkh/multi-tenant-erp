@@ -1,7 +1,10 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface ImportJobData {
   id: string;
@@ -17,8 +20,10 @@ interface ImportJobData {
 type ImportPhase = "idle" | "uploading" | "polling" | "done" | "error";
 
 export default function ProductImportPage() {
-  const params = useParams<{ company_id: string }>();
-  const companyId = params?.company_id;
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const router = useRouter();
 
   const fileRef = useRef<HTMLInputElement>(null);
@@ -37,8 +42,12 @@ export default function ProductImportPage() {
 
     try {
       const resp = await fetch(
-        `/api/v1/companies/${companyId}/inventory/products/import`,
-        { method: "POST", body: formData }
+        `${API_BASE}/api/v1/companies/${companyId}/inventory/products/import`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${getAccessToken()}` },
+          body: formData,
+        }
       );
       if (!resp.ok) throw new Error(await resp.text());
       const result = await resp.json();

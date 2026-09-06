@@ -7,7 +7,9 @@
  */
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type AlertType = "OUT_OF_STOCK" | "SAFETY_STOCK_BREACH" | "LOW_STOCK" | "OVERSTOCK";
 type AlertStatus = "OPEN" | "ACKNOWLEDGED" | "RESOLVED";
@@ -39,8 +41,10 @@ const STATUS_BADGE: Record<AlertStatus, string> = {
 };
 
 export default function AlertsPage() {
-  const params = useParams<{ company_id: string }>();
-  const companyId = params?.company_id;
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
 
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("");
@@ -56,8 +60,8 @@ export default function AlertsPage() {
     if (statusFilter) params.set("alert_status", statusFilter);
     if (typeFilter) params.set("alert_type", typeFilter);
     params.set("limit", "100");
-    fetch(`/api/v1/companies/${companyId}/inventory/alerts?${params}`, {
-      credentials: "include",
+    fetch(`${API_BASE}/api/v1/companies/${companyId}/inventory/alerts?${params}`, {
+      headers: { Authorization: `Bearer ${getAccessToken()}` },
     })
       .then((r) => r.json())
       .then((body) => {
@@ -80,11 +84,13 @@ export default function AlertsPage() {
     setAcknowledging(alertId);
     try {
       await fetch(
-        `/api/v1/companies/${companyId}/inventory/alerts/${alertId}/acknowledge`,
+        `${API_BASE}/api/v1/companies/${companyId}/inventory/alerts/${alertId}/acknowledge`,
         {
           method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getAccessToken()}`,
+          },
           body: JSON.stringify({ notes: null }),
         }
       );

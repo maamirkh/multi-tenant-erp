@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import {
   AccountResponse,
   OpeningBalanceLine,
@@ -10,10 +11,6 @@ import {
   getOpeningBalances,
   setupOpeningBalances,
 } from "@/lib/api/accounting";
-
-interface PageProps {
-  params: { company_id: string; yearId: string };
-}
 
 interface DraftLine {
   account_id: string;
@@ -27,8 +24,12 @@ interface DraftLine {
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T082
  */
-export default function OpeningBalancesPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function OpeningBalancesPage() {
+  const params = useParams<{ yearId: string }>();
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const yearId = params?.yearId ?? "";
 
   const [accounts, setAccounts] = useState<AccountResponse[]>([]);

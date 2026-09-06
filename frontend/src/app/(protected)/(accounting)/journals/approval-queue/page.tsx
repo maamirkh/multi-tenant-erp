@@ -9,18 +9,17 @@ import {
   rejectJournal,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 /**
  * Approval Queue page — journals pending approval (status=SUBMITTED),
  * with approve/reject actions.
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T105
  */
-export default function ApprovalQueuePage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function ApprovalQueuePage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [journals, setJournals] = useState<JournalEntryResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

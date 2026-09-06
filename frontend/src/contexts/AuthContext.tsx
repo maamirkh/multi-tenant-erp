@@ -29,10 +29,12 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { getMeApi, loginApi, logoutApi, refreshApi } from '@/lib/api/auth';
+import { getMeApi, loginApi, logoutApi } from '@/lib/api/auth';
+import { acquireRefreshLock } from '@/lib/auth/client';
 import { clearTokens, getRefreshToken, storeTokens } from '@/lib/auth/tokenStorage';
 import { useTokenRefresh } from '@/hooks/useTokenRefresh';
 import type { AuthContextValue, UserProfileResponse } from '@/types/auth';
@@ -50,8 +52,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   const [sessionExpiredVisible, setSessionExpiredVisible] = useState(false);
 
   // --- Session hydration on mount ------------------------------------------
+  // hydrateStartedRef guards against React StrictMode's dev-only double
+  // effect-invocation (belt-and-braces alongside the acquireRefreshLock()
+  // call below, which is the actual root-cause fix — see next comment).
+  const hydrateStartedRef = useRef(false);
 
   useEffect(() => {
+    if (hydrateStartedRef.current) {
+      return;
+    }
+    hydrateStartedRef.current = true;
+
     let cancelled = false;
 
     async function hydrate(): Promise<void> {
@@ -62,11 +73,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       }
 
       try {
-        // T084A: no retry — mutation-style call, explicit single attempt.
-        const refreshResult = await refreshApi(storedRefreshToken);
+        // Routed through acquireRefreshLock() (the same single-flight lock
+        // the API client's 401-retry interceptor uses) rather than calling
+        // refreshApi() directly. The refresh token is single-use/rotating:
+        // calling refreshApi() directly here let this hydration call race
+        // independently against a concurrent refresh triggered by any other
+        // component's data-fetch hitting a 401 during the same window —
+        // one call would rotate the token, the other would fail with
+        // TOKEN_REVOKED and immediately clear the session the first call
+        // had just established. acquireRefreshLock() coalesces all callers
+        // (hydration included) onto one in-flight request and already
+        // handles storeTokens()/clearTokens() internally.
+        const refreshResult = await acquireRefreshLock();
         if (cancelled) return;
 
-        storeTokens(refreshResult.access_token, refreshResult.refresh_token);
         setExpiresIn(refreshResult.expires_in);
 
         const profile = await getMeApi();

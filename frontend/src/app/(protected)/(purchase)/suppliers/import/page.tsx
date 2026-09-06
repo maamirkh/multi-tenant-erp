@@ -1,10 +1,7 @@
 "use client";
 
 import { useState } from "react";
-
-interface PageProps {
-  params: { company_id: string };
-}
+import { getAccessToken } from "@/lib/auth/tokenStorage";
 
 interface ImportResult {
   total_rows: number;
@@ -24,8 +21,11 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
  * Supplier bulk import page — CSV upload with progress and error report.
  * Task: T047
  */
-export default function SupplierImportPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function SupplierImportPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [file, setFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -64,9 +64,7 @@ export default function SupplierImportPage({ params }: PageProps) {
     setResult(null);
 
     try {
-      const token = typeof window !== "undefined"
-        ? localStorage.getItem("access_token")
-        : null;
+      const token = getAccessToken();
 
       const formData = new FormData();
       formData.append("file", file);

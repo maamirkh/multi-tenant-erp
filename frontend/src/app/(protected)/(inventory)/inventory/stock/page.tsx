@@ -1,7 +1,10 @@
 "use client";
 
-import { useParams } from "next/navigation";
+
 import { useEffect, useState } from "react";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface StockPosition {
   id: string;
@@ -28,8 +31,10 @@ interface OpeningStockForm {
 }
 
 export default function StockOverviewPage() {
-  const params = useParams<{ company_id: string }>();
-  const companyId = params?.company_id;
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
 
   const [positions, setPositions] = useState<StockPosition[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,13 +50,15 @@ export default function StockOverviewPage() {
     notes: "",
   });
 
-  const baseUrl = `/api/v1/companies/${companyId}/inventory/stock`;
+  const baseUrl = `${API_BASE}/api/v1/companies/${companyId}/inventory/stock`;
 
   const fetchPositions = async () => {
     setLoading(true);
     setError(null);
     try {
-      const resp = await fetch(`${baseUrl}/positions`);
+      const resp = await fetch(`${baseUrl}/positions`, {
+        headers: { Authorization: `Bearer ${getAccessToken()}` },
+      });
       if (!resp.ok) throw new Error(await resp.text());
       const data = await resp.json();
       setPositions(data.data ?? []);
@@ -81,7 +88,10 @@ export default function StockOverviewPage() {
 
       const resp = await fetch(`${baseUrl}/opening`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getAccessToken()}`,
+        },
         body: JSON.stringify(body),
       });
       if (!resp.ok) throw new Error(await resp.text());
@@ -99,7 +109,10 @@ export default function StockOverviewPage() {
     try {
       const resp = await fetch(`${baseUrl}/snapshots`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getAccessToken()}`,
+        },
         body: JSON.stringify({ snapshot_name: `Snapshot ${new Date().toLocaleString()}` }),
       });
       if (!resp.ok) throw new Error(await resp.text());

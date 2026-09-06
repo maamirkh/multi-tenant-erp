@@ -13,10 +13,6 @@ import {
 } from "@/lib/api/accounting";
 import AccountFormModal from "@/components/accounting/AccountFormModal";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 const TYPE_ORDER = ["ASSET", "LIABILITY", "EQUITY", "REVENUE", "EXPENSE"] as const;
 
 function TreeNode({ node, depth }: { node: AccountTreeNode; depth: number }) {
@@ -71,8 +67,11 @@ function TreeNode({ node, depth }: { node: AccountTreeNode; depth: number }) {
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T059
  */
-export default function ChartOfAccountsPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function ChartOfAccountsPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [tree, setTree] = useState<AccountTreeNode[]>([]);
   const [templates, setTemplates] = useState<COATemplateInfo[]>([]);
   const [loading, setLoading] = useState(false);

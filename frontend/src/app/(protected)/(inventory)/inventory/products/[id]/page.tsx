@@ -61,8 +61,11 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
 }
 
 export default function ProductDetailPage() {
-  const params = useParams<{ companyId: string; id: string }>();
-  const companyId = params?.companyId ?? '';
+  const params = useParams<{ id: string }>();
+  const companyId =
+    typeof window !== 'undefined'
+      ? localStorage.getItem('erp_active_company_id') ?? ''
+      : '';
   const productId = params?.id ?? '';
   const router = useRouter();
 
@@ -121,7 +124,7 @@ export default function ProductDetailPage() {
     if (!window.confirm(`Delete product "${product.name}"? This cannot be undone.`)) return;
     try {
       await deleteProduct(companyId, product.id);
-      router.push(`/companies/${companyId}/inventory/products`);
+      router.push(`/inventory/products`);
     } catch {
       setActionError('Failed to delete product.');
     }
@@ -154,7 +157,7 @@ export default function ProductDetailPage() {
         <div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
             <Link
-              href={`/companies/${companyId}/inventory/products`}
+              href={`/inventory/products`}
               className="hover:text-foreground"
             >
               Products
@@ -245,7 +248,7 @@ export default function ProductDetailPage() {
 
       {/* Variants link */}
       <Link
-        href={`/companies/${companyId}/inventory/products/${product.id}/variants`}
+        href={`/inventory/products/${product.id}/variants`}
         className="flex items-center justify-between rounded-lg border bg-card px-4 py-3 hover:bg-accent/50 transition-colors"
       >
         <span className="text-sm font-medium">Variants</span>

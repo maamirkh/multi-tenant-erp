@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: "bg-gray-100 text-gray-700",
@@ -39,7 +42,10 @@ interface VendorReturn {
 export default function VendorReturnDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const companyId = params?.companyId as string;
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const rmaId = params?.id as string;
 
   const [rma, setRma] = useState<VendorReturn | null>(null);
@@ -52,8 +58,8 @@ export default function VendorReturnDetailPage() {
     setLoading(true);
     try {
       const res = await fetch(
-        `/api/v1/companies/${companyId}/purchase/vendor-returns/${rmaId}`,
-        { credentials: "include" }
+        `${API_BASE}/api/v1/companies/${companyId}/purchase/vendor-returns/${rmaId}`,
+        { headers: { Authorization: `Bearer ${getAccessToken()}` } }
       );
       if (!res.ok) throw new Error(await res.text());
       const json = await res.json();
@@ -74,11 +80,13 @@ export default function VendorReturnDetailPage() {
     setActionError("");
     try {
       const res = await fetch(
-        `/api/v1/companies/${companyId}/purchase/vendor-returns/${rmaId}/${action}`,
+        `${API_BASE}/api/v1/companies/${companyId}/purchase/vendor-returns/${rmaId}/${action}`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getAccessToken()}`,
+          },
         }
       );
       if (!res.ok) {

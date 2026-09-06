@@ -6,10 +6,6 @@ import {
   SupplierList,
 } from "@/lib/api/purchase";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: "bg-gray-100 text-gray-700",
   ACTIVE: "bg-green-100 text-green-800",
@@ -22,8 +18,11 @@ const STATUS_COLORS: Record<string, string> = {
  * Supplier list page with search, status filter, and pagination.
  * Task: T044
  */
-export default function SuppliersPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function SuppliersPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [suppliers, setSuppliers] = useState<SupplierList[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);

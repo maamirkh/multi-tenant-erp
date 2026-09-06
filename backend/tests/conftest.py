@@ -35,6 +35,7 @@ import core.events.outbox  # noqa: E402, F401
 import modules.accounting.models  # noqa: E402, F401
 import modules.auth.models  # noqa: E402, F401
 import modules.companies.models  # noqa: E402, F401
+import modules.crm.models  # noqa: E402, F401
 import modules.inventory.models  # noqa: E402, F401
 import modules.purchase.models  # noqa: E402, F401
 import modules.sales.models  # noqa: E402, F401

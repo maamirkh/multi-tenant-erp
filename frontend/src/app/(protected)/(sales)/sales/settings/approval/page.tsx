@@ -19,7 +19,7 @@ export default function ApprovalMatrixPage() {
 
   const companyId =
     typeof window !== "undefined"
-      ? (localStorage.getItem("company_id") ?? "")
+      ? (localStorage.getItem("erp_active_company_id") ?? "")
       : "";
   const token =
     typeof window !== "undefined"

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useParams } from "next/navigation";
 import {
   ReconciliationReportResponse,
   autoMatchBankReconciliation,
@@ -12,10 +13,6 @@ import {
   startBankReconciliation,
   unmatchBankReconciliation,
 } from "@/lib/api/accounting";
-
-interface PageProps {
-  params: { company_id: string; accountId: string };
-}
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: "bg-gray-100 text-gray-600",
@@ -31,8 +28,12 @@ const STATUS_STYLES: Record<string, string> = {
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T188
  */
-export default function BankReconciliationPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function BankReconciliationPage() {
+  const params = useParams<{ accountId: string }>();
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const accountId = params?.accountId ?? "";
 
   const [statementDate, setStatementDate] = useState(new Date().toISOString().slice(0, 10));

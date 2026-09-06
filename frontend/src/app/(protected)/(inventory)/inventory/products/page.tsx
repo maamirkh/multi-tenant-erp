@@ -11,7 +11,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
 import {
   listProducts,
   type ProductResponse,
@@ -49,14 +48,14 @@ function ProductRowSkeleton() {
   );
 }
 
-function ProductRow({ product, companyId }: { product: ProductResponse; companyId: string }) {
+function ProductRow({ product }: { product: ProductResponse }) {
   const statusLabel = STATUS_LABELS[product.status] ?? product.status;
   const statusColor = STATUS_COLORS[product.status] ?? 'text-muted-foreground';
   const typeLabel = TYPE_LABELS[product.product_type] ?? product.product_type;
 
   return (
     <Link
-      href={`/companies/${companyId}/inventory/products/${product.id}`}
+      href={`/inventory/products/${product.id}`}
       className="flex items-center justify-between rounded-lg border bg-card px-4 py-3 hover:bg-accent/50 transition-colors"
     >
       <div className="min-w-0 flex-1">
@@ -76,8 +75,10 @@ function ProductRow({ product, companyId }: { product: ProductResponse; companyI
 }
 
 export default function ProductsPage() {
-  const params = useParams<{ companyId: string }>();
-  const companyId = params?.companyId ?? '';
+  const companyId =
+    typeof window !== 'undefined'
+      ? localStorage.getItem('erp_active_company_id') ?? ''
+      : '';
 
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [total, setTotal] = useState(0);
@@ -136,7 +137,7 @@ export default function ProductsPage() {
           </p>
         </div>
         <Link
-          href={`/companies/${companyId}/inventory/products/new`}
+          href={`/inventory/products/new`}
           className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
           New Product
@@ -186,13 +187,13 @@ export default function ProductsPage() {
         {isLoading
           ? Array.from({ length: 5 }).map((_, i) => <ProductRowSkeleton key={i} />)
           : products.map((p) => (
-              <ProductRow key={p.id} product={p} companyId={companyId} />
+              <ProductRow key={p.id} product={p} />
             ))}
         {!isLoading && products.length === 0 && !error && (
           <div className="rounded-lg border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">
             No products found.{' '}
             <Link
-              href={`/companies/${companyId}/inventory/products/new`}
+              href={`/inventory/products/new`}
               className="text-primary underline-offset-2 hover:underline"
             >
               Create your first product

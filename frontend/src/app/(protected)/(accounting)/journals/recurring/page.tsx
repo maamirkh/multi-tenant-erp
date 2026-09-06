@@ -11,17 +11,16 @@ import {
   getRecurringTemplates,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 /**
  * Recurring Journal Templates list page.
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T126
  */
-export default function RecurringJournalsPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function RecurringJournalsPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [templates, setTemplates] = useState<RecurringTemplateResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

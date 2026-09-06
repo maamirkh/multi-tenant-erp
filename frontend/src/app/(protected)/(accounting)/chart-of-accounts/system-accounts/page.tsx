@@ -10,10 +10,6 @@ import {
   SYSTEM_ACCOUNT_ROLES,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 /**
  * System Accounts configuration page.
  * Designates AR, AP, Bank, Cash, Tax, Retained Earnings, and Exchange
@@ -22,8 +18,11 @@ interface PageProps {
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T061
  */
-export default function SystemAccountsPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function SystemAccountsPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [config, setConfig] = useState<AccountingConfigurationRead | null>(null);
   const [accounts, setAccounts] = useState<AccountResponse[]>([]);
   const [loading, setLoading] = useState(false);

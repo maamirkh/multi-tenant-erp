@@ -11,18 +11,17 @@ import {
   getTrialBalanceReport,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 /**
  * Trial Balance report: account list with debit/credit totals, a balance
  * check indicator, and an optional comparative period column.
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T264
  */
-export default function TrialBalancePage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function TrialBalancePage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
 
   const [fiscalYears, setFiscalYears] = useState<FiscalYearResponse[]>([]);
   const [selectedYearId, setSelectedYearId] = useState("");

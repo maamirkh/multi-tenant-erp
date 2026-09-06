@@ -6,7 +6,9 @@
  */
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface KPIData {
   inventory_turnover: string;
@@ -103,17 +105,14 @@ const KPI_CARDS: KPICard[] = [
 ];
 
 export default function KPIDashboardPage() {
-  const params = useParams();
-  const companyId = params?.company_id as string;
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [periodDays, setPeriodDays] = useState(90);
   const [kpis, setKpis] = useState<KPIData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const token =
-    typeof window !== "undefined"
-      ? localStorage.getItem("access_token") ?? ""
-      : "";
 
   useEffect(() => {
     loadKpis();
@@ -125,8 +124,9 @@ export default function KPIDashboardPage() {
     setLoading(true);
     setError(null);
     try {
+      const token = getAccessToken();
       const res = await fetch(
-        `/api/v1/companies/${companyId}/inventory/kpis?period_days=${periodDays}`,
+        `${API_BASE}/api/v1/companies/${companyId}/inventory/kpis?period_days=${periodDays}`,
         { headers: token ? { Authorization: `Bearer ${token}` } : {} }
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

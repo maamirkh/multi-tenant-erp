@@ -10,7 +10,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
 import { listCategories, type CategoryResponse } from '@/lib/api/inventory';
 
 function CategorySkeleton() {
@@ -47,8 +46,10 @@ function CategoryRow({ category }: { category: CategoryResponse }) {
 }
 
 export default function CategoriesPage() {
-  const params = useParams<{ companyId: string }>();
-  const companyId = params?.companyId ?? '';
+  const companyId =
+    typeof window !== 'undefined'
+      ? localStorage.getItem('erp_active_company_id') ?? ''
+      : '';
 
   const [categories, setCategories] = useState<CategoryResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);

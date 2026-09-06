@@ -7,10 +7,6 @@ import {
   updateAccountingConfiguration,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 /**
  * Accounting Configuration page.
  * Manages base currency, approval thresholds, and cheque staleness policy.
@@ -20,8 +16,11 @@ interface PageProps {
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T043
  */
-export default function AccountingConfigurationPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function AccountingConfigurationPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [config, setConfig] = useState<AccountingConfigurationRead | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);

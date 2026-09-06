@@ -7,18 +7,17 @@ import {
   getCurrencies,
 } from "@/lib/api/accounting";
 
-interface PageProps {
-  params: { company_id: string };
-}
-
 /**
  * Currency Management page.
  * Lists the global currency registry and allows creating new currencies.
  *
  * Spec ref: specs/008-accounting-finance/tasks.md T041
  */
-export default function CurrenciesPage({ params }: PageProps) {
-  const companyId = params?.company_id ?? "";
+export default function CurrenciesPage() {
+  const companyId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("erp_active_company_id") ?? ""
+      : "";
   const [currencies, setCurrencies] = useState<CurrencyRead[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

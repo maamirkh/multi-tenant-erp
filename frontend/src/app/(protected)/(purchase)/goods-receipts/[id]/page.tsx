@@ -2,6 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { getAccessToken } from "@/lib/auth/tokenStorage";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface GRLine {
   id: string;
@@ -48,9 +51,10 @@ export default function GoodsReceiptDetailPage() {
 
   async function fetchGR() {
     try {
-      const companyId = localStorage.getItem("company_id") ?? "";
+      const companyId = localStorage.getItem("erp_active_company_id") ?? "";
       const res = await fetch(
-        `/api/v1/companies/${companyId}/purchase/goods-receipts/${grId}`
+        `${API_BASE}/api/v1/companies/${companyId}/purchase/goods-receipts/${grId}`,
+        { headers: { Authorization: `Bearer ${getAccessToken()}` } }
       );
       if (!res.ok) throw new Error("Failed to fetch goods receipt");
       const json = await res.json();
@@ -71,10 +75,10 @@ export default function GoodsReceiptDetailPage() {
     setConfirming(true);
     setError(null);
     try {
-      const companyId = localStorage.getItem("company_id") ?? "";
+      const companyId = localStorage.getItem("erp_active_company_id") ?? "";
       const res = await fetch(
-        `/api/v1/companies/${companyId}/purchase/goods-receipts/${grId}/confirm`,
-        { method: "POST" }
+        `${API_BASE}/api/v1/companies/${companyId}/purchase/goods-receipts/${grId}/confirm`,
+        { method: "POST", headers: { Authorization: `Bearer ${getAccessToken()}` } }
       );
       if (!res.ok) {
         const err = await res.json();
