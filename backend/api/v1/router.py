@@ -16,6 +16,8 @@ Feature routers included:
     /api/v1/permissions/*                        — Permissions catalogue (Epic 004)
     /api/v1/profile/*                            — User profile (Epic 004)
     /api/v1/preferences/*                        — User preferences (Epic 004)
+    /api/v1/inventory/*                          — Inventory module health (Epic 005)
+    /api/v1/companies/{company_id}/inventory/*   — Inventory company endpoints (Epic 005)
 """
 
 import logging
@@ -33,6 +35,7 @@ from core.schemas.response import ResponseMeta, StandardResponse
 from core.utils.datetime import utcnow
 from modules.auth.router import router as auth_router
 from modules.companies.router import router as companies_router
+from modules.inventory.router import router as inventory_router
 from modules.users_roles.ownership_router import ownership_router
 from modules.users_roles.permissions_router import permissions_router
 from modules.users_roles.preferences_router import preferences_router
@@ -70,6 +73,14 @@ router.include_router(
 router.include_router(
     preferences_router,
     prefix="/preferences",
+)
+router.include_router(
+    inventory_router,
+    prefix="/inventory",
+)
+router.include_router(
+    inventory_router,
+    prefix="/companies/{company_id}/inventory",
 )
 
 

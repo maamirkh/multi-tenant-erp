@@ -20,6 +20,7 @@ argon2-cffi = ">=23.1"
 pyjwt = { version = ">=2.8", extras = ["crypto"] }
 slowapi = ">=0.1.9"
 boto3 = ">=1.26"
+openpyxl = ">=3.1"
 tzdata = ">=2024.1"
 
 [tool.poetry.group.dev.dependencies]
