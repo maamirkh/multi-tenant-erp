@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 
 interface ProductImage {
   id: string;
@@ -23,8 +22,8 @@ interface ProductImageGalleryProps {
 }
 
 export function ProductImageGallery({
-  companyId,
-  productId,
+  companyId: _companyId,
+  productId: _productId,
   images,
   onUpload,
   onDelete,

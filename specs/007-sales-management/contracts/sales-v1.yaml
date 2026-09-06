@@ -1,0 +1,1690 @@
+openapi: "3.1.0"
+info:
+  title: DevSphere ERP — Sales Management API
+  version: "1.0.0"
+  description: |
+    Complete Order-to-Cash (O2C) API for Epic 7 — Sales Management.
+    Covers Customer Master, Quotations, Sales Orders, Delivery Notes,
+    Invoices, Returns, Pricing, Sales Intelligence, and Import/Export.
+
+    Base path: /api/v1/companies/{company_id}/sales/
+
+    Authentication: Bearer JWT (Epic 2 auth module)
+    Authorization: RBAC permissions per spec §29 (Epic 4)
+    Tenant Isolation: company_id path parameter scopes every query
+
+servers:
+  - url: /api/v1/companies/{company_id}/sales
+    variables:
+      company_id:
+        description: UUID of the tenant company
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    CompanyId:
+      name: company_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    StandardResponse:
+      type: object
+      properties:
+        data:
+          description: Response payload (type varies by endpoint)
+        message:
+          type: string
+        meta:
+          type: object
+          properties:
+            request_id:
+              type: string
+            timestamp:
+              type: string
+              format: date-time
+
+    PaginatedResponse:
+      allOf:
+        - $ref: '#/components/schemas/StandardResponse'
+        - type: object
+          properties:
+            total:
+              type: integer
+            page:
+              type: integer
+            page_size:
+              type: integer
+
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+
+    # ---- Master Data ----
+
+    CustomerCategory:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        description: { type: string }
+        is_active: { type: boolean }
+
+    CustomerGroup:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        is_active: { type: boolean }
+
+    PaymentTerm:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        due_days: { type: integer }
+        discount_days: { type: integer }
+        discount_percent: { type: number }
+
+    SalesReasonCode:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        reason_type:
+          type: string
+          enum: [RETURN, CANCELLATION, REJECTION, GENERAL]
+
+    # ---- Customer ----
+
+    Customer:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        customer_code: { type: string }
+        legal_name: { type: string }
+        trading_name: { type: string }
+        customer_type:
+          type: string
+          enum: [INDIVIDUAL, COMPANY, GOVERNMENT, INTERNAL]
+        status:
+          type: string
+          enum: [DRAFT, ACTIVE, ON_HOLD, BLOCKED, INACTIVE]
+        credit_limit: { type: number }
+        credit_status:
+          type: string
+          enum: [GOOD, WARNING, EXCEEDED, HOLD]
+        currency_code: { type: string }
+        category_id: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+
+    CustomerCreate:
+      type: object
+      required: [customer_code, legal_name, customer_type, category_id, currency_code]
+      properties:
+        customer_code: { type: string }
+        legal_name: { type: string }
+        trading_name: { type: string }
+        customer_type:
+          type: string
+          enum: [INDIVIDUAL, COMPANY, GOVERNMENT, INTERNAL]
+        category_id: { type: string, format: uuid }
+        group_id: { type: string, format: uuid }
+        payment_term_id: { type: string, format: uuid }
+        currency_code: { type: string }
+        credit_limit: { type: number }
+        tax_registration_number: { type: string }
+
+    # ---- Quotation ----
+
+    SalesQuotation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        quotation_number: { type: string }
+        status:
+          type: string
+          enum: [DRAFT, SENT_TO_CUSTOMER, ACCEPTED, REJECTED, CONVERTED, EXPIRED, CANCELLED]
+        customer_id: { type: string, format: uuid }
+        quotation_date: { type: string, format: date }
+        validity_date: { type: string, format: date }
+        currency_code: { type: string }
+        sales_rep_id: { type: string, format: uuid }
+        total_amount: { type: string }
+
+    # ---- Sales Order ----
+
+    SalesOrder:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        order_number: { type: string }
+        status:
+          type: string
+          enum: [DRAFT, PENDING_APPROVAL, APPROVED, REJECTED, PARTIALLY_DELIVERED, DELIVERED, INVOICED, CLOSED, CANCELLED]
+        customer_id: { type: string, format: uuid }
+        order_date: { type: string, format: date }
+        currency_code: { type: string }
+        sales_rep_id: { type: string, format: uuid }
+        total_amount: { type: string }
+        lines:
+          type: array
+          items:
+            type: object
+
+    # ---- Delivery Note ----
+
+    DeliveryNote:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        delivery_number: { type: string }
+        status:
+          type: string
+          enum: [DRAFT, DISPATCHED, DELIVERED, CANCELLED]
+        order_id: { type: string, format: uuid }
+        customer_id: { type: string, format: uuid }
+
+    # ---- Invoice ----
+
+    SalesInvoice:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        invoice_number: { type: string }
+        status:
+          type: string
+          enum: [DRAFT, ISSUED, CANCELLED, CREDIT_NOTE_ISSUED]
+        customer_id: { type: string, format: uuid }
+        invoice_date: { type: string, format: date }
+        due_date: { type: string, format: date }
+        total_amount: { type: string }
+        amount_in_words: { type: string }
+
+    # ---- Sales Return ----
+
+    SalesReturn:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        return_number: { type: string }
+        status:
+          type: string
+          enum: [DRAFT, PENDING_APPROVAL, APPROVED, REJECTED, RECEIVED, COMPLETED, CANCELLED]
+        customer_id: { type: string, format: uuid }
+        resolution_type:
+          type: string
+          enum: [CREDIT_NOTE, REPLACEMENT, REFUND_READINESS, REPAIR, SCRAP]
+
+    # ---- Pricing ----
+
+    PriceList:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        currency_code: { type: string }
+        is_active: { type: boolean }
+
+    # ---- Reports & KPIs ----
+
+    KPIResult:
+      type: object
+      properties:
+        kpi_id: { type: string, example: "KPI-01" }
+        name: { type: string }
+        value: { type: number, nullable: true }
+        unit: { type: string }
+        period_label: { type: string }
+        trend:
+          type: string
+          enum: [UP, DOWN, FLAT]
+          nullable: true
+        change_pct: { type: number, nullable: true }
+
+    KPIDashboard:
+      type: object
+      properties:
+        company_id: { type: string, format: uuid }
+        period_label: { type: string }
+        kpis:
+          type: array
+          items:
+            $ref: '#/components/schemas/KPIResult'
+
+    ReportResponse:
+      type: object
+      properties:
+        report_type: { type: string }
+        company_id: { type: string, format: uuid }
+        total: { type: integer }
+        rows:
+          type: array
+          items:
+            type: object
+
+    # ---- Import/Export ----
+
+    CustomerImportResult:
+      type: object
+      properties:
+        total_rows: { type: integer }
+        imported: { type: integer }
+        skipped: { type: integer }
+        success_count: { type: integer }
+        error_count: { type: integer }
+        warning_count: { type: integer }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              row: { type: integer }
+              field: { type: string }
+              message: { type: string }
+        warnings:
+          type: array
+          items:
+            type: object
+            properties:
+              row: { type: integer }
+              field: { type: string }
+              message: { type: string }
+
+paths:
+
+  # ==========================================================================
+  # Health & Feature Flags
+  # ==========================================================================
+
+  /health:
+    get:
+      summary: Sales module health check
+      tags: [health]
+      responses:
+        '200':
+          description: Module is healthy
+
+  /feature-flags:
+    get:
+      summary: List all sales feature flags with effective state
+      tags: [feature-flags]
+      responses:
+        '200':
+          description: Feature flags list
+
+  /feature-flags/{key}:
+    put:
+      summary: Update a feature flag override
+      tags: [feature-flags]
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Flag updated
+
+  # ==========================================================================
+  # Master Data
+  # ==========================================================================
+
+  /customer-categories:
+    get:
+      summary: List customer categories
+      tags: [master-data]
+      responses:
+        '200':
+          description: List of customer categories
+    post:
+      summary: Create customer category
+      tags: [master-data]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name]
+              properties:
+                code: { type: string }
+                name: { type: string }
+                description: { type: string }
+      responses:
+        '201':
+          description: Category created
+
+  /customer-categories/{id}:
+    put:
+      summary: Update customer category
+      tags: [master-data]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Category updated
+
+  /customer-groups:
+    get:
+      summary: List customer groups
+      tags: [master-data]
+      responses:
+        '200':
+          description: List of customer groups
+    post:
+      summary: Create customer group
+      tags: [master-data]
+      responses:
+        '201':
+          description: Group created
+
+  /customer-groups/{id}:
+    put:
+      summary: Update customer group
+      tags: [master-data]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Group updated
+
+  /payment-terms:
+    get:
+      summary: List payment terms
+      tags: [master-data]
+      responses:
+        '200':
+          description: List of payment terms
+    post:
+      summary: Create payment term
+      tags: [master-data]
+      responses:
+        '201':
+          description: Payment term created
+
+  /payment-terms/{id}:
+    put:
+      summary: Update payment term
+      tags: [master-data]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Payment term updated
+
+  /reason-codes:
+    get:
+      summary: List sales reason codes
+      tags: [master-data]
+      responses:
+        '200':
+          description: List of reason codes
+    post:
+      summary: Create reason code
+      tags: [master-data]
+      responses:
+        '201':
+          description: Reason code created
+
+  /reason-codes/{id}:
+    put:
+      summary: Update reason code
+      tags: [master-data]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Reason code updated
+
+  /configuration:
+    get:
+      summary: Get company sales configuration
+      tags: [configuration]
+      responses:
+        '200':
+          description: Sales configuration
+    put:
+      summary: Update company sales configuration
+      tags: [configuration]
+      responses:
+        '200':
+          description: Configuration updated
+
+  # ==========================================================================
+  # Customers
+  # ==========================================================================
+
+  /customers:
+    get:
+      summary: Search / list customers
+      tags: [customers]
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: category_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Customer list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse'
+    post:
+      summary: Create customer
+      tags: [customers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerCreate'
+      responses:
+        '201':
+          description: Customer created
+        '409':
+          description: Customer code already exists
+
+  /customers/import:
+    post:
+      summary: Bulk import customers from CSV
+      tags: [customers]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Import result with errors and warnings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerImportResult'
+
+  /customers/export:
+    get:
+      summary: Export customers to CSV
+      tags: [customers]
+      responses:
+        '200':
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+
+  /customers/{id}:
+    get:
+      summary: Get customer detail
+      tags: [customers]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Customer detail
+        '404':
+          description: Customer not found
+    put:
+      summary: Update customer
+      tags: [customers]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Customer updated
+
+  /customers/{id}/transitions:
+    post:
+      summary: Execute customer status transition
+      tags: [customers]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                transition:
+                  type: string
+                  enum: [activate, deactivate, block, unblock, hold, hold_release]
+                reason: { type: string }
+      responses:
+        '200':
+          description: Transition executed
+        '409':
+          description: Invalid transition
+
+  /customers/{id}/contacts:
+    get:
+      summary: List customer contacts
+      tags: [customers]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Contact list
+    post:
+      summary: Add contact to customer
+      tags: [customers]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Contact added
+
+  /customers/{id}/contacts/{cid}:
+    put:
+      summary: Update customer contact
+      tags: [customers]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: cid
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Contact updated
+    delete:
+      summary: Delete customer contact
+      tags: [customers]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: cid
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204':
+          description: Contact deleted
+
+  /customers/{id}/addresses:
+    get:
+      summary: List customer addresses
+      tags: [customers]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Address list
+    post:
+      summary: Add address to customer
+      tags: [customers]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Address added
+
+  /customers/{id}/credit:
+    put:
+      summary: Update customer credit limit / status
+      tags: [customers]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Credit updated
+
+  # ==========================================================================
+  # Pricing
+  # ==========================================================================
+
+  /price-lists:
+    get:
+      summary: List price lists
+      tags: [pricing]
+      responses:
+        '200':
+          description: Price list collection
+    post:
+      summary: Create price list
+      tags: [pricing]
+      responses:
+        '201':
+          description: Price list created
+
+  /price-lists/{id}:
+    get:
+      summary: Get price list detail
+      tags: [pricing]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Price list detail
+    put:
+      summary: Update price list
+      tags: [pricing]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Price list updated
+
+  /price-lists/{id}/entries:
+    get:
+      summary: List price list entries
+      tags: [pricing]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Price entries
+    post:
+      summary: Add entry to price list
+      tags: [pricing]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Entry added
+
+  /customer-prices:
+    get:
+      summary: List customer-specific prices
+      tags: [pricing]
+      responses:
+        '200':
+          description: Customer price list
+    post:
+      summary: Create customer-specific price
+      tags: [pricing]
+      responses:
+        '201':
+          description: Customer price created
+
+  /discount-rules:
+    get:
+      summary: List discount rules
+      tags: [pricing]
+      responses:
+        '200':
+          description: Discount rules
+    post:
+      summary: Create discount rule
+      tags: [pricing]
+      responses:
+        '201':
+          description: Discount rule created
+
+  /pricing/resolve:
+    post:
+      summary: Resolve price for a product/customer combination
+      tags: [pricing]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                product_id: { type: string, format: uuid }
+                customer_id: { type: string, format: uuid }
+                quantity: { type: number }
+                currency_code: { type: string }
+      responses:
+        '200':
+          description: Resolved price
+
+  # ==========================================================================
+  # Sales Quotations
+  # ==========================================================================
+
+  /quotations:
+    get:
+      summary: List sales quotations
+      tags: [quotations]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: customer_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        '200':
+          description: Quotation list
+    post:
+      summary: Create quotation
+      tags: [quotations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer_id, quotation_date, validity_date, currency_code, sales_rep_id]
+              properties:
+                customer_id: { type: string, format: uuid }
+                quotation_date: { type: string, format: date }
+                validity_date: { type: string, format: date }
+                currency_code: { type: string }
+                sales_rep_id: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Quotation created (DRAFT)
+
+  /quotations/{id}:
+    get:
+      summary: Get quotation detail
+      tags: [quotations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Quotation detail
+        '404':
+          description: Not found
+    put:
+      summary: Update DRAFT quotation
+      tags: [quotations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Quotation updated
+
+  /quotations/{id}/lines:
+    post:
+      summary: Add line to DRAFT quotation
+      tags: [quotations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Line added
+
+  /quotations/{id}/send:
+    post:
+      summary: Send quotation to customer (DRAFT → SENT_TO_CUSTOMER)
+      tags: [quotations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Quotation sent
+
+  /quotations/{id}/accept:
+    post:
+      summary: Accept quotation (SENT_TO_CUSTOMER → ACCEPTED)
+      tags: [quotations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Quotation accepted
+
+  /quotations/{id}/reject:
+    post:
+      summary: Reject quotation (SENT_TO_CUSTOMER → REJECTED)
+      tags: [quotations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Quotation rejected
+
+  /quotations/{id}/cancel:
+    post:
+      summary: Cancel quotation
+      tags: [quotations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Quotation cancelled
+
+  /quotations/{id}/expire:
+    post:
+      summary: Expire quotation (SENT_TO_CUSTOMER → EXPIRED)
+      tags: [quotations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Quotation expired
+
+  /quotations/{id}/convert:
+    post:
+      summary: Convert ACCEPTED quotation to Sales Order
+      tags: [quotations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Sales order created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  quotation_id: { type: string, format: uuid }
+                  quotation_number: { type: string }
+                  order_id: { type: string, format: uuid }
+                  order_number: { type: string }
+
+  /quotations/{id}/revisions:
+    get:
+      summary: Get quotation revision history
+      tags: [quotations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Revision history
+
+  # ==========================================================================
+  # Sales Orders
+  # ==========================================================================
+
+  /sales-orders:
+    get:
+      summary: List sales orders
+      tags: [sales-orders]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: customer_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        '200':
+          description: Order list
+    post:
+      summary: Create sales order
+      tags: [sales-orders]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer_id, order_date, currency_code, sales_rep_id]
+              properties:
+                customer_id: { type: string, format: uuid }
+                order_date: { type: string, format: date }
+                currency_code: { type: string }
+                sales_rep_id: { type: string, format: uuid }
+                lines:
+                  type: array
+                  items: { type: object }
+      responses:
+        '201':
+          description: Order created (DRAFT)
+
+  /sales-orders/{id}:
+    get:
+      summary: Get sales order detail
+      tags: [sales-orders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Order detail
+        '404':
+          description: Not found
+    put:
+      summary: Update DRAFT sales order
+      tags: [sales-orders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Order updated
+
+  /sales-orders/{id}/submit:
+    post:
+      summary: Submit order for approval (DRAFT → PENDING_APPROVAL or APPROVED)
+      tags: [sales-orders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Order submitted
+
+  /sales-orders/{id}/approve:
+    post:
+      summary: Approve order (PENDING_APPROVAL → APPROVED)
+      tags: [sales-orders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Order approved
+
+  /sales-orders/{id}/reject:
+    post:
+      summary: Reject order (PENDING_APPROVAL → REJECTED)
+      tags: [sales-orders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Order rejected
+
+  /sales-orders/{id}/cancel:
+    post:
+      summary: Cancel sales order
+      tags: [sales-orders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Order cancelled
+
+  /sales-orders/{id}/close:
+    post:
+      summary: Close invoiced order (INVOICED → CLOSED)
+      tags: [sales-orders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Order closed
+
+  /sales-orders/{id}/lines:
+    post:
+      summary: Add line to DRAFT order
+      tags: [sales-orders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Line added
+
+  /sales-orders/{id}/approvals:
+    get:
+      summary: Get approval history for an order
+      tags: [sales-orders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Approval history
+
+  /approval-matrices:
+    get:
+      summary: List approval matrices
+      tags: [approvals]
+      responses:
+        '200':
+          description: Approval matrices
+    post:
+      summary: Create approval matrix
+      tags: [approvals]
+      responses:
+        '201':
+          description: Matrix created
+
+  /approvals/pending:
+    get:
+      summary: Get pending approvals inbox for an approver
+      tags: [approvals]
+      parameters:
+        - name: approver_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Pending approvals
+
+  # ==========================================================================
+  # Delivery Notes
+  # ==========================================================================
+
+  /delivery-notes:
+    get:
+      summary: List delivery notes
+      tags: [delivery-notes]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: order_id
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Delivery note list
+    post:
+      summary: Create delivery note from approved order
+      tags: [delivery-notes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order_id, lines]
+              properties:
+                order_id: { type: string, format: uuid }
+                lines:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      order_line_id: { type: string, format: uuid }
+                      quantity_dispatched: { type: number }
+                      description: { type: string }
+                      unit_of_measure: { type: string }
+      responses:
+        '201':
+          description: Delivery note created (DRAFT)
+
+  /delivery-notes/{id}:
+    get:
+      summary: Get delivery note detail
+      tags: [delivery-notes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Delivery note detail
+        '404':
+          description: Not found
+
+  /delivery-notes/{id}/dispatch:
+    post:
+      summary: Dispatch delivery note (DRAFT → DISPATCHED)
+      tags: [delivery-notes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dispatch_date: { type: string, format: date }
+      responses:
+        '200':
+          description: Delivery note dispatched
+
+  /delivery-notes/{id}/deliver:
+    post:
+      summary: Confirm delivery (DISPATCHED → DELIVERED)
+      tags: [delivery-notes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Delivery confirmed
+
+  /delivery-notes/{id}/cancel:
+    post:
+      summary: Cancel delivery note
+      tags: [delivery-notes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Delivery note cancelled
+
+  /delivery-notes/{id}/lines:
+    get:
+      summary: List delivery note lines
+      tags: [delivery-notes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Delivery note lines
+
+  # ==========================================================================
+  # Sales Invoices
+  # ==========================================================================
+
+  /invoices:
+    get:
+      summary: List sales invoices
+      tags: [invoices]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: customer_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: date_from
+          in: query
+          schema: { type: string, format: date }
+        - name: date_to
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Invoice list
+    post:
+      summary: Create sales invoice (DRAFT)
+      tags: [invoices]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer_id, invoice_date, currency_code]
+              properties:
+                customer_id: { type: string, format: uuid }
+                invoice_date: { type: string, format: date }
+                currency_code: { type: string }
+                order_id: { type: string, format: uuid, nullable: true }
+                delivery_note_id: { type: string, format: uuid, nullable: true }
+                lines:
+                  type: array
+                  items: { type: object }
+                charges:
+                  type: array
+                  items: { type: object }
+      responses:
+        '201':
+          description: Invoice created
+
+  /invoices/{id}:
+    get:
+      summary: Get invoice detail
+      tags: [invoices]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Invoice detail
+        '404':
+          description: Not found
+
+  /invoices/{id}/issue:
+    post:
+      summary: Issue invoice (DRAFT → ISSUED)
+      tags: [invoices]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Invoice issued
+
+  /invoices/{id}/cancel:
+    post:
+      summary: Cancel invoice (DRAFT → CANCELLED)
+      tags: [invoices]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Invoice cancelled
+
+  /invoices/{id}/credit-note:
+    post:
+      summary: Issue credit note against ISSUED invoice
+      tags: [invoices]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Credit note issued
+
+  /invoices/{id}/lines:
+    get:
+      summary: List invoice lines
+      tags: [invoices]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Invoice lines
+
+  /invoices/{id}/charges:
+    get:
+      summary: List invoice charges
+      tags: [invoices]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Invoice charges
+
+  # ==========================================================================
+  # Sales Returns
+  # ==========================================================================
+
+  /returns:
+    get:
+      summary: List sales returns
+      tags: [returns]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: customer_id
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Return list
+    post:
+      summary: Create sales return (DRAFT)
+      tags: [returns]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer_id, return_date, resolution_type]
+              properties:
+                customer_id: { type: string, format: uuid }
+                return_date: { type: string, format: date }
+                resolution_type:
+                  type: string
+                  enum: [CREDIT_NOTE, REPLACEMENT, REFUND_READINESS, REPAIR, SCRAP]
+                reason: { type: string }
+                original_invoice_id: { type: string, format: uuid, nullable: true }
+      responses:
+        '201':
+          description: Return created
+
+  /returns/{id}:
+    get:
+      summary: Get return detail
+      tags: [returns]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Return detail
+        '404':
+          description: Not found
+
+  /returns/{id}/submit:
+    post:
+      summary: Submit return for approval (DRAFT → PENDING_APPROVAL)
+      tags: [returns]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Return submitted
+
+  /returns/{id}/approve:
+    post:
+      summary: Approve return (PENDING_APPROVAL → APPROVED)
+      tags: [returns]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Return approved
+
+  /returns/{id}/reject:
+    post:
+      summary: Reject return (PENDING_APPROVAL → REJECTED)
+      tags: [returns]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Return rejected
+
+  /returns/{id}/cancel:
+    post:
+      summary: Cancel return
+      tags: [returns]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Return cancelled
+
+  /returns/{id}/lines:
+    get:
+      summary: List return lines
+      tags: [returns]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Return lines
+
+  # ==========================================================================
+  # Sales Intelligence & Reporting
+  # ==========================================================================
+
+  /reports/{type}:
+    get:
+      summary: Run a sales report
+      tags: [reports]
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - sales_summary
+              - sales_by_customer
+              - sales_by_product
+              - sales_by_representative
+              - sales_order_pipeline
+              - sales_vs_target
+              - top_customers
+              - sales_trend
+              - customer_list
+              - customer_ageing
+              - customer_activity
+              - new_customers
+              - customer_credit_report
+              - quotation_conversion_rate
+              - quotation_pipeline
+              - expired_quotations
+              - pending_deliveries
+              - delivery_performance
+              - backorder_report
+              - gross_margin_by_product
+              - gross_margin_by_customer
+              - discount_analysis
+              - sales_audit_trail
+              - price_override_report
+              - credit_limit_change_report
+        - name: date_from
+          in: query
+          schema: { type: string, format: date }
+        - name: date_to
+          in: query
+          schema: { type: string, format: date }
+        - name: customer_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: sales_rep_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Report data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportResponse'
+
+  /reports/{type}/export:
+    get:
+      summary: Export report as CSV or Excel
+      tags: [reports]
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema: { type: string }
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [csv, excel]
+            default: csv
+      responses:
+        '200':
+          description: File download
+          content:
+            text/csv:
+              schema: { type: string }
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+
+  /kpis:
+    get:
+      summary: Get KPI dashboard (12 KPIs)
+      tags: [reports]
+      parameters:
+        - name: date_from
+          in: query
+          schema: { type: string, format: date }
+        - name: date_to
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: KPI dashboard
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KPIDashboard'
+
+tags:
+  - name: health
+    description: Module health and status
+  - name: feature-flags
+    description: Feature flag management
+  - name: master-data
+    description: Customer categories, groups, payment terms, reason codes, configuration
+  - name: customers
+    description: Customer master data and lifecycle management
+  - name: pricing
+    description: Price lists, customer prices, discount rules, price resolution
+  - name: quotations
+    description: Sales quotation lifecycle
+  - name: sales-orders
+    description: Sales order lifecycle and approval workflow
+  - name: approvals
+    description: Approval matrices and pending approvals inbox
+  - name: delivery-notes
+    description: Delivery note lifecycle and stock dispatch
+  - name: invoices
+    description: Sales invoice lifecycle
+  - name: returns
+    description: Sales return lifecycle
+  - name: reports
+    description: Sales intelligence reports and KPI dashboard

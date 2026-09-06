@@ -285,7 +285,9 @@ function ReportViewer({ data }: { data: Record<string, unknown> }) {
     return <p className="text-gray-500 text-sm">No data for this report.</p>;
   }
 
-  const headers = Object.keys(rows[0]);
+  const firstRow = rows[0];
+  if (!firstRow) return null;
+  const headers = Object.keys(firstRow);
 
   return (
     <table className="min-w-full text-sm border-collapse">

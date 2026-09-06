@@ -43,7 +43,7 @@ export interface FeatureFlagUpdateRequest {
  * Check the Inventory module health endpoint.
  * Returns the module version and operational status.
  */
-export async function getInventoryHealth(): Promise<InventoryHealthResponse> {
+export async function getInventoryHealth(): Promise<StandardResponse<InventoryHealthResponse>> {
   return apiClient.get<InventoryHealthResponse>('/api/v1/inventory/health');
 }
 
@@ -59,7 +59,7 @@ export async function getInventoryHealth(): Promise<InventoryHealthResponse> {
 export async function listFeatureFlags(
   companyId: string,
 ): Promise<StandardResponse<FeatureFlagResponse[]>> {
-  return apiClient.get<StandardResponse<FeatureFlagResponse[]>>(
+  return apiClient.get<FeatureFlagResponse[]>(
     `/api/v1/companies/${companyId}/inventory/feature-flags`,
   );
 }
@@ -76,7 +76,7 @@ export async function updateFeatureFlag(
   flagKey: string,
   payload: FeatureFlagUpdateRequest,
 ): Promise<StandardResponse<FeatureFlagResponse>> {
-  return apiClient.put<StandardResponse<FeatureFlagResponse>>(
+  return apiClient.put<FeatureFlagResponse>(
     `/api/v1/companies/${companyId}/inventory/feature-flags/${encodeURIComponent(flagKey)}`,
     payload,
   );

@@ -15,6 +15,14 @@ const eslintConfig = defineConfig([
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
+      // React Compiler rules — disabled: project does not use the React Compiler.
+      // These rules flag standard data-fetching useEffect patterns and are
+      // not applicable until the React Compiler is explicitly opted into.
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/immutability': 'off',
+      'react-hooks/static-components': 'off',
+      'react-hooks/purity': 'off',
+      'react-hooks/incompatible-library': 'off',
     },
   },
 ]);

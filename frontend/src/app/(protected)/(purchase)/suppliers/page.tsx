@@ -44,13 +44,13 @@ export default function SuppliersPage({ params }: PageProps) {
     setError(null);
     try {
       const res = await getSuppliers(companyId, {
-        query: query || undefined,
-        status: statusFilter || undefined,
+        ...(query ? { query } : {}),
+        ...(statusFilter ? { status: statusFilter } : {}),
         skip,
         limit,
       });
       setSuppliers(res.data);
-      setTotal(res.meta?.total ?? res.data.length);
+      setTotal(res.data.length);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load suppliers");
     } finally {

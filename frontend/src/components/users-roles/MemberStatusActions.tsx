@@ -34,7 +34,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { useChangeMemberStatus } from '@/hooks/users-roles/useMembers';
-import { SuspendSchema, ArchiveSchema } from '@/schemas/users-roles';
+import { SuspendSchema } from '@/schemas/users-roles';
 import type { SuspendFormData, ArchiveFormData } from '@/schemas/users-roles';
 import type { MemberDetail } from '@/types/users-roles';
 import { ApiClientError } from '@/lib/api/client';

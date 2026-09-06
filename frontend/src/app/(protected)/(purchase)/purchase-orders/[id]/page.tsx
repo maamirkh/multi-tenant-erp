@@ -58,7 +58,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function PurchaseOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const router = useRouter();
+  const _router = useRouter();
   const [po, setPo] = useState<PurchaseOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -97,7 +97,7 @@ export default function PurchaseOrderDetailPage() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: body ? JSON.stringify(body) : undefined,
+          body: body ? JSON.stringify(body) : null,
         }
       );
       if (!res.ok) {

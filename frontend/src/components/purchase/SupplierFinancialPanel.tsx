@@ -150,7 +150,7 @@ export default function SupplierFinancialPanel({
     try {
       const res = await setRatingOverride(companyId, supplierId, {
         manual_override_score: parseFloat(overrideScore),
-        manual_override_reason: overrideReason || undefined,
+        ...(overrideReason ? { manual_override_reason: overrideReason } : {}),
       });
       setRating(res.data);
       setShowOverrideForm(false);

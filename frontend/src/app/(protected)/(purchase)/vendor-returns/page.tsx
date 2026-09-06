@@ -44,8 +44,8 @@ export default function VendorReturnsPage() {
         if (!res.ok) throw new Error(await res.text());
         const json = await res.json();
         setReturns(json.data ?? []);
-      } catch (e: any) {
-        setError(e.message);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : String(e));
       } finally {
         setLoading(false);
       }

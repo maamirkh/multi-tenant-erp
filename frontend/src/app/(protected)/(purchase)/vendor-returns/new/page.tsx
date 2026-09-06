@@ -65,8 +65,8 @@ export default function NewVendorReturnPage() {
       }
       const json = await res.json();
       router.push(`/vendor-returns/${json.data.id}`);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSubmitting(false);
     }

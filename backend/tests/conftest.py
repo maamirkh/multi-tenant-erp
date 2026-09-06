@@ -36,6 +36,7 @@ import modules.auth.models  # noqa: E402, F401
 import modules.companies.models  # noqa: E402, F401
 import modules.inventory.models  # noqa: E402, F401
 import modules.purchase.models  # noqa: E402, F401
+import modules.sales.models  # noqa: E402, F401
 import modules.users_roles.models  # noqa: E402, F401
 from core.config.settings import Settings
 from core.database.base import Base

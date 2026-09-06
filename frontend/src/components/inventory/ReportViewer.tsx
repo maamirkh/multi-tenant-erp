@@ -27,7 +27,9 @@ export default function ReportViewer({
     return <p className="text-sm text-gray-500 py-4">No data available for this report.</p>;
   }
 
-  const headers = Object.keys(rows[0]);
+  const firstRow = rows[0];
+  if (!firstRow) return null;
+  const headers = Object.keys(firstRow);
 
   function handleSort(key: string) {
     if (sortKey === key) {
