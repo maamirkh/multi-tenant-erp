@@ -61,6 +61,23 @@ def _login(client: TestClient, email: str, password: str) -> str:
     return resp.json()["data"]["access_token"]
 
 
+def _create_company(client: TestClient, token: str) -> uuid.UUID:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Inventory Test Co {suffix}",
+            "email": f"contact-{suffix}@inv-test.example.com",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return uuid.UUID(resp.json()["data"]["id"])
+
+
 def _seed_context(db: Session, company_id: uuid.UUID) -> dict:
     """Seed minimal inventory context for read tests."""
     uom = UOM(
@@ -169,13 +186,12 @@ class TestPermissionMatrix:
         self, test_client: TestClient, db_session: Session
     ) -> None:
         """Any authenticated user can read inventory data (no role restriction)."""
-        company_id = uuid.uuid4()
-        _seed_context(db_session, company_id)
-
         email = f"rbac-read-{uuid.uuid4().hex[:8]}@test.com"
         create_test_user(db_session, email=email, password="TestPass123!")
         token = _login(test_client, email, "TestPass123!")
         headers = {"Authorization": f"Bearer {token}"}
+        company_id = _create_company(test_client, token)
+        _seed_context(db_session, company_id)
 
         read_endpoints = [
             "/products",
@@ -205,13 +221,12 @@ class TestPermissionMatrix:
         This test covers all 8 system roles by using one authenticated user
         (inventory has no role-specific restrictions, just authentication).
         """
-        company_id = uuid.uuid4()
-        _seed_context(db_session, company_id)
-
         email = f"rbac-matrix-{uuid.uuid4().hex[:8]}@test.com"
         create_test_user(db_session, email=email, password="TestPass123!")
         token = _login(test_client, email, "TestPass123!")
         headers = {"Authorization": f"Bearer {token}"}
+        company_id = _create_company(test_client, token)
+        _seed_context(db_session, company_id)
 
         # All inventory list endpoints should return 200 with valid auth
         endpoints = [

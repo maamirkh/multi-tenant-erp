@@ -415,7 +415,14 @@ class QuotationRevision(TenantBaseModel):
     )
 
     modified_at: Mapped[str] = mapped_column(
-        String(30),
+        # Genuine defect found live during pre-Epic-9 hardening audit
+        # (2026-08-14): String(30) is too short for utcnow().isoformat()'s
+        # actual output (32 chars with microseconds + UTC offset, e.g.
+        # "2026-08-15T07:57:23.605415+00:00"), causing a real Postgres
+        # StringDataRightTruncation error on every quotation creation.
+        # Invisible to the SQLite test suite (SQLite doesn't enforce
+        # VARCHAR length limits). Widened with margin.
+        String(40),
         nullable=False,
         doc="ISO 8601 datetime when revision was captured",
     )

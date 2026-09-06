@@ -44,11 +44,29 @@ def _url(company_id: str | uuid.UUID, path: str) -> str:
     return f"/api/v1/companies/{company_id}/inventory{path}"
 
 
-def _setup(db: Session) -> tuple[str, str, uuid.UUID]:
+def _create_company(client: TestClient, token: str) -> uuid.UUID:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Inventory Test Co {suffix}",
+            "email": f"contact-{suffix}@inventory-test.example.com",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return uuid.UUID(resp.json()["data"]["id"])
+
+
+def _setup(db: Session, client: TestClient) -> tuple[str, str, uuid.UUID]:
     email = f"alert-{uuid.uuid4().hex[:8]}@test.com"
     password = "TestPass123!"
     create_test_user(db, email=email, password=password)
-    company_id = uuid.uuid4()
+    token = _login(client, email, password)
+    company_id = _create_company(client, token)
     return email, password, company_id
 
 
@@ -101,7 +119,7 @@ class TestReorderRuleAPI:
     def test_create_reorder_rule(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
         product_id = _make_product(db_session, cid)
 
@@ -123,7 +141,7 @@ class TestReorderRuleAPI:
     def test_list_reorder_rules(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
         product_id = _make_product(db_session, cid)
 
@@ -141,7 +159,7 @@ class TestReorderRuleAPI:
     def test_update_reorder_rule(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
         product_id = _make_product(db_session, cid)
 
@@ -165,7 +183,7 @@ class TestReorderRuleAPI:
     def test_delete_reorder_rule(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
         product_id = _make_product(db_session, cid)
 
@@ -193,7 +211,7 @@ class TestReorderRuleAPI:
         self, test_client: TestClient, db_session: Session
     ) -> None:
         """A reorder rule for company A is not visible under company B."""
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
         product_id = _make_product(db_session, cid)
 
@@ -204,12 +222,16 @@ class TestReorderRuleAPI:
         )
         rule_id = r_create.json()["data"]["id"]
 
+        # other_cid is a fake company_id the user is not a member of — denied
+        # either at the membership gate (403) or, if it got past that, at the
+        # repository's company_id scoping (404). Both are correct "access
+        # denied" outcomes (see tests/security/inventory/test_security.py).
         other_cid = uuid.uuid4()  # different company
         r_other = test_client.get(
             _url(other_cid, f"/reorder-rules/{rule_id}"),
             headers=_auth(tok),
         )
-        assert r_other.status_code == 404
+        assert r_other.status_code in (403, 404)
 
     def test_unauthenticated_returns_401(self, test_client: TestClient) -> None:
         r = test_client.get(_url(uuid.uuid4(), "/reorder-rules"))
@@ -225,7 +247,7 @@ class TestAlertAPI:
     def test_alerts_list_initially_empty(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
 
         r = test_client.get(_url(cid, "/alerts"), headers=_auth(tok))
@@ -236,7 +258,7 @@ class TestAlertAPI:
         self, test_client: TestClient, db_session: Session
     ) -> None:
         """Acknowledge an OPEN alert via the API."""
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
         product_id = _make_product(db_session, cid)
         wh = _make_warehouse(db_session, cid)
@@ -268,7 +290,7 @@ class TestAlertAPI:
     def test_acknowledge_resolved_alert_returns_409(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
         product_id = _make_product(db_session, cid)
         wh = _make_warehouse(db_session, cid)
@@ -296,7 +318,7 @@ class TestAlertAPI:
     def test_get_alert_not_found(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
         r = test_client.get(_url(cid, f"/alerts/{uuid.uuid4()}"), headers=_auth(tok))
         assert r.status_code == 404
@@ -305,7 +327,7 @@ class TestAlertAPI:
         self, test_client: TestClient, db_session: Session
     ) -> None:
         """Alert for company A is not accessible via company B URL."""
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
         product_id = _make_product(db_session, cid)
         wh = _make_warehouse(db_session, cid)
@@ -323,12 +345,16 @@ class TestAlertAPI:
         db_session.add(alert)
         db_session.commit()
 
+        # other_cid is a fake company_id the user is not a member of — denied
+        # either at the membership gate (403) or, if it got past that, at the
+        # repository's company_id scoping (404). Both are correct "access
+        # denied" outcomes (see tests/security/inventory/test_security.py).
         other_cid = uuid.uuid4()
         r = test_client.get(
             _url(other_cid, f"/alerts/{alert.id}"),
             headers=_auth(tok),
         )
-        assert r.status_code == 404
+        assert r.status_code in (403, 404)
 
     def test_unauthenticated_returns_401(self, test_client: TestClient) -> None:
         r = test_client.get(_url(uuid.uuid4(), "/alerts"))
@@ -337,7 +363,7 @@ class TestAlertAPI:
     def test_filter_alerts_by_status(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
         product_id = _make_product(db_session, cid)
         wh = _make_warehouse(db_session, cid)
@@ -376,7 +402,7 @@ class TestSuggestionAPI:
     def test_suggestions_list(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
 
         r = test_client.get(_url(cid, "/suggestions"), headers=_auth(tok))
@@ -386,7 +412,7 @@ class TestSuggestionAPI:
     def test_acknowledge_suggestion(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
         product_id = _make_product(db_session, cid)
         wh = _make_warehouse(db_session, cid)
@@ -413,7 +439,7 @@ class TestSuggestionAPI:
     def test_acknowledge_non_pending_returns_409(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
         product_id = _make_product(db_session, cid)
         wh = _make_warehouse(db_session, cid)
@@ -439,7 +465,7 @@ class TestSuggestionAPI:
     def test_suggestion_not_found_returns_404(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
 
         r = test_client.get(

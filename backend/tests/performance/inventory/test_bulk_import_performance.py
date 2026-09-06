@@ -49,6 +49,23 @@ def _login(client: TestClient, email: str, password: str) -> str:
     return resp.json()["data"]["access_token"]
 
 
+def _create_company(client: TestClient, token: str) -> uuid.UUID:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Perf Test Co {suffix}",
+            "email": f"contact-{suffix}@perf-test.example.com",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return uuid.UUID(resp.json()["data"]["id"])
+
+
 def _make_csv(row_count: int, uom_code: str) -> bytes:
     """Generate a CSV with ``row_count`` valid product rows."""
     lines = ["product_code,name,product_type,base_uom_code,description"]
@@ -97,11 +114,10 @@ class TestBulkImportPerformance:
         password = "TestPass123!"
         create_test_user(db_session, email=email, password=password)
 
-        company_id = uuid.uuid4()
-        uom_code = _seed_uom(db_session, company_id)
-
         token = _login(test_client, email, password)
         headers = {"Authorization": f"Bearer {token}"}
+        company_id = _create_company(test_client, token)
+        uom_code = _seed_uom(db_session, company_id)
 
         csv_bytes = _make_csv(_ROW_COUNT, uom_code)
 
@@ -155,11 +171,10 @@ class TestBulkImportPerformance:
         password = "TestPass123!"
         create_test_user(db_session, email=email, password=password)
 
-        company_id = uuid.uuid4()
-        uom_code = _seed_uom(db_session, company_id)
-
         token = _login(test_client, email, password)
         headers = {"Authorization": f"Bearer {token}"}
+        company_id = _create_company(test_client, token)
+        uom_code = _seed_uom(db_session, company_id)
 
         # 50% valid rows, 50% with missing UOM (should fail gracefully)
         lines = ["product_code,name,product_type,base_uom_code"]

@@ -407,6 +407,11 @@ class POService:
             self._create_line(created.id, company_id, idx, line_data, actor_id)
 
         self._recalculate_totals(created.id, company_id)
+        # Missing-commit defect fixed during pre-Epic-9 hardening audit
+        # (2026-08-14) — same subtle "repo.create() auto-commits the header
+        # but the raw totals UPDATE afterward doesn't" pattern documented on
+        # pr_service.py::add_line.
+        self.db.commit()
         self.db.expire(created)
 
         logger.info("PurchaseOrder created: %s (%s)", po_number, created.id)
@@ -460,6 +465,11 @@ class POService:
         next_num = self.line_repo.get_max_line_number(po_id, company_id) + 1
         self._create_line(po_id, company_id, next_num, data, actor_id)
         self._recalculate_totals(po_id, company_id)
+        # Missing-commit defect fixed during Epic 1-8 live verification
+        # (2026-08-14) — see backend/modules/inventory/services/
+        # warehouse_service.py::create_warehouse's comment for the full
+        # root-cause explanation.
+        self.db.commit()
         self.db.expire(po)
         return self._build_po_read(po)
 
@@ -519,6 +529,7 @@ class POService:
         self.line_repo.update(line)
 
         self._recalculate_totals(po_id, company_id)
+        self.db.commit()
         self.db.expire(po)
         return self._build_po_read(po)
 
@@ -537,6 +548,7 @@ class POService:
 
         self.line_repo.soft_delete(id=line_id, company_id=company_id)
         self._recalculate_totals(po_id, company_id)
+        self.db.commit()
         self.db.expire(po)
         return self._build_po_read(po)
 
@@ -565,6 +577,7 @@ class POService:
         self.db.add(charge)
         self.db.flush()
         self._recalculate_totals(po_id, company_id)
+        self.db.commit()
         self.db.expire(po)
         return self._build_po_read(po)
 
@@ -591,6 +604,7 @@ class POService:
             charge.amount = Decimal(str(data.amount))
         self.charge_repo.update(charge)
         self._recalculate_totals(po_id, company_id)
+        self.db.commit()
         self.db.expire(po)
         return self._build_po_read(po)
 
@@ -609,6 +623,7 @@ class POService:
             )
         self.charge_repo.soft_delete(id=charge_id, company_id=company_id)
         self._recalculate_totals(po_id, company_id)
+        self.db.commit()
         self.db.expire(po)
         return self._build_po_read(po)
 
@@ -642,6 +657,12 @@ class POService:
 
         self.po_repo.update_status(po_id, company_id, "PENDING_APPROVAL")
         po.status = "PENDING_APPROVAL"
+        # Missing-commit defect fixed during Epic 1-8 live verification
+        # (2026-08-14) — see backend/modules/inventory/services/
+        # warehouse_service.py::create_warehouse's comment for the full
+        # root-cause explanation. update_status() is a raw UPDATE with no
+        # commit of its own.
+        self.db.commit()
 
         get_event_bus().publish(
             PurchaseOrdered.create(
@@ -676,6 +697,9 @@ class POService:
 
         self.po_repo.update_status(po_id, company_id, "APPROVED")
         po.status = "APPROVED"
+        # Missing-commit defect fixed during Epic 1-8 live verification
+        # (2026-08-14) — see submit_po() above.
+        self.db.commit()
 
         get_event_bus().publish(
             PurchaseOrderApproved.create(
@@ -736,6 +760,7 @@ class POService:
         )
 
         logger.info("PurchaseOrder %s rejected by %s", po.po_number, actor_id)
+        self.db.commit()
         self.db.expire(po)
         return self._build_po_read(po)
 
@@ -751,6 +776,7 @@ class POService:
         self.po_repo.update_status(po_id, company_id, "DRAFT")
         po.status = "DRAFT"
         logger.info("PurchaseOrder %s reverted to DRAFT by %s", po.po_number, actor_id)
+        self.db.commit()
         self.db.expire(po)
         return self._build_po_read(po)
 
@@ -825,6 +851,7 @@ class POService:
             amendment_number,
             actor_id,
         )
+        self.db.commit()
         self.db.expire(po)
         return self._build_po_read(po)
 
@@ -870,6 +897,7 @@ class POService:
         )
 
         logger.info("PurchaseOrder %s cancelled by %s", po.po_number, actor_id)
+        self.db.commit()
         self.db.expire(po)
         return self._build_po_read(po)
 
@@ -901,6 +929,7 @@ class POService:
         )
 
         logger.info("PurchaseOrder %s closed by %s", po.po_number, actor_id)
+        self.db.commit()
         self.db.expire(po)
         return self._build_po_read(po)
 

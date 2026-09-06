@@ -130,6 +130,23 @@ def _export_url(company_id: str, po_id: str) -> str:
     return _url(company_id, f"/{po_id}/export/pdf")
 
 
+def _create_company(client: TestClient, token: str) -> str:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Purchase Test Co {suffix}",
+            "email": f"contact-{suffix}@purchase-test.example.com",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -141,7 +158,7 @@ def auth(test_client: TestClient, db_session):
         db_session, email="po-export@example.com", password="Export1!"
     )
     token = _login(test_client, user.email, pw)
-    cid = str(uuid.uuid4())
+    cid = _create_company(test_client, token)
     return test_client, token, cid
 
 
@@ -151,7 +168,7 @@ def auth2(test_client: TestClient, db_session):
         db_session, email="po-export-b@example.com", password="Export2!"
     )
     token = _login(test_client, user.email, pw)
-    cid = str(uuid.uuid4())
+    cid = _create_company(test_client, token)
     return test_client, token, cid
 
 

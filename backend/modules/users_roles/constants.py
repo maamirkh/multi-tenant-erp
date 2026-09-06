@@ -188,6 +188,147 @@ INITIAL_PERMISSIONS: Final[tuple[PermissionDefinition, ...]] = (
         "update",
         "Update own profile and preferences",
     ),
+    # Accounting module (Epic 8, Phase 14 — spec.md §33 Permission Matrix)
+    PermissionDefinition(
+        "accounting.gl.view",
+        "View General Ledger",
+        "accounting",
+        "read",
+        "View GL entries and balances",
+    ),
+    PermissionDefinition(
+        "accounting.journal.create",
+        "Create Journal Entry",
+        "accounting",
+        "create",
+        "Create a manual journal entry",
+    ),
+    PermissionDefinition(
+        "accounting.journal.approve",
+        "Approve Journal Entry",
+        "accounting",
+        "approve",
+        "Approve a journal entry submitted for approval",
+    ),
+    PermissionDefinition(
+        "accounting.journal.post",
+        "Post Journal Entry",
+        "accounting",
+        "update",
+        "Post a draft/approved journal entry to the GL",
+    ),
+    PermissionDefinition(
+        "accounting.journal.reverse",
+        "Reverse Journal Entry",
+        "accounting",
+        "update",
+        "Reverse a posted journal entry",
+    ),
+    PermissionDefinition(
+        "accounting.period.lock",
+        "Lock/Unlock Period",
+        "accounting",
+        "manage",
+        "Lock or unlock a fiscal period",
+    ),
+    PermissionDefinition(
+        "accounting.period.close",
+        "Close Fiscal Year",
+        "accounting",
+        "manage",
+        "Close a fiscal year",
+    ),
+    PermissionDefinition(
+        "accounting.payment.customer.create",
+        "Create Customer Payment",
+        "accounting",
+        "create",
+        "Record a customer payment receipt",
+    ),
+    PermissionDefinition(
+        "accounting.payment.customer.approve",
+        "Approve Customer Payment",
+        "accounting",
+        "approve",
+        "Approve a customer payment submitted for approval",
+    ),
+    PermissionDefinition(
+        "accounting.payment.supplier.create",
+        "Create Supplier Payment",
+        "accounting",
+        "create",
+        "Record a supplier payment disbursement",
+    ),
+    PermissionDefinition(
+        "accounting.payment.supplier.approve",
+        "Approve Supplier Payment",
+        "accounting",
+        "approve",
+        "Approve a supplier payment submitted for approval",
+    ),
+    PermissionDefinition(
+        "accounting.coa.manage",
+        "Manage Chart of Accounts",
+        "accounting",
+        "manage",
+        "Create/update/deactivate accounts",
+    ),
+    PermissionDefinition(
+        "accounting.tax.manage",
+        "Manage Tax Codes",
+        "accounting",
+        "manage",
+        "Create/update tax codes, rates, and groups",
+    ),
+    PermissionDefinition(
+        "accounting.exchangerate.manage",
+        "Manage Exchange Rates",
+        "accounting",
+        "manage",
+        "Record exchange rates and run currency revaluation",
+    ),
+    PermissionDefinition(
+        "accounting.bank.reconcile",
+        "Perform Bank Reconciliation",
+        "accounting",
+        "update",
+        "Reconcile bank statements",
+    ),
+    PermissionDefinition(
+        "accounting.reports.view",
+        "View Financial Statements",
+        "accounting",
+        "read",
+        "View trial balance, balance sheet, P&L, cash flow, and subsidiary reports",
+    ),
+    PermissionDefinition(
+        "accounting.ar.writeoff",
+        "Write-Off AR",
+        "accounting",
+        "manage",
+        "Write off an uncollectible AR balance",
+    ),
+    PermissionDefinition(
+        "accounting.creditlimit.override",
+        "Override Credit Limit",
+        "accounting",
+        "manage",
+        "Override a customer's credit hold/limit",
+    ),
+    PermissionDefinition(
+        "accounting.approvalworkflow.manage",
+        "Manage Approval Workflows",
+        "accounting",
+        "manage",
+        "Configure journal/payment approval thresholds",
+    ),
+    PermissionDefinition(
+        "accounting.audit.view",
+        "View Audit Trail",
+        "accounting",
+        "read",
+        "View the full financial audit trail",
+    ),
 )
 
 PERMISSION_BY_CODE: Final[dict[str, PermissionDefinition]] = {
@@ -198,6 +339,112 @@ PERMISSION_BY_CODE: Final[dict[str, PermissionDefinition]] = {
 # ---------------------------------------------------------------------------
 # Default Role-Permission Matrix (data-model.md Section 2.4)
 # ---------------------------------------------------------------------------
+
+# Accounting (Epic 8) role mapping rationale — spec.md §33 Permission Matrix
+# defines its own conceptual roles (CFO, Controller, Accountant, AR Clerk,
+# AP Clerk, Cashier, System Admin) that do not 1:1 exist in Epic 4's
+# SYSTEM_ROLES. Per spec.md §33's own footnote ("This matrix represents the
+# default configuration" — additive/configurable, not a hard requirement),
+# each spec-role's "Yes" cells are granted to the closest existing system
+# role instead of inventing new roles (out of this phase's scope):
+#   CFO           -> owner        (full authority, rank 100)
+#   System Admin  -> admin        (rank 80; per the matrix, System Admin
+#                                  does NOT get journal/payment create-or-
+#                                  approve rights — a deliberate SoD gap)
+#   Controller    -> manager      (rank 60; "operational ownership" persona,
+#                                  gets everything except Close Fiscal Year
+#                                  and Manage Approval Workflows, CFO-only)
+#   Accountant    -> accountant   (exact existing role/name match)
+#   Cashier       -> cashier      (exact existing role/name match)
+#   AR Clerk      -> salesperson  (closest customer-facing analogue)
+#   AP Clerk      -> (no existing analogue; intentionally not granted —
+#                     under-granting is safer than mis-granting)
+#   Auditor       -> viewer       (read-only reports/audit/GL)
+_ACCOUNTING_CFO: Final[frozenset[str]] = frozenset(
+    {
+        "accounting.gl.view",
+        "accounting.journal.create",
+        "accounting.journal.approve",
+        "accounting.journal.post",
+        "accounting.journal.reverse",
+        "accounting.period.lock",
+        "accounting.period.close",
+        "accounting.payment.customer.create",
+        "accounting.payment.customer.approve",
+        "accounting.payment.supplier.create",
+        "accounting.payment.supplier.approve",
+        "accounting.coa.manage",
+        "accounting.tax.manage",
+        "accounting.exchangerate.manage",
+        "accounting.bank.reconcile",
+        "accounting.reports.view",
+        "accounting.ar.writeoff",
+        "accounting.creditlimit.override",
+        "accounting.approvalworkflow.manage",
+        "accounting.audit.view",
+    }
+)
+_ACCOUNTING_SYSTEM_ADMIN: Final[frozenset[str]] = frozenset(
+    {
+        "accounting.gl.view",
+        "accounting.period.close",
+        "accounting.reports.view",
+        "accounting.approvalworkflow.manage",
+        "accounting.audit.view",
+    }
+)
+_ACCOUNTING_CONTROLLER: Final[frozenset[str]] = frozenset(
+    {
+        "accounting.gl.view",
+        "accounting.journal.create",
+        "accounting.journal.approve",
+        "accounting.journal.post",
+        "accounting.journal.reverse",
+        "accounting.period.lock",
+        "accounting.payment.customer.create",
+        "accounting.payment.customer.approve",
+        "accounting.payment.supplier.create",
+        "accounting.payment.supplier.approve",
+        "accounting.coa.manage",
+        "accounting.tax.manage",
+        "accounting.exchangerate.manage",
+        "accounting.bank.reconcile",
+        "accounting.reports.view",
+        "accounting.ar.writeoff",
+        "accounting.creditlimit.override",
+        "accounting.audit.view",
+    }
+)
+_ACCOUNTING_ACCOUNTANT: Final[frozenset[str]] = frozenset(
+    {
+        "accounting.gl.view",
+        "accounting.journal.create",
+        "accounting.journal.post",
+        "accounting.coa.manage",
+        "accounting.exchangerate.manage",
+        "accounting.bank.reconcile",
+        "accounting.reports.view",
+    }
+)
+_ACCOUNTING_AR_CLERK: Final[frozenset[str]] = frozenset(
+    {
+        "accounting.payment.customer.create",
+        "accounting.reports.view",
+    }
+)
+_ACCOUNTING_CASHIER: Final[frozenset[str]] = frozenset(
+    {
+        "accounting.payment.customer.create",
+        "accounting.payment.supplier.create",
+    }
+)
+_ACCOUNTING_VIEWER: Final[frozenset[str]] = frozenset(
+    {
+        "accounting.gl.view",
+        "accounting.reports.view",
+        "accounting.audit.view",
+    }
+)
 
 # Maps role slug → frozenset of permission codes granted by default
 DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
@@ -218,6 +465,7 @@ DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
             "profile.read",
             "profile.update",
         }
+        | _ACCOUNTING_CFO
     ),
     "admin": frozenset(
         {
@@ -235,6 +483,7 @@ DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
             "profile.read",
             "profile.update",
         }
+        | _ACCOUNTING_SYSTEM_ADMIN
     ),
     "manager": frozenset(
         {
@@ -244,6 +493,7 @@ DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
             "profile.read",
             "profile.update",
         }
+        | _ACCOUNTING_CONTROLLER
     ),
     "accountant": frozenset(
         {
@@ -253,6 +503,7 @@ DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
             "profile.read",
             "profile.update",
         }
+        | _ACCOUNTING_ACCOUNTANT
     ),
     "salesperson": frozenset(
         {
@@ -262,6 +513,7 @@ DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
             "profile.read",
             "profile.update",
         }
+        | _ACCOUNTING_AR_CLERK
     ),
     "cashier": frozenset(
         {
@@ -271,6 +523,7 @@ DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
             "profile.read",
             "profile.update",
         }
+        | _ACCOUNTING_CASHIER
     ),
     "store-keeper": frozenset(
         {
@@ -289,6 +542,7 @@ DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
             "profile.read",
             "profile.update",
         }
+        | _ACCOUNTING_VIEWER
     ),
 }
 

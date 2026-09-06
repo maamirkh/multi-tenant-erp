@@ -571,6 +571,10 @@ class DeliveryService:
             )
 
         self._db.flush()
+        # Missing-commit defect fixed during pre-Epic-9 hardening audit
+        # (2026-08-14) — see inventory/services/warehouse_service.py::
+        # create_warehouse's comment for the full root-cause explanation.
+        self._db.commit()
 
         get_event_bus().publish(
             DeliveryNoteCreated(
@@ -657,6 +661,7 @@ class DeliveryService:
             self._update_sales_order_status(company_id, order_id, new_so_status)
             self._db.flush()
 
+        self._db.commit()
         get_event_bus().publish(
             DeliveryNoteDispatched(
                 aggregate_id=dn.id,
@@ -695,6 +700,7 @@ class DeliveryService:
         dn.status = "DELIVERED"
         dn.version += 1
         self._db.flush()
+        self._db.commit()
 
         get_event_bus().publish(
             DeliveryNoteDelivered(
@@ -756,6 +762,7 @@ class DeliveryService:
         dn.status = "CANCELLED"
         dn.version += 1
         self._db.flush()
+        self._db.commit()
 
         get_event_bus().publish(
             DeliveryNoteCancelled(

@@ -69,13 +69,30 @@ def _ok(resp, ctx: str = "") -> dict:
     return resp.json()["data"]
 
 
+def _create_company(client: TestClient, token: str) -> str:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Epic Completion Test Co {suffix}",
+            "email": f"contact-{suffix}@epic-completion-test.example.com",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
 @pytest.fixture()
 def ec_auth(test_client: TestClient, db_session: Session):
     user, pw = create_test_user(
         db_session, email="epic-completion@example.com", password="EpicEC1!"
     )
     token = _login(test_client, user.email, pw)
-    cid = str(uuid.uuid4())
+    cid = _create_company(test_client, token)
     return test_client, token, cid
 
 
@@ -632,7 +649,8 @@ class TestEC11_MultiTenancy:
 
         tok_a = _login(test_client, user_a.email, pw_a)
         tok_b = _login(test_client, user_b.email, pw_b)
-        cid_a, cid_b = str(uuid.uuid4()), str(uuid.uuid4())
+        cid_a = _create_company(test_client, tok_a)
+        cid_b = _create_company(test_client, tok_b)
 
         # Create supplier in A
         test_client.post(

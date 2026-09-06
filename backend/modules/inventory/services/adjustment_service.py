@@ -141,6 +141,10 @@ class AdjustmentService:
         )
         self._db.add(adjustment)
         self._db.flush()
+        # Missing-commit defect fixed during Epic 1-8 live verification
+        # (2026-08-14) — see warehouse_service.py::create_warehouse's comment
+        # for the full root-cause explanation.
+        self._db.commit()
 
         logger.info(
             "Adjustment created: id=%s company=%s product=%s wh=%s qty=%s type=%s",
@@ -188,6 +192,10 @@ class AdjustmentService:
                 new_status="PENDING_APPROVAL",
                 submitted_by=str(actor_id) if actor_id else None,
             )
+            # Missing-commit defect fixed during Epic 1-8 live verification
+            # (2026-08-14) — see warehouse_service.py::create_warehouse's
+            # comment for the full root-cause explanation.
+            self._db.commit()
             get_event_bus().publish(
                 InventoryAdjustmentSubmitted(
                     aggregate_id=adjustment_id,
@@ -213,6 +221,10 @@ class AdjustmentService:
                 new_quantity=new_qty,
                 reference_movement_id=str(movement.id),
             )
+            # Missing-commit defect fixed during Epic 1-8 live verification
+            # (2026-08-14) — see warehouse_service.py::create_warehouse's
+            # comment for the full root-cause explanation.
+            self._db.commit()
             get_event_bus().publish(
                 InventoryAdjustmentApproved(
                     aggregate_id=adjustment_id,

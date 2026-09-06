@@ -41,6 +41,23 @@ def _auth(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _create_company(client: TestClient, token: str) -> str:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = _uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Purchase Test Co {suffix}",
+            "email": f"contact-{suffix}@purchase-test.example.com",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
 def _url(company_id: str, path: str = "") -> str:
     return f"/api/v1/companies/{company_id}/purchase{path}"
 
@@ -50,7 +67,7 @@ def _setup(client: TestClient, db: Session, suffix: str = "") -> tuple[str, str]
     email = f"approval{suffix}@example.com"
     user, pw = create_test_user(db, email=email)
     token = _login(client, user.email, pw)
-    company_id = str(_uuid.uuid4())
+    company_id = _create_company(client, token)
     return token, company_id
 
 

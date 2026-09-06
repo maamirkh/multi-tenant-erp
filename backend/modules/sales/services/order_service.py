@@ -182,6 +182,10 @@ class OrderLineService:
         self._db.add(line)
         self._db.flush()
         self._recalculate_totals(order, company_id)
+        # Missing-commit defect fixed during pre-Epic-9 hardening audit
+        # (2026-08-14) — see inventory/services/warehouse_service.py::
+        # create_warehouse's comment for the full root-cause explanation.
+        self._db.commit()
         return line
 
     def update_line(
@@ -243,6 +247,7 @@ class OrderLineService:
 
         self._db.flush()
         self._recalculate_totals(order, company_id)
+        self._db.commit()
         return line
 
     def delete_line(self, company_id: UUID, order_id: UUID, line_id: UUID) -> None:
@@ -262,6 +267,7 @@ class OrderLineService:
         line.is_deleted = True
         self._db.flush()
         self._recalculate_totals(order, company_id)
+        self._db.commit()
 
     def _recalculate_totals(self, order: SalesOrder, company_id: UUID) -> None:
         """Recompute order subtotal and total from active lines."""
@@ -410,6 +416,10 @@ class OrderService:
             line_service.add_line(company_id, order.id, line_data)
 
         self._db.flush()
+        # Missing-commit defect fixed during pre-Epic-9 hardening audit
+        # (2026-08-14) — covers the zero-line case; each line added above
+        # already committed via OrderLineService.add_line.
+        self._db.commit()
 
         get_event_bus().publish(
             OrderCreated(
@@ -464,6 +474,7 @@ class OrderService:
             order.customer_notes = data.customer_notes
 
         self._db.flush()
+        self._db.commit()
         return order
 
     def submit_for_approval(
@@ -512,6 +523,11 @@ class OrderService:
             )
 
         self._db.flush()
+        # Missing-commit defect fixed during pre-Epic-9 hardening audit
+        # (2026-08-14) — also commits the approval record written by
+        # ApprovalService.evaluate_for_order() above (itself flush-only by
+        # design, participating in this caller's transaction).
+        self._db.commit()
         logger.info(
             "OrderService: order %s submitted (auto_approved=%s)",
             order.order_number,
@@ -554,6 +570,14 @@ class OrderService:
         if all_approved:
             order.status = "APPROVED"
             self._db.flush()
+
+        # Missing-commit defect fixed during pre-Epic-9 hardening audit
+        # (2026-08-14) — commits the approval decision record written by
+        # ApprovalService.process_approval_decision() above regardless of
+        # whether this decision completed all required approval levels.
+        self._db.commit()
+
+        if all_approved:
             get_event_bus().publish(
                 OrderApproved(
                     company_id=company_id,
@@ -615,6 +639,7 @@ class OrderService:
         order.status = "DRAFT"
         order.approval_version = order.approval_version + 1
         self._db.flush()
+        self._db.commit()
 
         get_event_bus().publish(
             OrderRejected(
@@ -656,6 +681,7 @@ class OrderService:
         order.status = "CANCELLED"
         order.cancellation_reason = data.cancellation_reason
         self._db.flush()
+        self._db.commit()
 
         get_event_bus().publish(
             OrderCancelled(
@@ -692,6 +718,7 @@ class OrderService:
         if order.status == "APPROVED":
             order.status = "PARTIALLY_DELIVERED"
             self._db.flush()
+            self._db.commit()
             get_event_bus().publish(
                 OrderPartiallyDelivered(
                     company_id=company_id,
@@ -710,6 +737,7 @@ class OrderService:
         _assert_transition(order.status, "DELIVERED")
         order.status = "DELIVERED"
         self._db.flush()
+        self._db.commit()
         get_event_bus().publish(
             OrderDelivered(
                 company_id=company_id,
@@ -729,6 +757,7 @@ class OrderService:
         _assert_transition(order.status, "INVOICED")
         order.status = "INVOICED"
         self._db.flush()
+        self._db.commit()
         get_event_bus().publish(
             OrderInvoiced(
                 company_id=company_id,
@@ -749,6 +778,7 @@ class OrderService:
         _assert_transition(order.status, "CLOSED")
         order.status = "CLOSED"
         self._db.flush()
+        self._db.commit()
         get_event_bus().publish(
             OrderClosed(
                 company_id=company_id,

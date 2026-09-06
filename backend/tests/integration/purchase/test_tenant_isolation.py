@@ -70,6 +70,23 @@ def _create_po(client: TestClient, token: str, cid: str, supplier_id: str) -> st
     return resp.json()["data"]["id"]
 
 
+def _create_company(client: TestClient, token: str) -> str:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Tenant Isolation Test Co {suffix}",
+            "email": f"contact-{suffix}@tenant-iso-test.example.com",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
 def _create_pr(client: TestClient, token: str, cid: str) -> str:
     resp = client.post(
         f"{_base(cid)}/purchase-requests",
@@ -96,7 +113,7 @@ def tenant_a(test_client: TestClient, db_session: Session):
         db_session, email="tenant-a-isolation@example.com", password="TenantA1!"
     )
     token = _login(test_client, user.email, pw)
-    cid = str(uuid.uuid4())
+    cid = _create_company(test_client, token)
     return test_client, token, cid
 
 
@@ -106,7 +123,7 @@ def tenant_b(test_client: TestClient, db_session: Session):
         db_session, email="tenant-b-isolation@example.com", password="TenantB1!"
     )
     token = _login(test_client, user.email, pw)
-    cid = str(uuid.uuid4())
+    cid = _create_company(test_client, token)
     return test_client, token, cid
 
 

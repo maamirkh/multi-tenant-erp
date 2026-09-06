@@ -236,15 +236,25 @@ class InvoiceService:
         self,
         invoice_date_str: str,
         payment_term_id: str | None,
+        company_id: UUID,
     ) -> str:
         """Calculate due date from invoice_date + payment term due_days."""
         inv_date = date.fromisoformat(invoice_date_str)
         if payment_term_id:
             from modules.sales.models.master import SalesPaymentTerm  # noqa: PLC0415
 
+            # Tenant-isolation defect fixed during pre-Epic-9 hardening audit
+            # (2026-08-14): payment_term_id comes from the request body and
+            # was looked up with no company_id filter, letting a caller in
+            # Company A pass a guessed Company B payment-term UUID and have
+            # its due_days silently applied to (and the foreign id persisted
+            # on) Company A's invoice.
             term = (
                 self._db.query(SalesPaymentTerm)
-                .filter(SalesPaymentTerm.id == payment_term_id)
+                .filter(
+                    SalesPaymentTerm.id == UUID(payment_term_id),
+                    SalesPaymentTerm.company_id == company_id,
+                )
                 .first()
             )
             if term and term.due_days:
@@ -308,14 +318,8 @@ class InvoiceService:
             # Determine unit price from order line if possible
             unit_price = Decimal("0")
             if dn_line.order_line_id:
-                from modules.sales.models.order import (
-                    OrderLine as OrderLineModel,  # noqa: PLC0415
-                )
-
-                ol = (
-                    self._db.query(OrderLineModel)
-                    .filter(OrderLineModel.id == dn_line.order_line_id)
-                    .first()
+                ol = self._order_line_repo.get_by_id_or_none(
+                    UUID(dn_line.order_line_id), company_id
                 )
                 if ol is not None:
                     unit_price = Decimal(str(ol.unit_price))
@@ -468,10 +472,8 @@ class InvoiceService:
                     "Delivery note must be DISPATCHED or DELIVERED."
                 )
             if dn.order_id:
-                order = (
-                    self._db.query(SalesOrder)
-                    .filter(SalesOrder.id == dn.order_id)
-                    .first()
+                order = self._order_repo.get_by_id_or_none(
+                    UUID(dn.order_id), company_id
                 )
 
         elif data.order_id:
@@ -494,6 +496,7 @@ class InvoiceService:
         due_date = self._calculate_due_date(
             data.invoice_date,
             str(data.payment_term_id) if data.payment_term_id else None,
+            company_id,
         )
 
         # ---- Create invoice header -------------------------------------------
@@ -564,11 +567,26 @@ class InvoiceService:
             self._db.add(charge)
 
         # ---- Compute totals --------------------------------------------------
+        # Genuine defect found live during pre-Epic-9 hardening audit
+        # (2026-08-14): sum() over an empty orm_lines iterable (a
+        # zero-line invoice) returns the built-in int 0, not Decimal("0"),
+        # since sum() has no explicit start value — .quantize() below then
+        # crashed with AttributeError: 'int' object has no attribute
+        # 'quantize'. Confirmed live: POST /sales/invoices with lines=[]
+        # returned a real 500. Also flagged by mypy pre-existing
+        # ("Item 'int' of 'Decimal | Literal[0]' has no attribute
+        # 'quantize'") but never actually triggered until this audit
+        # exercised the zero-line path. Fix: explicit Decimal("0") start.
         discount_amount = sum(
-            (Decimal(str(ln.discount_amount)) if ln.discount_amount else Decimal("0"))
-            for ln in orm_lines
+            (
+                Decimal(str(ln.discount_amount)) if ln.discount_amount else Decimal("0")
+                for ln in orm_lines
+            ),
+            start=Decimal("0"),
         )
-        tax_amount = sum(Decimal(str(ln.tax_amount)) for ln in orm_lines)
+        tax_amount = sum(
+            (Decimal(str(ln.tax_amount)) for ln in orm_lines), start=Decimal("0")
+        )
         total_amount = (subtotal + tax_amount + charges_amount).quantize(
             Decimal("0.01")
         )
@@ -583,6 +601,11 @@ class InvoiceService:
         invoice.total_amount = total_amount
         invoice.amount_in_words = words
         self._db.flush()
+        # Missing-commit defect fixed during Epic 1-8 live verification
+        # (2026-08-14) — see backend/modules/inventory/services/
+        # warehouse_service.py::create_warehouse's comment for the full
+        # root-cause explanation.
+        self._db.commit()
 
         # ---- Publish event --------------------------------------------------
         try:
@@ -634,6 +657,14 @@ class InvoiceService:
         # SO status auto-update (T167)
         self._update_so_status_to_invoiced(invoice.order_id, company_id)
 
+        # Missing-commit defect fixed during Epic 1-8 live verification
+        # (2026-08-14) — see create_invoice() above. This is the exact event
+        # (InvoiceIssued) Accounting's handle_sales_invoice_posted
+        # subscribes to for the Sales-to-Cash integration — the invoice's
+        # own ISSUED status was never durably persisted despite the event
+        # firing.
+        self._db.commit()
+
         # Publish event
         try:
             get_event_bus().publish(
@@ -680,6 +711,7 @@ class InvoiceService:
         invoice.status = "CANCELLED"
         invoice.updated_at = utcnow()
         self._db.flush()
+        self._db.commit()
 
         # Publish event
         try:
@@ -736,6 +768,7 @@ class InvoiceService:
                 (invoice.internal_notes or "") + f"\nCredit note: {data.notes}"
             ).strip()
         self._db.flush()
+        self._db.commit()
 
         # Publish event
         try:

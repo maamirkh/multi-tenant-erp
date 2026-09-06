@@ -20,6 +20,7 @@ Feature routers included:
     /api/v1/companies/{company_id}/inventory/*   — Inventory company endpoints (Epic 005)
     /api/v1/companies/{company_id}/purchase/*    — Purchase module endpoints (Epic 006)
     /api/v1/companies/{company_id}/sales/*       — Sales module endpoints (Epic 007)
+    /api/v1/companies/{company_id}/accounting/*  — Accounting module endpoints (Epic 008)
 """
 
 import logging
@@ -35,11 +36,13 @@ from core.database.session import get_db
 from core.logging.setup import REQUEST_ID_CONTEXT
 from core.schemas.response import ResponseMeta, StandardResponse
 from core.utils.datetime import utcnow
+from modules.accounting.router import router as accounting_router
 from modules.auth.router import router as auth_router
 from modules.companies.router import router as companies_router
 from modules.inventory.router import router as inventory_router
 from modules.purchase.router import router as purchase_router
 from modules.sales.router import router as sales_router
+from modules.users_roles.dependencies import get_current_company_member
 from modules.users_roles.ownership_router import ownership_router
 from modules.users_roles.permissions_router import permissions_router
 from modules.users_roles.preferences_router import preferences_router
@@ -85,14 +88,22 @@ router.include_router(
 router.include_router(
     inventory_router,
     prefix="/companies/{company_id}/inventory",
+    dependencies=[Depends(get_current_company_member)],
 )
 router.include_router(
     purchase_router,
     prefix="/companies/{company_id}/purchase",
+    dependencies=[Depends(get_current_company_member)],
 )
 router.include_router(
     sales_router,
     prefix="/companies/{company_id}/sales",
+    dependencies=[Depends(get_current_company_member)],
+)
+router.include_router(
+    accounting_router,
+    prefix="/companies/{company_id}/accounting",
+    dependencies=[Depends(get_current_company_member)],
 )
 
 

@@ -44,11 +44,29 @@ def _url(company_id: str | uuid.UUID, path: str) -> str:
     return f"/api/v1/companies/{company_id}/inventory{path}"
 
 
-def _setup(db: Session) -> tuple[str, str, uuid.UUID]:
+def _create_company(client: TestClient, token: str) -> uuid.UUID:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Inventory Test Co {suffix}",
+            "email": f"contact-{suffix}@inventory-test.example.com",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return uuid.UUID(resp.json()["data"]["id"])
+
+
+def _setup(db: Session, client: TestClient) -> tuple[str, str, uuid.UUID]:
     email = f"lookup-{uuid.uuid4().hex[:8]}@test.com"
     password = "TestPass123!"
     create_test_user(db, email=email, password=password)
-    company_id = uuid.uuid4()
+    token = _login(client, email, password)
+    company_id = _create_company(client, token)
     return email, password, company_id
 
 
@@ -146,7 +164,7 @@ def _make_warehouse(db: Session, company_id: uuid.UUID) -> Warehouse:
 
 class TestBarcodeLookup:
     def test_barcode_found(self, test_client: TestClient, db_session: Session) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         uom = _make_uom(db_session, company_id)
         product = _make_product(db_session, company_id, uom.id)
         wh = _make_warehouse(db_session, company_id)
@@ -170,7 +188,7 @@ class TestBarcodeLookup:
     def test_barcode_not_found_returns_404(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         db_session.flush()
 
         token = _login(test_client, email, password)
@@ -191,8 +209,8 @@ class TestBarcodeLookup:
         self, test_client: TestClient, db_session: Session
     ) -> None:
         """Barcode from company A must not be visible under company B."""
-        email_a, password_a, company_a = _setup(db_session)
-        _, _, company_b = _setup(db_session)
+        email_a, password_a, company_a = _setup(db_session, test_client)
+        _, _, company_b = _setup(db_session, test_client)
 
         uom = _make_uom(db_session, company_a)
         product = _make_product(db_session, company_a, uom.id)
@@ -201,12 +219,15 @@ class TestBarcodeLookup:
         db_session.flush()
 
         token_a = _login(test_client, email_a, password_a)
-        # Lookup under company B — should return 404
+        # User A is not a member of company B — denied either at the
+        # membership gate (403) or, if it got past that, at the repository's
+        # company_id scoping (404). Both are correct "access denied" outcomes
+        # (see tests/security/inventory/test_security.py).
         resp = test_client.get(
             _url(company_b, f"/lookup/barcode/{barcode_value}"),
             headers=_auth(token_a),
         )
-        assert resp.status_code == 404
+        assert resp.status_code in (403, 404)
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +237,7 @@ class TestBarcodeLookup:
 
 class TestSKULookup:
     def test_sku_found(self, test_client: TestClient, db_session: Session) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         uom = _make_uom(db_session, company_id)
         product = _make_product(db_session, company_id, uom.id)
         db_session.flush()
@@ -234,7 +255,7 @@ class TestSKULookup:
     def test_sku_case_insensitive(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         uom = _make_uom(db_session, company_id)
         product = _make_product(db_session, company_id, uom.id)
         db_session.flush()
@@ -250,7 +271,7 @@ class TestSKULookup:
     def test_sku_not_found_returns_404(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         db_session.flush()
 
         token = _login(test_client, email, password)
@@ -277,7 +298,7 @@ class TestLabelData:
     def test_label_data_returned(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         uom = _make_uom(db_session, company_id)
         product = _make_product(db_session, company_id, uom.id)
         barcode_value = f"EAN{uuid.uuid4().int % 10**12:012d}"
@@ -305,7 +326,7 @@ class TestLabelData:
         self, test_client: TestClient, db_session: Session
     ) -> None:
         """Products without barcodes return label data with barcode_value=None."""
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         uom = _make_uom(db_session, company_id)
         product = _make_product(db_session, company_id, uom.id)
         db_session.flush()
@@ -322,7 +343,7 @@ class TestLabelData:
     def test_label_data_product_not_found(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id = _setup(db_session)
+        email, password, company_id = _setup(db_session, test_client)
         db_session.flush()
 
         token = _login(test_client, email, password)

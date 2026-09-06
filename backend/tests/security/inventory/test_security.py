@@ -38,11 +38,29 @@ def _login(client: TestClient, email: str, password: str) -> str:
     return resp.json()["data"]["access_token"]
 
 
+def _create_company(client: TestClient, token: str) -> uuid.UUID:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Inventory Security Test Co {suffix}",
+            "email": f"contact-{suffix}@inv-sec-test.example.com",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return uuid.UUID(resp.json()["data"]["id"])
+
+
 def _auth(client: TestClient, db: Session) -> tuple[dict, uuid.UUID]:
     email = f"sec-{uuid.uuid4().hex[:8]}@test.com"
     create_test_user(db, email=email, password="TestPass123!")
     token = _login(client, email, "TestPass123!")
-    return {"Authorization": f"Bearer {token}"}, uuid.uuid4()
+    company_id = _create_company(client, token)
+    return {"Authorization": f"Bearer {token}"}, company_id
 
 
 # ---------------------------------------------------------------------------
@@ -283,9 +301,13 @@ class TestBOLAPrevention:
             _url(company_b_id, f"/products/{product_a.id}"),
             headers=headers_b,
         )
-        # Must return 404 — object not found in Company B's namespace
-        assert (
-            resp.status_code == 404
+        # Denied either at the membership gate (403 — user B has no membership
+        # in either fake company_id used here) or, if it got past that, at the
+        # repository's company_id scoping (404 — object not found in B's
+        # namespace). Both are correct "access denied" outcomes.
+        assert resp.status_code in (
+            403,
+            404,
         ), f"BOLA: Company B accessed Company A's product (status {resp.status_code})"
 
     def test_cannot_access_warehouse_from_another_company(
@@ -315,6 +337,10 @@ class TestBOLAPrevention:
             _url(company_b_id, f"/warehouses/{wh_a.id}"),
             headers=headers_b,
         )
-        assert (
-            resp.status_code == 404
+        # Denied either at the membership gate (403) or repository scoping
+        # (404) — see comment in test_cannot_access_specific_product_from_
+        # another_company above.
+        assert resp.status_code in (
+            403,
+            404,
         ), f"BOLA: Company B accessed Company A's warehouse (status {resp.status_code})"

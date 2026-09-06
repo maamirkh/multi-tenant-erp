@@ -31,6 +31,14 @@ _SETTINGS = Settings(
     AUTH_LOCKOUT_THRESHOLD=5,
     AUTH_LOCKOUT_DURATION_MINUTES=30,
     PASSWORD_MIN_LENGTH=12,
+    # Test-only Argon2 performance settings (not a security relaxation —
+    # these are the cheapest values the shared Settings model already
+    # permits; production defaults are untouched). This file hashes/
+    # verifies real passwords in every login test, so this materially
+    # speeds up the suite. See tests/conftest.py's `_TEST_ARGON2_KWARGS`.
+    ARGON2_TIME_COST=1,
+    ARGON2_MEMORY_COST=19456,
+    ARGON2_PARALLELISM=1,
 )
 
 

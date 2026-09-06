@@ -230,6 +230,9 @@ class PRService:
             self._create_line(created.id, company_id, idx, line_data)
 
         self._recalculate_total(created.id, company_id)
+        # Missing-commit defect fixed during pre-Epic-9 hardening audit
+        # (2026-08-14) — same subtle pattern documented on add_line() below.
+        self.db.commit()
 
         get_event_bus().publish(
             PurchaseRequestCreated.create(
@@ -319,6 +322,17 @@ class PRService:
         line = self._create_line(pr_id, company_id, next_number, data)
         self.db.flush()
         self._recalculate_total(pr_id, company_id)
+        # Missing-commit defect fixed during Epic 1-8 live verification
+        # (2026-08-14) — a MORE SUBTLE variant than the simple "nothing
+        # commits" case documented in warehouse_service.py::create_warehouse:
+        # _create_line() -> self.line_repo.create() already auto-commits
+        # (BaseRepository.create() does add+commit+refresh), so the line
+        # itself WAS persisted — but _recalculate_total()'s raw UPDATE runs
+        # in a NEW transaction that started after that commit, and was
+        # itself never committed. Empirically confirmed: PR.total_estimated_
+        # cost read back as 0.00 after adding a line worth 50.00. A single
+        # explicit commit here covers both.
+        self.db.commit()
         return PRLineRead.model_validate(line)
 
     def update_line(
@@ -362,6 +376,7 @@ class PRService:
 
         self.line_repo.update(line)
         self._recalculate_total(pr_id, company_id)
+        self.db.commit()
         return PRLineRead.model_validate(line)
 
     def remove_line(
@@ -381,6 +396,7 @@ class PRService:
 
         self.line_repo.soft_delete(id=line_id, company_id=company_id)
         self._recalculate_total(pr_id, company_id)
+        self.db.commit()
 
     # ------------------------------------------------------------------
     # Submit  (T103)
@@ -407,6 +423,12 @@ class PRService:
 
         self.pr_repo.update_status(pr_id, company_id, "SUBMITTED")
         pr.status = "SUBMITTED"
+        # Missing-commit defect fixed during Epic 1-8 live verification
+        # (2026-08-14) — see backend/modules/inventory/services/
+        # warehouse_service.py::create_warehouse's comment for the full
+        # root-cause explanation. update_status() is a raw UPDATE with no
+        # commit of its own.
+        self.db.commit()
 
         get_event_bus().publish(
             PurchaseRequestSubmitted.create(
@@ -442,6 +464,9 @@ class PRService:
 
         self.pr_repo.update_status(pr_id, company_id, "APPROVED")
         pr.status = "APPROVED"
+        # Missing-commit defect fixed during Epic 1-8 live verification
+        # (2026-08-14) — see the note in submit_pr() above.
+        self.db.commit()
 
         get_event_bus().publish(
             PurchaseRequestApproved.create(
@@ -555,6 +580,10 @@ class PRService:
 
         self.pr_repo.set_converted_to_po(pr_id, company_id, po.id)
         pr.converted_to_po_id = str(po.id)
+        # Missing-commit defect fixed during Epic 1-8 live verification
+        # (2026-08-14) — see submit_pr() above; the new PO row itself was
+        # also only flush()-staged, never committed.
+        self.db.commit()
 
         get_event_bus().publish(
             PurchaseRequestConvertedToPO.create(

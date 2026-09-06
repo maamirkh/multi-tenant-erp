@@ -20,7 +20,7 @@ Spec ref: specs/007-sales-management/spec.md §Order Fulfilment
 from __future__ import annotations
 
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -51,6 +51,23 @@ def _auth(token: str) -> dict:
 
 def _dn_url(company_id: str, path: str = "") -> str:
     return f"/api/v1/companies/{company_id}/sales/delivery-notes{path}"
+
+
+def _create_company(client: TestClient, token: str) -> UUID:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Sales Test Co {suffix}",
+            "email": f"contact-{suffix}@sales-test.example.com",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return UUID(resp.json()["data"]["id"])
 
 
 def _create_approved_order(
@@ -118,9 +135,9 @@ class TestCreateDeliveryNote:
     def test_create_dn_from_approved_order(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         user, password = create_test_user(db_session, _unique_email())
         token = _login(test_client, user.email, password)
+        company_id = _create_company(test_client, token)
 
         order, line = _create_approved_order(db_session, company_id)
 
@@ -137,9 +154,9 @@ class TestCreateDeliveryNote:
     def test_create_dn_from_draft_order_rejected(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         user, password = create_test_user(db_session, _unique_email())
         token = _login(test_client, user.email, password)
+        company_id = _create_company(test_client, token)
 
         # Create a DRAFT order
         order = SalesOrder(
@@ -186,9 +203,9 @@ class TestCreateDeliveryNote:
     def test_create_dn_exceeds_remaining_quantity(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         user, password = create_test_user(db_session, _unique_email())
         token = _login(test_client, user.email, password)
+        company_id = _create_company(test_client, token)
 
         order, line = _create_approved_order(db_session, company_id)
 
@@ -211,9 +228,9 @@ class TestCreateDeliveryNote:
     def test_create_dn_auto_generates_delivery_number(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         user, password = create_test_user(db_session, _unique_email())
         token = _login(test_client, user.email, password)
+        company_id = _create_company(test_client, token)
 
         order, line = _create_approved_order(db_session, company_id)
 
@@ -236,9 +253,9 @@ class TestListDeliveryNotes:
     def test_list_returns_company_dns(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         user, password = create_test_user(db_session, _unique_email())
         token = _login(test_client, user.email, password)
+        company_id = _create_company(test_client, token)
 
         order, line = _create_approved_order(db_session, company_id)
         test_client.post(
@@ -254,9 +271,9 @@ class TestListDeliveryNotes:
     def test_list_filter_by_status(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         user, password = create_test_user(db_session, _unique_email())
         token = _login(test_client, user.email, password)
+        company_id = _create_company(test_client, token)
 
         order, line = _create_approved_order(db_session, company_id)
         test_client.post(
@@ -284,9 +301,9 @@ class TestGetDeliveryNote:
     def test_get_dn_returns_correct_data(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         user, password = create_test_user(db_session, _unique_email())
         token = _login(test_client, user.email, password)
+        company_id = _create_company(test_client, token)
 
         order, line = _create_approved_order(db_session, company_id)
         create_resp = test_client.post(
@@ -306,9 +323,9 @@ class TestGetDeliveryNote:
     def test_get_unknown_dn_returns_404(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         user, password = create_test_user(db_session, _unique_email())
         token = _login(test_client, user.email, password)
+        company_id = _create_company(test_client, token)
 
         resp = test_client.get(
             _dn_url(str(company_id), f"/{uuid4()}"),
@@ -326,9 +343,9 @@ class TestDispatchDeliveryNote:
     def test_dispatch_transitions_to_dispatched(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         user, password = create_test_user(db_session, _unique_email())
         token = _login(test_client, user.email, password)
+        company_id = _create_company(test_client, token)
 
         order, line = _create_approved_order(db_session, company_id)
         create_resp = test_client.post(
@@ -349,9 +366,9 @@ class TestDispatchDeliveryNote:
     def test_dispatch_updates_order_to_partially_delivered(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         user, password = create_test_user(db_session, _unique_email())
         token = _login(test_client, user.email, password)
+        company_id = _create_company(test_client, token)
 
         order, line = _create_approved_order(db_session, company_id)
         create_resp = test_client.post(
@@ -373,9 +390,9 @@ class TestDispatchDeliveryNote:
     def test_dispatch_already_dispatched_returns_409(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         user, password = create_test_user(db_session, _unique_email())
         token = _login(test_client, user.email, password)
+        company_id = _create_company(test_client, token)
 
         order, line = _create_approved_order(db_session, company_id)
         create_resp = test_client.post(
@@ -408,9 +425,9 @@ class TestDeliverDeliveryNote:
     def test_deliver_transitions_to_delivered(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         user, password = create_test_user(db_session, _unique_email())
         token = _login(test_client, user.email, password)
+        company_id = _create_company(test_client, token)
 
         order, line = _create_approved_order(db_session, company_id)
         create_resp = test_client.post(
@@ -436,9 +453,9 @@ class TestDeliverDeliveryNote:
     def test_deliver_from_draft_returns_409(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         user, password = create_test_user(db_session, _unique_email())
         token = _login(test_client, user.email, password)
+        company_id = _create_company(test_client, token)
 
         order, line = _create_approved_order(db_session, company_id)
         create_resp = test_client.post(
@@ -465,9 +482,9 @@ class TestCancelDeliveryNote:
     def test_cancel_draft_dn(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         user, password = create_test_user(db_session, _unique_email())
         token = _login(test_client, user.email, password)
+        company_id = _create_company(test_client, token)
 
         order, line = _create_approved_order(db_session, company_id)
         create_resp = test_client.post(
@@ -487,9 +504,9 @@ class TestCancelDeliveryNote:
     def test_cancel_delivered_dn_returns_409(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         user, password = create_test_user(db_session, _unique_email())
         token = _login(test_client, user.email, password)
+        company_id = _create_company(test_client, token)
 
         order, line = _create_approved_order(db_session, company_id)
         create_resp = test_client.post(
@@ -526,9 +543,9 @@ class TestListDeliveryNoteLines:
     def test_list_lines_returns_correct_count(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         user, password = create_test_user(db_session, _unique_email())
         token = _login(test_client, user.email, password)
+        company_id = _create_company(test_client, token)
 
         order, line = _create_approved_order(db_session, company_id)
         create_resp = test_client.post(
@@ -557,13 +574,12 @@ class TestTenantIsolationAPI:
     def test_company_b_cannot_access_company_a_dn(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_a = uuid4()
-        company_b = uuid4()
-
         user_a, password_a = create_test_user(db_session, _unique_email())
         user_b, password_b = create_test_user(db_session, _unique_email())
         token_a = _login(test_client, user_a.email, password_a)
         token_b = _login(test_client, user_b.email, password_b)
+        company_a = _create_company(test_client, token_a)
+        company_b = _create_company(test_client, token_b)
 
         order, line = _create_approved_order(db_session, company_a)
         create_resp = test_client.post(

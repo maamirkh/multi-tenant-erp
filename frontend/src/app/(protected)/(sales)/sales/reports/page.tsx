@@ -149,7 +149,7 @@ export default function SalesReportsPage() {
           {REPORT_LINKS.map((r) => (
             <Link
               key={r.type}
-              href={`/reports/${r.type}`}
+              href={`/sales/reports/${r.type}`}
               className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-sm hover:border-blue-400 hover:shadow-md transition-all"
             >
               <span className="text-sm font-medium text-gray-700">

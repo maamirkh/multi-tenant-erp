@@ -184,6 +184,10 @@ class TransferService:
             self._db.add(tl)
 
         self._db.flush()
+        # Missing-commit defect fixed during pre-Epic-9 hardening audit
+        # (2026-08-14) — see warehouse_service.py::create_warehouse's comment
+        # for the full root-cause explanation.
+        self._db.commit()
         get_event_bus().publish(
             StockTransferInitiated(
                 aggregate_id=transfer.id,
@@ -284,6 +288,11 @@ class TransferService:
             new_status="IN_TRANSIT",
             dispatched_at=utcnow(),
         )
+        # Missing-commit defect fixed during pre-Epic-9 hardening audit
+        # (2026-08-14) — commits the TRANSFER_OUT movement(s), line updates,
+        # and status transition atomically. See warehouse_service.py::
+        # create_warehouse's comment for the full root-cause explanation.
+        self._db.commit()
         get_event_bus().publish(
             StockTransferDispatched(
                 aggregate_id=transfer_id,
@@ -356,6 +365,7 @@ class TransferService:
             new_status="COMPLETED",
             received_at=utcnow(),
         )
+        self._db.commit()
         get_event_bus().publish(
             StockTransferReceived(
                 aggregate_id=transfer_id,
@@ -433,6 +443,7 @@ class TransferService:
             cancelled_at=utcnow(),
             cancelled_reason=cancelled_reason,
         )
+        self._db.commit()
         get_event_bus().publish(
             StockTransferCancelled(
                 aggregate_id=transfer_id,
@@ -523,6 +534,7 @@ class TransferService:
 
         pos.qty_reserved = Decimal(str(pos.qty_reserved)) + quantity
         self._db.flush()
+        self._db.commit()
         logger.info(
             "Stock reserved: company=%s product=%s wh=%s qty=%s",
             company_id,
@@ -564,6 +576,7 @@ class TransferService:
 
         pos.qty_reserved = reserved - quantity
         self._db.flush()
+        self._db.commit()
         logger.info(
             "Stock released: company=%s product=%s wh=%s qty=%s",
             company_id,

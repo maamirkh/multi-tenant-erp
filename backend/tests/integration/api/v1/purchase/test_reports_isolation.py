@@ -31,6 +31,23 @@ def _auth(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _create_company(client: TestClient, token: str) -> str:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = _uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Purchase Test Co {suffix}",
+            "email": f"contact-{suffix}@purchase-test.example.com",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
 def _purchase_url(company_id: str, path: str = "") -> str:
     return f"/api/v1/companies/{company_id}/purchase/{path}"
 
@@ -41,7 +58,7 @@ def _create_user_and_token(
     email = f"iso_rpt{suffix}@example.com"
     user, pw = create_test_user(db, email=email)
     token = _login(client, user.email, pw)
-    company_id = str(_uuid.uuid4())
+    company_id = _create_company(client, token)
     return token, company_id
 
 
@@ -165,8 +182,11 @@ class TestReportsTenantIsolation:
     ):
         """A user's token cannot be used to access another company's reports.
 
-        This tests the company_id path-based isolation — the system returns 200
-        but with empty data since no records match the different company_id.
+        Company-scoped routes now enforce active company membership
+        (see api/v1/router.py's get_current_company_member gate) — a token
+        belonging to Company A's owner has no membership row in Company B,
+        so the request is denied at the membership gate with 403 before it
+        ever reaches the report's company_id query scoping.
         """
         token_a, cid_a = _create_user_and_token(test_client, db_session, "_iso_xco_a")
         _token_b, cid_b = _create_user_and_token(test_client, db_session, "_iso_xco_b")
@@ -179,12 +199,10 @@ class TestReportsTenantIsolation:
         )
 
         # Use Company A's token but request Company B's reports
-        # Should return 200 with empty data (not 403 — cross-company access is
-        # controlled by company_id scoping in queries, not by token ownership)
+        # Denied with 403 at the membership gate — token_a's user is not a
+        # member of company B.
         resp = test_client.get(
             _purchase_url(cid_b, "reports/purchase-order-summary"),
             headers=_auth(token_a),  # token for company A, accessing company B
         )
-        assert resp.status_code == 200
-        # Company B should have 0 records (A's PO is scoped to cid_a)
-        assert len(resp.json()["data"]) == 0
+        assert resp.status_code == 403

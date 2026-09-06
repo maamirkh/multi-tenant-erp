@@ -304,6 +304,10 @@ class CustomerImportService:
         for customer in customers:
             self.db.add(customer)
         self.db.flush()
+        # Missing-commit defect fixed during pre-Epic-9 hardening audit
+        # (2026-08-14) — see inventory/services/warehouse_service.py::
+        # create_warehouse's comment for the full root-cause explanation.
+        self.db.commit()
 
     def _validate_row(self, row: dict, row_num: int, company_id: UUID) -> list[dict]:
         """Validate a single CSV row. Returns list of error dicts."""

@@ -93,6 +93,23 @@ def _create_po(
     return data["id"]
 
 
+def _create_company(client: TestClient, token: str) -> str:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Purchase E2E Test Co {suffix}",
+            "email": f"contact-{suffix}@purch-e2e-test.example.com",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
 def _add_po_line(
     client: TestClient,
     token: str,
@@ -128,7 +145,7 @@ def e2e(test_client: TestClient, db_session: Session):
         db_session, email="e2e-purchase@example.com", password="E2ePurchase1!"
     )
     token = _login(test_client, user.email, pw)
-    cid = str(uuid.uuid4())
+    cid = _create_company(test_client, token)
     return test_client, token, cid
 
 

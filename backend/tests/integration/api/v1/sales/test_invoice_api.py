@@ -55,6 +55,23 @@ def _invoice_url(company_id: str, path: str = "") -> str:
     return f"/api/v1/companies/{company_id}/sales/invoices{path}"
 
 
+def _create_company(client: TestClient, token: str):
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Sales Test Co {suffix}",
+            "email": f"contact-{suffix}@sales-test.example.com",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
 def _create_invoice_payload(customer_id: str | None = None) -> dict:
     return {
         "customer_id": customer_id or str(uuid4()),
@@ -81,10 +98,10 @@ class TestCreateInvoiceAPI:
     def test_create_invoice_201(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email, _TEST_PASSWORD)
+        company_id = _create_company(test_client, token)
         resp = test_client.post(
             _invoice_url(str(company_id)),
             json=_create_invoice_payload(),
@@ -95,13 +112,45 @@ class TestCreateInvoiceAPI:
         assert data["status"] == "DRAFT"
         assert data["total_amount"] == "100.00"
 
-    def test_create_invoice_with_charges(
+    def test_create_invoice_zero_lines_201(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
+        """Regression test — pre-Epic-9 hardening audit (2026-08-15).
+
+        A zero-line invoice used to crash with a real 500 on PostgreSQL:
+        ``sum()`` over an empty ``orm_lines`` generator returns the builtin
+        ``int`` 0 (no explicit start value), and
+        ``invoice.discount_amount = discount_amount.quantize(...)`` then
+        raised ``AttributeError: 'int' object has no attribute 'quantize'``.
+        Invisible to this SQLite-backed test until now because the bug is a
+        pure-Python AttributeError, independent of the DB backend — this
+        test reproduces it directly. See invoice_service.py::create_invoice.
+        """
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email, _TEST_PASSWORD)
+        company_id = _create_company(test_client, token)
+        payload = _create_invoice_payload()
+        payload["lines"] = []
+        resp = test_client.post(
+            _invoice_url(str(company_id)),
+            json=payload,
+            headers=_auth(token),
+        )
+        assert resp.status_code == 201, resp.text
+        data = resp.json()["data"]
+        assert data["subtotal"] == "0.00"
+        assert data["discount_amount"] == "0.00"
+        assert data["tax_amount"] == "0.00"
+        assert data["total_amount"] == "0.00"
+
+    def test_create_invoice_with_charges(
+        self, test_client: TestClient, db_session: Session
+    ) -> None:
+        email = _unique_email()
+        create_test_user(db_session, email)
+        token = _login(test_client, email, _TEST_PASSWORD)
+        company_id = _create_company(test_client, token)
         payload = _create_invoice_payload()
         payload["charges"] = [
             {
@@ -138,10 +187,10 @@ class TestGetInvoiceAPI:
     def test_get_invoice_200(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email, _TEST_PASSWORD)
+        company_id = _create_company(test_client, token)
         # Create
         create_resp = test_client.post(
             _invoice_url(str(company_id)),
@@ -160,10 +209,10 @@ class TestGetInvoiceAPI:
     def test_get_invoice_404(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email, _TEST_PASSWORD)
+        company_id = _create_company(test_client, token)
         resp = test_client.get(
             _invoice_url(str(company_id), f"/{uuid4()}"),
             headers=_auth(token),
@@ -180,10 +229,10 @@ class TestListInvoicesAPI:
     def test_list_invoices_200(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email, _TEST_PASSWORD)
+        company_id = _create_company(test_client, token)
         # Create two invoices
         for _ in range(2):
             test_client.post(
@@ -199,10 +248,10 @@ class TestListInvoicesAPI:
     def test_list_filter_by_status(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email, _TEST_PASSWORD)
+        company_id = _create_company(test_client, token)
         # Create two invoices
         r1 = test_client.post(
             _invoice_url(str(company_id)),
@@ -240,10 +289,10 @@ class TestIssueInvoiceAPI:
     def test_issue_draft_200(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email, _TEST_PASSWORD)
+        company_id = _create_company(test_client, token)
         inv_id = test_client.post(
             _invoice_url(str(company_id)),
             json=_create_invoice_payload(),
@@ -260,10 +309,10 @@ class TestIssueInvoiceAPI:
     def test_issue_unknown_invoice_404(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email, _TEST_PASSWORD)
+        company_id = _create_company(test_client, token)
         resp = test_client.post(
             _invoice_url(str(company_id), f"/{uuid4()}/issue"),
             json={},
@@ -274,10 +323,10 @@ class TestIssueInvoiceAPI:
     def test_issue_already_issued_409(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email, _TEST_PASSWORD)
+        company_id = _create_company(test_client, token)
         inv_id = test_client.post(
             _invoice_url(str(company_id)),
             json=_create_invoice_payload(),
@@ -306,10 +355,10 @@ class TestCancelInvoiceAPI:
     def test_cancel_draft_200(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email, _TEST_PASSWORD)
+        company_id = _create_company(test_client, token)
         inv_id = test_client.post(
             _invoice_url(str(company_id)),
             json=_create_invoice_payload(),
@@ -325,10 +374,10 @@ class TestCancelInvoiceAPI:
     def test_cancel_issued_409(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email, _TEST_PASSWORD)
+        company_id = _create_company(test_client, token)
         inv_id = test_client.post(
             _invoice_url(str(company_id)),
             json=_create_invoice_payload(),
@@ -355,10 +404,10 @@ class TestCreditNoteAPI:
     def test_credit_note_on_issued_200(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email, _TEST_PASSWORD)
+        company_id = _create_company(test_client, token)
         inv_id = test_client.post(
             _invoice_url(str(company_id)),
             json=_create_invoice_payload(),
@@ -380,10 +429,10 @@ class TestCreditNoteAPI:
     def test_credit_note_on_draft_409(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email, _TEST_PASSWORD)
+        company_id = _create_company(test_client, token)
         inv_id = test_client.post(
             _invoice_url(str(company_id)),
             json=_create_invoice_payload(),
@@ -404,10 +453,10 @@ class TestCreditNoteAPI:
 
 class TestInvoiceLinesAPI:
     def test_list_lines_200(self, test_client: TestClient, db_session: Session) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email, _TEST_PASSWORD)
+        company_id = _create_company(test_client, token)
         inv_id = test_client.post(
             _invoice_url(str(company_id)),
             json=_create_invoice_payload(),
@@ -425,10 +474,10 @@ class TestInvoiceLinesAPI:
     def test_list_charges_200(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_id = uuid4()
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email, _TEST_PASSWORD)
+        company_id = _create_company(test_client, token)
         payload = _create_invoice_payload()
         payload["charges"] = [
             {
@@ -460,14 +509,14 @@ class TestTenantIsolationAPI:
     def test_company_b_cannot_get_company_a_invoice(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        company_a = uuid4()
-        company_b = uuid4()
         email_a = _unique_email()
         email_b = _unique_email()
         create_test_user(db_session, email_a)
         create_test_user(db_session, email_b)
         token_a = _login(test_client, email_a, _TEST_PASSWORD)
         token_b = _login(test_client, email_b, _TEST_PASSWORD)
+        company_a = _create_company(test_client, token_a)
+        company_b = _create_company(test_client, token_b)
         # Company A creates invoice
         inv_id = test_client.post(
             _invoice_url(str(company_a)),
@@ -481,3 +530,53 @@ class TestTenantIsolationAPI:
         )
         # Invoice was created under company_a — company_b scope returns 404
         assert resp.status_code == 404
+
+    def test_invoice_due_date_ignores_foreign_payment_term(
+        self, test_client: TestClient, db_session: Session
+    ) -> None:
+        """Regression test — pre-Epic-9 hardening audit (2026-08-15).
+
+        ``InvoiceService._calculate_due_date`` used to look up
+        ``payment_term_id`` with no ``company_id`` filter
+        (``SalesPaymentTerm.id == payment_term_id`` only), so a caller in
+        Company A could pass a guessed Company B payment-term UUID and have
+        its ``due_days`` silently applied to Company A's invoice. This test
+        creates a real, large-due_days payment term under Company B, then
+        has Company A create an invoice referencing that exact id — the
+        fixed lookup must not find it (wrong company_id), so due_date must
+        fall back to invoice_date rather than reflecting Company B's term.
+        """
+        email_a = _unique_email()
+        email_b = _unique_email()
+        create_test_user(db_session, email_a)
+        create_test_user(db_session, email_b)
+        token_a = _login(test_client, email_a, _TEST_PASSWORD)
+        token_b = _login(test_client, email_b, _TEST_PASSWORD)
+        company_a = _create_company(test_client, token_a)
+        company_b = _create_company(test_client, token_b)
+
+        # Company B creates a payment term with a large, distinctive due_days.
+        pt_resp = test_client.post(
+            f"/api/v1/companies/{company_b}/sales/payment-terms",
+            json={"code": "NET90B", "name": "Net 90 (Company B)", "due_days": 90},
+            headers=_auth(token_b),
+        )
+        assert pt_resp.status_code == 201, pt_resp.text
+        foreign_payment_term_id = pt_resp.json()["data"]["id"]
+
+        # Company A creates an invoice referencing Company B's payment term id.
+        payload = _create_invoice_payload()
+        payload["invoice_date"] = "2026-08-15"
+        payload["payment_term_id"] = foreign_payment_term_id
+        resp = test_client.post(
+            _invoice_url(str(company_a)),
+            json=payload,
+            headers=_auth(token_a),
+        )
+        assert resp.status_code == 201, resp.text
+        data = resp.json()["data"]
+        # Must NOT be invoice_date + 90 days — the foreign term must not apply.
+        assert data["due_date"] == "2026-08-15", (
+            f"due_date {data['due_date']} reflects Company B's NET90 term — "
+            "cross-tenant payment_term_id lookup regression."
+        )

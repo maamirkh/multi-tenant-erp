@@ -172,6 +172,10 @@ class ProductService:
         self._repo.refresh_search_vector(product)
         self.db.add(product)
         self.db.flush()
+        # Missing-commit defect fixed during Epic 1-8 live verification
+        # (2026-08-14) — see warehouse_service.py::create_warehouse's comment
+        # for the full root-cause explanation.
+        self.db.commit()
 
         self._bus.publish(
             ProductCreated(
@@ -295,6 +299,10 @@ class ProductService:
             self._repo.refresh_search_vector(product)
 
         self.db.flush()
+        # Missing-commit defect fixed during pre-Epic-9 hardening audit
+        # (2026-08-14) — see warehouse_service.py::create_warehouse's comment
+        # for the full root-cause explanation.
+        self.db.commit()
 
         if changed_fields:
             self._bus.publish(
@@ -325,6 +333,7 @@ class ProductService:
         previous = product.status
         product.status = target
         self.db.flush()
+        self.db.commit()
 
         _EVENT_CLS = {
             "ACTIVE": ProductActivated,
@@ -395,6 +404,7 @@ class ProductService:
         product.is_deleted = True
         product.deleted_at = utcnow()
         self.db.flush()
+        self.db.commit()
 
     # =========================================================================
     # Add Variant (T068)
@@ -433,6 +443,7 @@ class ProductService:
         )
         self.db.add(variant)
         self.db.flush()
+        self.db.commit()
 
         self._bus.publish(
             ProductVariantCreated(
@@ -488,6 +499,7 @@ class ProductService:
         )
         self.db.add(barcode)
         self.db.flush()
+        self.db.commit()
 
         self._bus.publish(
             BarcodeAssigned(
@@ -523,6 +535,7 @@ class ProductService:
         barcode.is_deleted = True
         barcode.deleted_at = utcnow()
         self.db.flush()
+        self.db.commit()
 
     # =========================================================================
     # Search & list (T069, T070)

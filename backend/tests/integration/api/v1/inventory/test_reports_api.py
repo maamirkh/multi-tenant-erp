@@ -45,11 +45,29 @@ def _url(company_id: str | uuid.UUID, path: str) -> str:
     return f"/api/v1/companies/{company_id}/inventory{path}"
 
 
-def _setup(db: Session) -> tuple[str, str, uuid.UUID]:
+def _create_company(client: TestClient, token: str) -> uuid.UUID:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Inventory Test Co {suffix}",
+            "email": f"contact-{suffix}@inventory-test.example.com",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return uuid.UUID(resp.json()["data"]["id"])
+
+
+def _setup(db: Session, client: TestClient) -> tuple[str, str, uuid.UUID]:
     email = f"report-{uuid.uuid4().hex[:8]}@test.com"
     password = "TestPass123!"
     create_test_user(db, email=email, password=password)
-    company_id = uuid.uuid4()
+    token = _login(client, email, password)
+    company_id = _create_company(client, token)
     return email, password, company_id
 
 
@@ -144,9 +162,11 @@ def _make_movement(
     return mov
 
 
-def _seed_company(db: Session) -> tuple[str, str, uuid.UUID, str, str]:
+def _seed_company(
+    db: Session, client: TestClient
+) -> tuple[str, str, uuid.UUID, str, str]:
     """Create a company with warehouse, product, position, and movement."""
-    email, password, company_id = _setup(db)
+    email, password, company_id = _setup(db, client)
     wh = _make_warehouse(db, company_id)
     prod = _make_product(db, company_id)
     _make_position(db, company_id, str(prod.id), str(wh.id))
@@ -180,7 +200,7 @@ class TestReportsAuth:
     def test_all_report_endpoints_require_auth(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        _, _, company_id, _, _ = _seed_company(db_session)
+        _, _, company_id, _, _ = _seed_company(db_session, test_client)
         for path in REPORT_PATHS:
             resp = test_client.get(_url(company_id, path))
             assert (
@@ -195,7 +215,7 @@ class TestReportsAuth:
 
 class TestInventorySummaryReport:
     def test_returns_200(self, test_client: TestClient, db_session: Session) -> None:
-        email, password, company_id, _, _ = _seed_company(db_session)
+        email, password, company_id, _, _ = _seed_company(db_session, test_client)
         token = _login(test_client, email, password)
         resp = test_client.get(
             _url(company_id, "/reports/inventory-summary"), headers=_auth(token)
@@ -209,7 +229,9 @@ class TestInventorySummaryReport:
     def test_rows_contain_company_data(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, prod_id, wh_id = _seed_company(db_session)
+        email, password, company_id, prod_id, wh_id = _seed_company(
+            db_session, test_client
+        )
         token = _login(test_client, email, password)
         resp = test_client.get(
             _url(company_id, "/reports/inventory-summary"), headers=_auth(token)
@@ -223,7 +245,7 @@ class TestInventorySummaryReport:
 
 class TestStockLedgerReport:
     def test_returns_200(self, test_client: TestClient, db_session: Session) -> None:
-        email, password, company_id, _, _ = _seed_company(db_session)
+        email, password, company_id, _, _ = _seed_company(db_session, test_client)
         token = _login(test_client, email, password)
         resp = test_client.get(
             _url(company_id, "/reports/stock-ledger"), headers=_auth(token)
@@ -236,7 +258,7 @@ class TestStockLedgerReport:
     def test_filters_by_product(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, prod_id, _ = _seed_company(db_session)
+        email, password, company_id, prod_id, _ = _seed_company(db_session, test_client)
         token = _login(test_client, email, password)
         resp = test_client.get(
             _url(company_id, f"/reports/stock-ledger?product_id={prod_id}"),
@@ -250,7 +272,7 @@ class TestStockLedgerReport:
 
 class TestInventoryValuationReport:
     def test_returns_200(self, test_client: TestClient, db_session: Session) -> None:
-        email, password, company_id, _, _ = _seed_company(db_session)
+        email, password, company_id, _, _ = _seed_company(db_session, test_client)
         token = _login(test_client, email, password)
         resp = test_client.get(
             _url(company_id, "/reports/inventory-valuation"), headers=_auth(token)
@@ -263,7 +285,7 @@ class TestInventoryValuationReport:
     def test_valuation_method_is_wac(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _, _ = _seed_company(db_session)
+        email, password, company_id, _, _ = _seed_company(db_session, test_client)
         token = _login(test_client, email, password)
         resp = test_client.get(
             _url(company_id, "/reports/inventory-valuation"), headers=_auth(token)
@@ -276,7 +298,7 @@ class TestInventoryValuationReport:
 
 class TestStockPositionReport:
     def test_returns_200(self, test_client: TestClient, db_session: Session) -> None:
-        email, password, company_id, _, _ = _seed_company(db_session)
+        email, password, company_id, _, _ = _seed_company(db_session, test_client)
         token = _login(test_client, email, password)
         resp = test_client.get(
             _url(company_id, "/reports/stock-position"), headers=_auth(token)
@@ -289,7 +311,7 @@ class TestStockPositionReport:
     def test_reorder_flags_populated(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _, _ = _seed_company(db_session)
+        email, password, company_id, _, _ = _seed_company(db_session, test_client)
         token = _login(test_client, email, password)
         resp = test_client.get(
             _url(company_id, "/reports/stock-position"), headers=_auth(token)
@@ -303,7 +325,7 @@ class TestStockPositionReport:
 
 class TestWarehouseUtilisationReport:
     def test_returns_200(self, test_client: TestClient, db_session: Session) -> None:
-        email, password, company_id, _, _ = _seed_company(db_session)
+        email, password, company_id, _, _ = _seed_company(db_session, test_client)
         token = _login(test_client, email, password)
         resp = test_client.get(
             _url(company_id, "/reports/warehouse-utilisation"), headers=_auth(token)
@@ -315,7 +337,7 @@ class TestWarehouseUtilisationReport:
 
 class TestCategoryBrandReport:
     def test_returns_200(self, test_client: TestClient, db_session: Session) -> None:
-        email, password, company_id, _, _ = _seed_company(db_session)
+        email, password, company_id, _, _ = _seed_company(db_session, test_client)
         token = _login(test_client, email, password)
         resp = test_client.get(
             _url(company_id, "/reports/category-brand"), headers=_auth(token)
@@ -328,7 +350,7 @@ class TestCategoryBrandReport:
 
 class TestDeadStockReport:
     def test_returns_200(self, test_client: TestClient, db_session: Session) -> None:
-        email, password, company_id, _, _ = _seed_company(db_session)
+        email, password, company_id, _, _ = _seed_company(db_session, test_client)
         token = _login(test_client, email, password)
         resp = test_client.get(
             _url(company_id, "/reports/dead-stock"), headers=_auth(token)
@@ -342,7 +364,7 @@ class TestDeadStockReport:
     def test_custom_threshold(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _, _ = _seed_company(db_session)
+        email, password, company_id, _, _ = _seed_company(db_session, test_client)
         token = _login(test_client, email, password)
         resp = test_client.get(
             _url(company_id, "/reports/dead-stock?threshold_days=30"),
@@ -354,7 +376,7 @@ class TestDeadStockReport:
 
 class TestMovementVelocityReport:
     def test_returns_200(self, test_client: TestClient, db_session: Session) -> None:
-        email, password, company_id, _, _ = _seed_company(db_session)
+        email, password, company_id, _, _ = _seed_company(db_session, test_client)
         token = _login(test_client, email, password)
         resp = test_client.get(
             _url(company_id, "/reports/movement-velocity"), headers=_auth(token)
@@ -368,7 +390,7 @@ class TestMovementVelocityReport:
 
 class TestStockAgingReport:
     def test_returns_200(self, test_client: TestClient, db_session: Session) -> None:
-        email, password, company_id, _, _ = _seed_company(db_session)
+        email, password, company_id, _, _ = _seed_company(db_session, test_client)
         token = _login(test_client, email, password)
         resp = test_client.get(
             _url(company_id, "/reports/stock-aging"), headers=_auth(token)
@@ -381,7 +403,7 @@ class TestStockAgingReport:
 
 class TestOperationalReport:
     def test_returns_200(self, test_client: TestClient, db_session: Session) -> None:
-        email, password, company_id, _, _ = _seed_company(db_session)
+        email, password, company_id, _, _ = _seed_company(db_session, test_client)
         token = _login(test_client, email, password)
         resp = test_client.get(
             _url(company_id, "/reports/operational"), headers=_auth(token)
@@ -396,7 +418,7 @@ class TestTrendAnalysisReport:
     def test_requires_product_id(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _, _ = _seed_company(db_session)
+        email, password, company_id, _, _ = _seed_company(db_session, test_client)
         token = _login(test_client, email, password)
         resp = test_client.get(
             _url(company_id, "/reports/trend-analysis"), headers=_auth(token)
@@ -406,7 +428,7 @@ class TestTrendAnalysisReport:
     def test_returns_200_with_product_id(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, prod_id, _ = _seed_company(db_session)
+        email, password, company_id, prod_id, _ = _seed_company(db_session, test_client)
         token = _login(test_client, email, password)
         resp = test_client.get(
             _url(company_id, f"/reports/trend-analysis?product_id={prod_id}"),
@@ -425,7 +447,7 @@ class TestTrendAnalysisReport:
 
 class TestKPIDashboard:
     def test_returns_200(self, test_client: TestClient, db_session: Session) -> None:
-        email, password, company_id, _, _ = _seed_company(db_session)
+        email, password, company_id, _, _ = _seed_company(db_session, test_client)
         token = _login(test_client, email, password)
         resp = test_client.get(_url(company_id, "/kpis"), headers=_auth(token))
         assert resp.status_code == 200
@@ -437,7 +459,7 @@ class TestKPIDashboard:
     def test_all_10_kpis_present(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _, _ = _seed_company(db_session)
+        email, password, company_id, _, _ = _seed_company(db_session, test_client)
         token = _login(test_client, email, password)
         resp = test_client.get(_url(company_id, "/kpis"), headers=_auth(token))
         assert resp.status_code == 200
@@ -460,7 +482,7 @@ class TestKPIDashboard:
     def test_custom_period_days(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _, _ = _seed_company(db_session)
+        email, password, company_id, _, _ = _seed_company(db_session, test_client)
         token = _login(test_client, email, password)
         resp = test_client.get(
             _url(company_id, "/kpis?period_days=30"), headers=_auth(token)
@@ -469,7 +491,7 @@ class TestKPIDashboard:
         assert resp.json()["data"]["period_days"] == 30
 
     def test_requires_auth(self, test_client: TestClient, db_session: Session) -> None:
-        _, _, company_id, _, _ = _seed_company(db_session)
+        _, _, company_id, _, _ = _seed_company(db_session, test_client)
         resp = test_client.get(_url(company_id, "/kpis"))
         assert resp.status_code == 401
 
@@ -483,8 +505,8 @@ class TestReportTenantIsolation:
     def test_inventory_summary_isolates_companies(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email_a, pass_a, cid_a, prod_a, _ = _seed_company(db_session)
-        email_b, pass_b, cid_b, prod_b, _ = _seed_company(db_session)
+        email_a, pass_a, cid_a, prod_a, _ = _seed_company(db_session, test_client)
+        email_b, pass_b, cid_b, prod_b, _ = _seed_company(db_session, test_client)
 
         token_a = _login(test_client, email_a, pass_a)
         resp = test_client.get(
@@ -498,8 +520,8 @@ class TestReportTenantIsolation:
     def test_stock_ledger_isolates_companies(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email_a, pass_a, cid_a, prod_a, _ = _seed_company(db_session)
-        _, _, cid_b, prod_b, _ = _seed_company(db_session)
+        email_a, pass_a, cid_a, prod_a, _ = _seed_company(db_session, test_client)
+        _, _, cid_b, prod_b, _ = _seed_company(db_session, test_client)
 
         token_a = _login(test_client, email_a, pass_a)
         resp = test_client.get(
@@ -512,14 +534,14 @@ class TestReportTenantIsolation:
     def test_kpis_isolates_companies(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email_a, pass_a, cid_a, _, _ = _seed_company(db_session)
+        email_a, pass_a, cid_a, _, _ = _seed_company(db_session, test_client)
         # Company B has no stock
         email_b = f"report-{uuid.uuid4().hex[:8]}@test.com"
         create_test_user(db_session, email=email_b, password="TestPass123!")
-        cid_b = uuid.uuid4()
         db_session.commit()
 
         token_b = _login(test_client, email_b, "TestPass123!")
+        cid_b = _create_company(test_client, token_b)
         resp_b = test_client.get(_url(cid_b, "/kpis"), headers=_auth(token_b))
         assert resp_b.status_code == 200
         # Company B should have zero inventory value
@@ -535,7 +557,7 @@ class TestExportEndpoints:
     def test_export_inventory_summary_csv(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _, _ = _seed_company(db_session)
+        email, password, company_id, _, _ = _seed_company(db_session, test_client)
         token = _login(test_client, email, password)
         resp = test_client.post(
             _url(company_id, "/reports/inventory-summary/export"),
@@ -551,7 +573,7 @@ class TestExportEndpoints:
     def test_export_inventory_summary_xlsx(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _, _ = _seed_company(db_session)
+        email, password, company_id, _, _ = _seed_company(db_session, test_client)
         token = _login(test_client, email, password)
         resp = test_client.post(
             _url(company_id, "/reports/inventory-summary/export"),
@@ -566,7 +588,7 @@ class TestExportEndpoints:
     def test_export_stock_ledger_csv(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        email, password, company_id, _, _ = _seed_company(db_session)
+        email, password, company_id, _, _ = _seed_company(db_session, test_client)
         token = _login(test_client, email, password)
         resp = test_client.post(
             _url(company_id, "/reports/stock-ledger/export"),
@@ -579,7 +601,7 @@ class TestExportEndpoints:
     def test_export_requires_auth(
         self, test_client: TestClient, db_session: Session
     ) -> None:
-        _, _, company_id, _, _ = _seed_company(db_session)
+        _, _, company_id, _, _ = _seed_company(db_session, test_client)
         resp = test_client.post(
             _url(company_id, "/reports/inventory-summary/export"),
             json={"format": "csv"},

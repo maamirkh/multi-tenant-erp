@@ -46,6 +46,23 @@ def _url(company_id: str, path: str) -> str:
     return f"/api/v1/companies/{company_id}/sales{path}"
 
 
+def _create_company(client: TestClient, token: str) -> str:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Sales Test Co {suffix}",
+            "email": f"contact-{suffix}@sales-test.example.com",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -57,7 +74,7 @@ class TestCreateCustomer:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         # Need a category — create one first
         cat_resp = test_client.post(
@@ -90,7 +107,7 @@ class TestCreateCustomer:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         cat_resp = test_client.post(
             _url(company_id, "/customer-categories"),
@@ -124,7 +141,7 @@ class TestListCustomers:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         resp = test_client.get(_url(company_id, "/customers"), headers=_auth(token))
         assert resp.status_code == 200
@@ -135,7 +152,7 @@ class TestListCustomers:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         cat_resp = test_client.post(
             _url(company_id, "/customer-categories"),
@@ -168,7 +185,7 @@ class TestGetCustomer:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         cat_resp = test_client.post(
             _url(company_id, "/customer-categories"),
@@ -201,7 +218,7 @@ class TestGetCustomer:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
         fake_id = str(uuid4())
 
         resp = test_client.get(
@@ -216,7 +233,7 @@ class TestUpdateCustomer:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         cat_resp = test_client.post(
             _url(company_id, "/customer-categories"),
@@ -315,7 +332,7 @@ class TestCustomerTransitions:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         customer_id = self._create_customer_with_contact_and_address(
             test_client, db_session, company_id, token, "ACT001"
@@ -334,7 +351,7 @@ class TestCustomerTransitions:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         cat_resp = test_client.post(
             _url(company_id, "/customer-categories"),
@@ -376,7 +393,7 @@ class TestCustomerTransitions:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         cat_resp = test_client.post(
             _url(company_id, "/customer-categories"),
@@ -413,7 +430,7 @@ class TestCustomerContactAPI:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         cat_resp = test_client.post(
             _url(company_id, "/customer-categories"),
@@ -457,7 +474,7 @@ class TestCustomerAddressAPI:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         cat_resp = test_client.post(
             _url(company_id, "/customer-categories"),
@@ -507,7 +524,7 @@ class TestCustomerNoteAPI:
     ) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         cat_resp = test_client.post(
             _url(company_id, "/customer-categories"),
@@ -549,7 +566,7 @@ class TestCustomerCreditAPI:
     def test_update_credit(self, test_client: TestClient, db_session: Session) -> None:
         user, password = create_test_user(db_session)
         token = _login(test_client, user.email, password)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         cat_resp = test_client.post(
             _url(company_id, "/customer-categories"),

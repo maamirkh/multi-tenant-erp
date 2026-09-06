@@ -49,11 +49,29 @@ def _url(company_id: str | uuid.UUID, path: str) -> str:
     return f"/api/v1/companies/{company_id}/inventory{path}"
 
 
-def _setup(db: Session) -> tuple[str, str, uuid.UUID]:
+def _create_company(client: TestClient, token: str) -> uuid.UUID:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Inventory Test Co {suffix}",
+            "email": f"contact-{suffix}@inventory-test.example.com",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return uuid.UUID(resp.json()["data"]["id"])
+
+
+def _setup(db: Session, client: TestClient) -> tuple[str, str, uuid.UUID]:
     email = f"adj-{uuid.uuid4().hex[:8]}@test.com"
     password = "TestPass123!"
     create_test_user(db, email=email, password=password)
-    company_id = uuid.uuid4()
+    token = _login(client, email, password)
+    company_id = _create_company(client, token)
     return email, password, company_id
 
 
@@ -126,7 +144,7 @@ class TestCreateAdjustmentEndpoint:
     def test_create_returns_201_draft(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
 
@@ -149,7 +167,7 @@ class TestCreateAdjustmentEndpoint:
         assert data["version"] == 1
 
     def test_create_adjustment_out(self, test_client: TestClient, db_session: Session):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
 
@@ -169,7 +187,7 @@ class TestCreateAdjustmentEndpoint:
     def test_create_with_unknown_warehouse_returns_404(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
 
         resp = test_client.post(
@@ -187,7 +205,7 @@ class TestCreateAdjustmentEndpoint:
     def test_create_with_inactive_warehouse_returns_404(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         wh.status = "INACTIVE"
         db_session.flush()
@@ -208,7 +226,7 @@ class TestCreateAdjustmentEndpoint:
     def test_create_stores_old_quantity_zero_when_no_stock(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
 
@@ -236,7 +254,7 @@ class TestListAndDetailAdjustment:
     def test_list_returns_created_adjustments(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
         pid = str(uuid.uuid4())
@@ -269,7 +287,7 @@ class TestListAndDetailAdjustment:
     def test_get_by_id_returns_detail(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
 
@@ -292,7 +310,7 @@ class TestListAndDetailAdjustment:
     def test_get_by_id_not_found_returns_404(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
 
         resp = test_client.get(
@@ -303,8 +321,8 @@ class TestListAndDetailAdjustment:
     def test_list_isolation_between_companies(
         self, test_client: TestClient, db_session: Session
     ):
-        email1, pwd1, cid1 = _setup(db_session)
-        email2, pwd2, cid2 = _setup(db_session)
+        email1, pwd1, cid1 = _setup(db_session, test_client)
+        email2, pwd2, cid2 = _setup(db_session, test_client)
         wh1 = _make_warehouse(db_session, cid1)
         tok1 = _login(test_client, email1, pwd1)
         tok2 = _login(test_client, email2, pwd2)
@@ -335,7 +353,7 @@ class TestSubmitAdjustmentEndpoint:
         self, test_client: TestClient, db_session: Session
     ):
         """Default behaviour: flag disabled → direct APPROVED on submit."""
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
 
@@ -364,7 +382,7 @@ class TestSubmitAdjustmentEndpoint:
     def test_submit_not_found_returns_404(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         tok = _login(test_client, email, pwd)
 
         resp = test_client.post(
@@ -377,7 +395,7 @@ class TestSubmitAdjustmentEndpoint:
     def test_submit_already_approved_returns_409(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
 
@@ -420,7 +438,7 @@ class TestRejectAdjustmentEndpoint:
             AdjustmentRepository,
         )
 
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
 
@@ -459,7 +477,7 @@ class TestRejectAdjustmentEndpoint:
     def test_reject_draft_returns_409(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
 
@@ -492,7 +510,7 @@ class TestApproveAdjustmentEndpoint:
     def test_approve_draft_returns_409(
         self, test_client: TestClient, db_session: Session
     ):
-        email, pwd, cid = _setup(db_session)
+        email, pwd, cid = _setup(db_session, test_client)
         wh = _make_warehouse(db_session, cid)
         tok = _login(test_client, email, pwd)
 

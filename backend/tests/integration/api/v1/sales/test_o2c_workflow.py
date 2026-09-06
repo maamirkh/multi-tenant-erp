@@ -61,6 +61,23 @@ def _sales_url(company_id: str, path: str) -> str:
     return f"/api/v1/companies/{company_id}/sales{path}"
 
 
+def _create_company(client: TestClient, token: str) -> str:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Sales Test Co {suffix}",
+            "email": f"contact-{suffix}@sales-test.example.com",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
 # ---------------------------------------------------------------------------
 # O2C workflow test
 # ---------------------------------------------------------------------------
@@ -84,7 +101,7 @@ class TestO2CWorkflow:
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
         sales_rep_id = str(uuid4())
 
         # -----------------------------------------------------------------
@@ -284,7 +301,7 @@ class TestO2CWorkflow:
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
         sales_rep_id = str(uuid4())
         customer_id = str(uuid4())
 
@@ -349,7 +366,7 @@ class TestO2CWorkflowEdgeCases:
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         # Create order directly
         resp = test_client.post(
@@ -382,7 +399,7 @@ class TestO2CWorkflowEdgeCases:
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
         customer_id = str(uuid4())
 
         resp = test_client.post(
@@ -415,7 +432,7 @@ class TestO2CWorkflowEdgeCases:
         email = _unique_email()
         create_test_user(db_session, email)
         token = _login(test_client, email)
-        company_id = str(uuid4())
+        company_id = _create_company(test_client, token)
 
         # Create and send quotation
         q_resp = test_client.post(
@@ -465,8 +482,8 @@ class TestO2CWorkflowEdgeCases:
         create_test_user(db_session, email_b)
         token_a = _login(test_client, email_a)
         token_b = _login(test_client, email_b)
-        company_a = str(uuid4())
-        company_b = str(uuid4())
+        company_a = _create_company(test_client, token_a)
+        company_b = _create_company(test_client, token_b)
 
         # Create order in Company A
         order_resp = test_client.post(

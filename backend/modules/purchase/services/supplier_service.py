@@ -215,6 +215,11 @@ class SupplierService:
 
         self.db.add(supplier)
         self.db.flush()
+        # Missing-commit defect fixed during Epic 1-8 live verification
+        # (2026-08-14) — see backend/modules/inventory/services/
+        # warehouse_service.py::create_warehouse's comment for the full
+        # root-cause explanation.
+        self.db.commit()
 
         self._event_bus.publish(
             SupplierCreated.create(
@@ -285,6 +290,9 @@ class SupplierService:
             if actor_id:
                 supplier.updated_by = str(actor_id)
             self.db.flush()
+            # Missing-commit defect fixed during pre-Epic-9 hardening audit
+            # (2026-08-14) — see create()'s comment above.
+            self.db.commit()
 
             self._event_bus.publish(
                 SupplierUpdated.create(
@@ -321,6 +329,7 @@ class SupplierService:
         if actor_id:
             supplier.updated_by = str(actor_id)
         self.db.flush()
+        self.db.commit()
 
         self._event_bus.publish(
             SupplierActivated.create(
@@ -348,6 +357,7 @@ class SupplierService:
         if actor_id:
             supplier.updated_by = str(actor_id)
         self.db.flush()
+        self.db.commit()
 
         self._event_bus.publish(
             SupplierDeactivated.create(
@@ -381,6 +391,7 @@ class SupplierService:
         if actor_id:
             supplier.updated_by = str(actor_id)
         self.db.flush()
+        self.db.commit()
 
         self._event_bus.publish(
             SupplierBlocked.create(
@@ -409,6 +420,7 @@ class SupplierService:
         if actor_id:
             supplier.updated_by = str(actor_id)
         self.db.flush()
+        self.db.commit()
 
         self._event_bus.publish(
             SupplierReactivated.create(
@@ -450,6 +462,7 @@ class SupplierService:
         if actor_id:
             supplier.updated_by = str(actor_id)
         self.db.flush()
+        self.db.commit()
 
         self._event_bus.publish(
             SupplierArchived.create(
@@ -549,6 +562,7 @@ class SupplierService:
 
         self.db.add(contact)
         self.db.flush()
+        self.db.commit()
         return contact
 
     def update_contact(
@@ -591,6 +605,7 @@ class SupplierService:
         if actor_id:
             contact.updated_by = str(actor_id)
         self.db.flush()
+        self.db.commit()
         return contact
 
     def remove_contact(
@@ -601,6 +616,7 @@ class SupplierService:
         contact.is_deleted = True
         contact.deleted_at = utcnow()
         self.db.flush()
+        self.db.commit()
 
     def set_primary_contact(
         self, contact_id: UUID, supplier_id: UUID, company_id: UUID
@@ -611,6 +627,7 @@ class SupplierService:
         contact.is_primary = True
         contact.updated_at = utcnow()
         self.db.flush()
+        self.db.commit()
         return contact
 
     # -----------------------------------------------------------------------
@@ -658,6 +675,7 @@ class SupplierService:
 
         self.db.add(address)
         self.db.flush()
+        self.db.commit()
         return address
 
     def update_address(
@@ -702,6 +720,7 @@ class SupplierService:
         if actor_id:
             address.updated_by = str(actor_id)
         self.db.flush()
+        self.db.commit()
         return address
 
     def remove_address(
@@ -712,6 +731,7 @@ class SupplierService:
         address.is_deleted = True
         address.deleted_at = utcnow()
         self.db.flush()
+        self.db.commit()
 
     def set_default_address(
         self, address_id: UUID, supplier_id: UUID, company_id: UUID
@@ -726,6 +746,7 @@ class SupplierService:
         address.is_default = True
         address.updated_at = utcnow()
         self.db.flush()
+        self.db.commit()
         return address
 
     # -----------------------------------------------------------------------

@@ -87,12 +87,29 @@ def _seed_warehouse_b(db: Session, company_id: uuid.UUID) -> Warehouse:
     return wh
 
 
+def _create_company(client: TestClient, token: str) -> uuid.UUID:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Inventory E2E Test Co {suffix}",
+            "email": f"contact-{suffix}@inv-e2e-test.example.com",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return uuid.UUID(resp.json()["data"]["id"])
+
+
 def _auth(client: TestClient, db: Session) -> tuple[str, uuid.UUID]:
     """Create user, return (auth_headers_dict, company_id)."""
     email = f"e2e-{uuid.uuid4().hex[:8]}@test.com"
     create_test_user(db, email=email, password="TestPass123!")
     token = _login(client, email, "TestPass123!")
-    company_id = uuid.uuid4()
+    company_id = _create_company(client, token)
     return {"Authorization": f"Bearer {token}"}, company_id
 
 

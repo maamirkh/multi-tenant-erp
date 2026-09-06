@@ -48,6 +48,23 @@ def _url(company_id: str, path: str = "") -> str:
     return f"/api/v1/companies/{company_id}/purchase/suppliers{path}"
 
 
+def _create_company(client: TestClient, token: str) -> str:
+    """Create a real company (via the API) so the caller becomes its owner
+    and active member — required now that company-scoped routes enforce
+    membership (see api/v1/router.py's get_current_company_member gate)."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = client.post(
+        "/api/v1/companies",
+        json={
+            "legal_name": f"Purchase Test Co {suffix}",
+            "email": f"contact-{suffix}@purchase-test.example.com",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
 def _create_supplier(
     client: TestClient,
     token: str,
@@ -120,7 +137,7 @@ class TestSupplierCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_create_201@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         resp = test_client.post(
             _url(cid),
@@ -138,7 +155,7 @@ class TestSupplierCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_create_full@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         resp = test_client.post(
             _url(cid),
@@ -164,7 +181,7 @@ class TestSupplierCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_dup_code@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         test_client.post(
             _url(cid),
@@ -183,7 +200,7 @@ class TestSupplierCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_list_200@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         _create_supplier(test_client, token, cid, code="S-L1", legal_name="Alpha")
         _create_supplier(test_client, token, cid, code="S-L2", legal_name="Beta")
@@ -198,7 +215,7 @@ class TestSupplierCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_list_filter@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         s = _create_supplier(
             test_client, token, cid, code="S-ACT", legal_name="Active Co"
@@ -222,7 +239,7 @@ class TestSupplierCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_get_by_id@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         created = _create_supplier(test_client, token, cid, code="S-GET")
         sid = created["id"]
@@ -236,7 +253,7 @@ class TestSupplierCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_get_404@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         resp = test_client.get(_url(cid, f"/{uuid.uuid4()}"), headers=_auth(token))
         assert resp.status_code == 404
@@ -246,7 +263,7 @@ class TestSupplierCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_update@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         created = _create_supplier(test_client, token, cid, code="S-UPD")
         sid = created["id"]
@@ -266,7 +283,7 @@ class TestSupplierCRUD:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_upd_404@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         resp = test_client.put(
             _url(cid, f"/{uuid.uuid4()}"),
@@ -287,7 +304,7 @@ class TestSupplierLifecycle:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_activate@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         supplier = _create_supplier(test_client, token, cid, code="S-ACT")
         sid = supplier["id"]
@@ -305,7 +322,7 @@ class TestSupplierLifecycle:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_deactivate@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         supplier = _create_supplier(test_client, token, cid, code="S-DEACT")
         sid = supplier["id"]
@@ -325,7 +342,7 @@ class TestSupplierLifecycle:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_block@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         supplier = _create_supplier(test_client, token, cid, code="S-BLK")
         sid = supplier["id"]
@@ -345,7 +362,7 @@ class TestSupplierLifecycle:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_reactivate@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         supplier = _create_supplier(test_client, token, cid, code="S-REACT")
         sid = supplier["id"]
@@ -368,7 +385,7 @@ class TestSupplierLifecycle:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_archive@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         supplier = _create_supplier(test_client, token, cid, code="S-ARC")
         sid = supplier["id"]
@@ -388,7 +405,7 @@ class TestSupplierLifecycle:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_inv_trans@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         supplier = _create_supplier(test_client, token, cid, code="S-INVT")
         sid = supplier["id"]
@@ -406,7 +423,7 @@ class TestSupplierLifecycle:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_act_404@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         resp = test_client.post(
             _url(cid, f"/{uuid.uuid4()}/activate"),
@@ -420,7 +437,7 @@ class TestSupplierLifecycle:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_arc_act@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         supplier = _create_supplier(test_client, token, cid, code="S-ARCE")
         sid = supplier["id"]
@@ -448,7 +465,7 @@ class TestSupplierContacts:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_contacts_empty@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         supplier = _create_supplier(test_client, token, cid, code="S-CON0")
         sid = supplier["id"]
@@ -460,7 +477,7 @@ class TestSupplierContacts:
     def test_add_contact(self, test_client: TestClient, db_session: Session) -> None:
         user, pw = create_test_user(db_session, email="sup_add_contact@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         supplier = _create_supplier(test_client, token, cid, code="S-CONADD")
         sid = supplier["id"]
@@ -485,7 +502,7 @@ class TestSupplierContacts:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_contacts_list@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         supplier = _create_supplier(test_client, token, cid, code="S-CONLST")
         sid = supplier["id"]
@@ -510,7 +527,7 @@ class TestSupplierContacts:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_set_primary@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         supplier = _create_supplier(test_client, token, cid, code="S-PRIM")
         sid = supplier["id"]
@@ -541,7 +558,7 @@ class TestSupplierAddresses:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_addr_empty@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         supplier = _create_supplier(test_client, token, cid, code="S-ADDR0")
         sid = supplier["id"]
@@ -553,7 +570,7 @@ class TestSupplierAddresses:
     def test_add_address(self, test_client: TestClient, db_session: Session) -> None:
         user, pw = create_test_user(db_session, email="sup_add_addr@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         supplier = _create_supplier(test_client, token, cid, code="S-ADDRADD")
         sid = supplier["id"]
@@ -578,7 +595,7 @@ class TestSupplierAddresses:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_def_addr@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         supplier = _create_supplier(test_client, token, cid, code="S-DEFADDR")
         sid = supplier["id"]
@@ -624,7 +641,7 @@ class TestSupplierBulkImport:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_import_ok@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         csv_bytes = self._build_csv(
             [
@@ -659,7 +676,7 @@ class TestSupplierBulkImport:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_import_err@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         # Missing legal_name on row 2
         csv_bytes = b"supplier_code,legal_name\nIMPE-001,Good Co\nIMPE-002,\n"
@@ -681,7 +698,7 @@ class TestSupplierBulkImport:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_import_dup@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         # First create a supplier with the same code
         _create_supplier(
@@ -708,7 +725,7 @@ class TestSupplierBulkImport:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_import_empty@example.com")
         token = _login(test_client, user.email, pw)
-        cid = str(uuid.uuid4())
+        cid = _create_company(test_client, token)
 
         csv_bytes = b"supplier_code,legal_name\n"
 
@@ -734,8 +751,8 @@ class TestSupplierTenantIsolation:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_iso_a@example.com")
         token = _login(test_client, user.email, pw)
-        cid_a = str(uuid.uuid4())
-        cid_b = str(uuid.uuid4())
+        cid_a = _create_company(test_client, token)
+        cid_b = _create_company(test_client, token)
 
         # Create supplier under company B
         sup_b = _create_supplier(
@@ -754,8 +771,8 @@ class TestSupplierTenantIsolation:
     ) -> None:
         user, pw = create_test_user(db_session, email="sup_iso_list@example.com")
         token = _login(test_client, user.email, pw)
-        cid_a = str(uuid.uuid4())
-        cid_b = str(uuid.uuid4())
+        cid_a = _create_company(test_client, token)
+        cid_b = _create_company(test_client, token)
 
         _create_supplier(
             test_client, token, cid_a, code="SUP-A1", legal_name="Company A Supplier"
