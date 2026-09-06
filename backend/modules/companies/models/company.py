@@ -59,6 +59,16 @@ class Company(BaseModel):
             "status IN ('pending_setup','active','inactive','suspended','deleted')",
             name="ck_companies_status",
         ),
+        CheckConstraint(
+            "(status = 'suspended' AND pre_suspension_status IS NOT NULL) OR "
+            "(status <> 'suspended' AND pre_suspension_status IS NULL)",
+            name="ck_companies_pre_suspension_status_presence",
+        ),
+        CheckConstraint(
+            "pre_suspension_status IS NULL OR pre_suspension_status IN "
+            "('active','inactive')",
+            name="ck_companies_pre_suspension_status_domain",
+        ),
         Index("ix_companies_slug", "slug", unique=True),
         Index("ix_companies_owner_id", "owner_id"),
         Index("ix_companies_status", "status"),
@@ -93,6 +103,28 @@ class Company(BaseModel):
         default=CompanyStatus.pending_setup.value,
         server_default=text("'pending_setup'"),
         doc="Company lifecycle state. Constrained by ck_companies_status CHECK.",
+    )
+
+    # Both columns added by migration 057 (Epic 9A) — the ORM mapping was
+    # deliberately deferred to Phase 7 (the first phase that reads/writes
+    # them), matching the master prompt's "don't pre-create future
+    # abstractions" discipline; migration 057 itself only touched the raw
+    # schema.
+    pre_suspension_status: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+        doc="The CompanyStatus value held immediately before suspension "
+        "(ADR-12). Set on suspend, read and cleared on reactivate. Never "
+        "inferred from audit history. Constrained by "
+        "ck_companies_pre_suspension_status_presence/_domain CHECKs.",
+    )
+    access_invalidated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        doc="Company-scoped access watermark (ADR-6). Set on suspend; "
+        "deliberately never cleared on reactivate, so pre-suspension "
+        "Sessions stay refused for this company (FR-9A-018). Compared "
+        "against Session.created_at, never the access token's iat.",
     )
 
     # ── Ownership ─────────────────────────────────────────────────────────────

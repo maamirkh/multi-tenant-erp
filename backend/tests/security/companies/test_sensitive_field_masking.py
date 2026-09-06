@@ -207,6 +207,12 @@ class TestSensitiveFieldMaskingHTTP:
             mock.user_id = owner.id
             mock.email = owner.email
             mock.roles = ["super_admin"]
+            # Epic 9A T084: get_current_company() now reads .session_id to
+            # evaluate the company-access freshness watermark. This fixture's
+            # company was never suspended (access_invalidated_at is NULL), so
+            # Layer 2 short-circuits before session_id is ever looked up in a
+            # real Session table — None is a valid, accurate stand-in here.
+            mock.session_id = None
             return mock
 
         app = test_client.app

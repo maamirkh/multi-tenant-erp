@@ -287,11 +287,24 @@ PURCHASE_PERMISSIONS: Final[tuple[PurchasePermissionDefinition, ...]] = (
         "settings.update",
         "Update purchase policies, feature flags, and master data",
     ),
+    PurchasePermissionDefinition(
+        "purchase.settings.manage",
+        "Manage Purchase Feature Flags",
+        "purchase",
+        "settings.manage",
+        "Enable or disable purchase module feature flags (Epic 9A "
+        "security prerequisite, plan.md §14 — a distinct code from the "
+        "pre-existing, unenforced 'settings.update' above)",
+    ),
 )
 
 PURCHASE_PERMISSION_BY_CODE: Final[dict[str, PurchasePermissionDefinition]] = {
     p.code: p for p in PURCHASE_PERMISSIONS
 }
+
+# Feature-toggle mutation gate (Epic 9A Phase 10, T140, plan.md §14) — the
+# permission code the PUT /feature-flags/{flag_key} handler checks.
+PURCHASE_SETTINGS_MANAGE_PERMISSION: Final[str] = "purchase.settings.manage"
 
 
 # ---------------------------------------------------------------------------

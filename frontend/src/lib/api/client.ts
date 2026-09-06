@@ -5,14 +5,45 @@
  * a Content-Type: application/json header. Non-2xx responses are parsed
  * and thrown as typed ApiError instances.
  *
+ * [T178, ADR-11] Structurally prevents token crossover: `ApiClient` holds
+ * no auth state of its own — it delegates every token read/refresh/
+ * failure decision to an injected `AuthStrategy`. Each domain (tenant,
+ * platform) supplies its own strategy backed by its own storage module,
+ * so two `ApiClient` instances constructed with different strategies can
+ * never read or clear each other's tokens.
+ *
  * Usage:
  *   import { apiClient } from '@/lib/api/client';
  *   const res = await apiClient.get<HealthData>('/api/v1/health');
  */
 
-import { acquireRefreshLock } from '@/lib/auth/client';
-import { clearTokens, getAccessToken } from '@/lib/auth/tokenStorage';
+import { tenantAuthStrategy } from '@/lib/auth/tenantAuthStrategy';
 import type { ApiError, StandardResponse } from './types';
+
+/**
+ * The auth contract an `ApiClient` instance delegates to. Each domain
+ * (tenant, Platform) implements this against its own token storage and
+ * refresh lock — `ApiClient` itself never imports a storage module
+ * directly, which is what makes crossover structurally impossible
+ * rather than merely convention.
+ */
+export interface AuthStrategy {
+  /** Return the current access token for this domain, or null if unset. */
+  getToken(): string | null;
+  /**
+   * Attempt to refresh this domain's tokens (via that domain's own
+   * single-flight lock). Resolves once new tokens are stored; rejects
+   * on failure — callers must not assume `getToken()` changed unless
+   * this resolves.
+   */
+  refresh(): Promise<void>;
+  /**
+   * Called when refresh has failed and the session cannot be recovered.
+   * Responsible for clearing this domain's own tokens and notifying
+   * this domain's own listeners (never the other domain's).
+   */
+  onAuthFailure(): void;
+}
 
 /** Runtime error raised when the API returns a non-2xx status code. */
 export class ApiClientError extends Error {
@@ -32,8 +63,10 @@ const DEFAULT_BASE_URL = 'http://localhost:8000';
 
 export class ApiClient {
   private readonly baseUrl: string;
+  private readonly auth: AuthStrategy;
 
-  constructor(baseUrl?: string) {
+  constructor(auth: AuthStrategy, baseUrl?: string) {
+    this.auth = auth;
     this.baseUrl =
       baseUrl ??
       (typeof process !== 'undefined'
@@ -48,8 +81,8 @@ export class ApiClient {
 
   private buildHeaders(): HeadersInit {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    // Request interceptor: attach Bearer token from in-memory storage.
-    const accessToken = getAccessToken();
+    // Request interceptor: attach Bearer token via the injected strategy.
+    const accessToken = this.auth.getToken();
     if (accessToken) {
       headers['Authorization'] = `Bearer ${accessToken}`;
     }
@@ -91,7 +124,7 @@ export class ApiClient {
       const apiError = await this.parseError(response);
       if (apiError.error?.code === 'TOKEN_EXPIRED') {
         try {
-          await acquireRefreshLock();
+          await this.auth.refresh();
           // Retry the original request with the new access token.
           const retryInit: RequestInit = {
             method,
@@ -106,12 +139,11 @@ export class ApiClient {
           }
           return retryResponse.json() as Promise<StandardResponse<T>>;
         } catch (refreshErr) {
-          // Refresh failed — tokens already cleared by acquireRefreshLock.
+          // Refresh failed — the strategy's own refresh() already cleared
+          // its tokens (mirroring the tenant lock's existing behaviour);
+          // onAuthFailure() is this domain's own notification hook.
           if (refreshErr instanceof ApiClientError) throw refreshErr;
-          clearTokens();
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new Event('session-expired'));
-          }
+          this.auth.onAuthFailure();
           throw new ApiClientError(401, apiError);
         }
       }
@@ -163,7 +195,7 @@ export class ApiClient {
   /** HTTP POST — send a multipart/form-data request (e.g. file upload). */
   async postMultipart<T>(path: string, formData: FormData): Promise<StandardResponse<T>> {
     const headers: Record<string, string> = {};
-    const accessToken = getAccessToken();
+    const accessToken = this.auth.getToken();
     if (accessToken) {
       headers['Authorization'] = `Bearer ${accessToken}`;
     }
@@ -179,5 +211,10 @@ export class ApiClient {
   }
 }
 
-/** Singleton API client instance used throughout the application. */
-export const apiClient = new ApiClient();
+/**
+ * Singleton API client instance used throughout the application —
+ * backed by the tenant `AuthStrategy` (T179). Every existing domain file
+ * (`accounting.ts`, `crm.ts`, `sales.ts`, etc.) continues importing this
+ * same export unmodified; behaviour is byte-identical to before T178.
+ */
+export const apiClient = new ApiClient(tenantAuthStrategy);

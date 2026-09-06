@@ -17,6 +17,13 @@ Phase 3-7 test file already depends on (changing that shared fixture's
 behavior would break dozens of already-passing tests that never enable
 the flag).
 
+**Epic 9A Phase 9 update (T133)**: the production mount also gained
+``require_capability_entitled("crm")`` ahead of ``require_crm_enabled``
+(plan.md §13.1). This fixture neutralises that gate via
+``app.dependency_overrides`` so the assertions below continue to isolate
+the toggle gate specifically, per this file's original purpose — see the
+``flag_gated_client`` fixture's own comment for why.
+
 Task: T078 (tasks.md Phase 8).
 """
 
@@ -72,6 +79,22 @@ def flag_gated_client(db_session: Session) -> Generator[TestClient, None, None]:
             **_TEST_ARGON2_KWARGS,
         )
     )
+
+    # `create_app()` already mounts the real, production `crm_router` at
+    # this exact prefix via a FastAPI-internal `_IncludedRouter` wrapper
+    # (not flat `APIRoute` objects in `app.router.routes` — route-level
+    # filtering does not see them at all), now additionally gated by Epic
+    # 9A Phase 9's `require_capability_entitled("crm")` ahead of
+    # `require_crm_enabled` (T133). Rather than fight that wrapper,
+    # neutralise the *dependency itself* via `app.dependency_overrides` —
+    # the exact same technique `crm_client` (this directory's own
+    # `conftest.py`) already uses to neutralise `require_crm_enabled` for
+    # its own purposes, and confirmed there to reach into the production
+    # mount correctly regardless of which router declared the dependency.
+    from api.v1.router import crm_entitlement_gate
+
+    app.dependency_overrides[crm_entitlement_gate] = lambda: None
+
     app.include_router(
         crm_router,
         prefix="/api/v1/companies/{company_id}/crm",

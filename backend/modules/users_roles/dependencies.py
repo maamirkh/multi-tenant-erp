@@ -23,6 +23,9 @@ from modules.auth.repositories.session_repository import SessionRepository
 from modules.auth.repositories.user_repository import UserRepository
 from modules.companies.repositories.company_repository import CompanyRepository
 from modules.companies.services.company_audit_service import CompanyAuditService
+from modules.platform_admin.services.company_access_service import (
+    assert_company_access_allowed,
+)
 from modules.users_roles.models.company_member import CompanyMember
 from modules.users_roles.repositories.company_member_repository import (
     CompanyMemberRepository,
@@ -202,7 +205,17 @@ def get_current_company_member(
 
     Raises:
         HTTPException 403: If the user is not an active member of the company.
+
+    Also enforces company-scoped access invalidation (Epic 9A, T083):
+    denies (403/404) when the company is suspended/deleted, or when this
+    request's Session predates the company's ``access_invalidated_at``
+    watermark (ADR-6) — closing the gap where every company-scoped route
+    in the five business modules previously never consulted
+    ``Company.status`` at all. ``get_current_user()`` itself is
+    unmodified — this check happens only here, one layer up.
     """
+    assert_company_access_allowed(db, company_id, current_user.session_id)
+
     member_repo = CompanyMemberRepository(db)
     member = member_repo.get_by_user_id(
         user_id=current_user.user_id, company_id=company_id  # type: ignore[arg-type]

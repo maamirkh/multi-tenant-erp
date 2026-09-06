@@ -45,14 +45,33 @@ from fastapi import (
     UploadFile,
     status,
 )
+from sqlalchemy.orm import Session
 
 from core.auth.dependencies import require_authenticated
 from core.auth.interfaces import CurrentUser
-from core.exceptions.base import ConflictException, NotFoundException
+from core.database.session import get_db
+from core.exceptions.base import (
+    ConflictException,
+    ForbiddenException,
+    NotFoundException,
+)
 from core.logging.setup import REQUEST_ID_CONTEXT
 from core.schemas.response import ResponseMeta, StandardResponse
 from core.utils.datetime import utcnow
-from modules.purchase.constants import MODULE_NAME, MODULE_VERSION, PURCHASE_FLAG_BY_KEY
+from modules.platform_admin.exceptions import CapabilityNotEntitledError
+from modules.platform_admin.repositories.plan_repository import PlanRepository
+from modules.platform_admin.repositories.subscription_repository import (
+    SubscriptionRepository,
+)
+from modules.platform_admin.services.entitlement_service import (
+    PlatformEntitlementService,
+)
+from modules.purchase.constants import (
+    MODULE_NAME,
+    MODULE_VERSION,
+    PURCHASE_FLAG_BY_KEY,
+    PURCHASE_SETTINGS_MANAGE_PERMISSION,
+)
 from modules.purchase.dependencies import (
     get_approval_service,
     get_bank_details_repo,
@@ -206,6 +225,7 @@ from modules.purchase.services.master_data_service import (
     PurchaseReasonCodeService,
     SupplierCategoryService,
 )
+from modules.purchase.services.permission_check import user_has_purchase_permission
 from modules.purchase.services.po_service import (
     InvalidPOStatusTransitionError,
     POCancelBlockedError,
@@ -306,8 +326,28 @@ async def update_feature_flag(
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
     flag_svc: PurchaseFeatureFlagService = Depends(get_purchase_feature_flag_service),
+    db: Session = Depends(get_db),
 ) -> StandardResponse[PurchaseFeatureFlagRead]:
     """Enable or disable a purchase feature flag for this company."""
+    # RBAC gap hardened (Epic 9A Phase 10, T140, plan.md §14): feature
+    # flags can toggle module-wide behavior and had no permission check
+    # beyond active tenant membership. Reuses the same
+    # settings-management pattern already patched onto Accounting.
+    if not user_has_purchase_permission(
+        db,
+        company_id,
+        current_user.user_id,
+        PURCHASE_SETTINGS_MANAGE_PERMISSION,
+        user_roles=current_user.roles,
+    ):
+        raise ForbiddenException(
+            message=(
+                f"You do not have the '{PURCHASE_SETTINGS_MANAGE_PERMISSION}' "
+                "permission required to perform this action."
+            ),
+            details={"permission_code": PURCHASE_SETTINGS_MANAGE_PERMISSION},
+        )
+
     if flag_key not in PURCHASE_FLAG_BY_KEY:
         from fastapi import HTTPException
 
@@ -315,6 +355,35 @@ async def update_feature_flag(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Unknown feature flag key: '{flag_key}'",
         )
+
+    if body.is_enabled:
+        # Entitlement ceiling at the mutation point (secondary guard,
+        # FR-9A-185, plan.md §14) — a tenant cannot switch a module-grain
+        # toggle ON beyond the Plan ceiling. Not the primary enforcement
+        # point (that is the mount-level require_capability_entitled
+        # dependency, plan.md §13.1) — this exists only so an out-of-
+        # ceiling attempt fails loudly and immediately rather than
+        # performing a write that would be silently ineffective at
+        # runtime. Retained per plan.md §14 even though, for this
+        # module-grain-only capability, the mount-level gate already
+        # denies the whole request first in practice (verified) — plan.md
+        # itself says removing this secondary check "would not create a
+        # runtime bypass".
+        entitlement_service = PlatformEntitlementService(
+            db=db,
+            plan_repo=PlanRepository(db),
+            subscription_repo=SubscriptionRepository(db),
+        )
+        if not entitlement_service.is_within_plan_ceiling(
+            company_id=company_id, capability_key="purchase"
+        ):
+            raise CapabilityNotEntitledError(
+                message=(
+                    "Cannot enable this feature: the 'purchase' capability "
+                    "is not entitled under the current plan."
+                ),
+                details={"capability_key": "purchase", "flag_key": flag_key},
+            )
 
     if body.is_enabled:
         flag_svc.enable(

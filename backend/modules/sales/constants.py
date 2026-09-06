@@ -309,11 +309,24 @@ SALES_PERMISSIONS: Final[tuple[SalesPermissionDefinition, ...]] = (
         "settings.update",
         "Update sales policies, feature flags, and master data",
     ),
+    SalesPermissionDefinition(
+        "sales.settings.manage",
+        "Manage Sales Feature Flags",
+        "sales",
+        "settings.manage",
+        "Enable or disable sales module feature flags (Epic 9A security "
+        "prerequisite, plan.md §14 — a distinct code from the "
+        "pre-existing, unenforced 'settings.update' above)",
+    ),
 )
 
 SALES_PERMISSION_BY_CODE: Final[dict[str, SalesPermissionDefinition]] = {
     p.code: p for p in SALES_PERMISSIONS
 }
+
+# Feature-toggle mutation gate (Epic 9A Phase 10, T139, plan.md §14) — the
+# permission code the PUT /feature-flags/{flag_key} handler checks.
+SALES_SETTINGS_MANAGE_PERMISSION: Final[str] = "sales.settings.manage"
 
 
 # ---------------------------------------------------------------------------

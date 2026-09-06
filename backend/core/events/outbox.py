@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, String
+from sqlalchemy import Boolean, DateTime, String, func, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
@@ -63,8 +63,11 @@ class OutboxRecord(BaseModel):
 class EventOutboxRepository:
     """Append-only repository for OutboxRecord.
 
-    Intentionally exposes only ``create()``. Marking records as published
-    is the exclusive responsibility of the relay process.
+    Write-side intentionally exposes only ``create()`` — marking records
+    as published remains the exclusive responsibility of the relay
+    process. ``count_pending()``/``count_published()`` (Epic 9A Phase 13,
+    T174) are read-only additions for the platform health view; counting
+    is not mutation and does not weaken that boundary.
     """
 
     def __init__(self, session: Session) -> None:
@@ -74,3 +77,17 @@ class EventOutboxRepository:
         """Persist a new outbox record within the current session transaction."""
         self._session.add(record)
         return record
+
+    def count_pending(self) -> int:
+        return self._session.execute(
+            select(func.count())
+            .select_from(OutboxRecord)
+            .where(OutboxRecord.published == False)  # noqa: E712
+        ).scalar_one()
+
+    def count_published(self) -> int:
+        return self._session.execute(
+            select(func.count())
+            .select_from(OutboxRecord)
+            .where(OutboxRecord.published == True)  # noqa: E712
+        ).scalar_one()

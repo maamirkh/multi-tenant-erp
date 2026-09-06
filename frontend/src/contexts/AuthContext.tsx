@@ -53,8 +53,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
 
   // --- Session hydration on mount ------------------------------------------
   // hydrateStartedRef guards against React StrictMode's dev-only double
-  // effect-invocation (belt-and-braces alongside the acquireRefreshLock()
-  // call below, which is the actual root-cause fix — see next comment).
+  // effect-invocation: that synthetic mount->cleanup->remount cycle
+  // reuses this same ref, so the guard below ensures hydrate() (and
+  // therefore acquireRefreshLock()) runs at most once per real component
+  // lifetime — never twice, which matters because the refresh token is
+  // single-use/rotating. There is deliberately no separate per-invocation
+  // `cancelled` closure flag guarding the state updates below: such a
+  // flag, set by the synthetic first invocation's cleanup, would
+  // incorrectly poison the one-and-only in-flight hydrate() call's
+  // eventual setUser/setIsAuthenticated/setIsLoading updates, permanently
+  // stranding the component actually left mounted on its initial
+  // isLoading=true (a real, reproduced bug in the sibling
+  // PlatformAuthContext — T219 E2E — before this fix was mirrored here).
+  // React 18+ already no-ops setState calls after a genuine unmount, so
+  // no extra guard is needed for that case either.
   const hydrateStartedRef = useRef(false);
 
   useEffect(() => {
@@ -62,8 +74,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       return;
     }
     hydrateStartedRef.current = true;
-
-    let cancelled = false;
 
     async function hydrate(): Promise<void> {
       const storedRefreshToken = getRefreshToken();
@@ -85,33 +95,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
         // (hydration included) onto one in-flight request and already
         // handles storeTokens()/clearTokens() internally.
         const refreshResult = await acquireRefreshLock();
-        if (cancelled) return;
-
         setExpiresIn(refreshResult.expires_in);
 
         const profile = await getMeApi();
-        if (cancelled) return;
-
         setUser(profile);
         setIsAuthenticated(true);
       } catch {
-        if (!cancelled) {
-          clearTokens();
-          setUser(null);
-          setIsAuthenticated(false);
-        }
+        clearTokens();
+        setUser(null);
+        setIsAuthenticated(false);
       } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
+        setIsLoading(false);
       }
     }
 
     void hydrate();
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   // --- session-expired event (dispatched by API client on refresh failure) ---

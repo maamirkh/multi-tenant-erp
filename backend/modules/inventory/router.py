@@ -23,14 +23,17 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Path, UploadFile, status
 from fastapi.responses import Response
+from sqlalchemy.orm import Session
 
 from core.auth.dependencies import require_authenticated
 from core.auth.interfaces import CurrentUser
+from core.database.session import get_db
 from core.logging.setup import REQUEST_ID_CONTEXT
 from core.schemas.response import ResponseMeta, StandardResponse
 from core.utils.datetime import utcnow
 from modules.inventory.constants import (
     INVENTORY_FLAG_BY_KEY,
+    INVENTORY_SETTINGS_MANAGE_PERMISSION,
     MODULE_NAME,
     MODULE_VERSION,
 )
@@ -60,6 +63,7 @@ from modules.inventory.dependencies import (
     get_uom_service,
     get_warehouse_service,
 )
+from modules.inventory.exceptions import InventoryPermissionDeniedError
 from modules.inventory.repositories.alerts_repository import (
     LowStockAlertRepository,
     ReorderRuleRepository,
@@ -196,6 +200,7 @@ from modules.inventory.services.master_data_service import (
     UOMConversionService,
     UOMService,
 )
+from modules.inventory.services.permission_check import user_has_inventory_permission
 from modules.inventory.services.product_enrichment_service import (
     ProductEnrichmentService,
 )
@@ -209,6 +214,14 @@ from modules.inventory.services.warehouse_service import (
     LocationNotFoundError,
     WarehouseHasStockError,
     WarehouseService,
+)
+from modules.platform_admin.exceptions import CapabilityNotEntitledError
+from modules.platform_admin.repositories.plan_repository import PlanRepository
+from modules.platform_admin.repositories.subscription_repository import (
+    SubscriptionRepository,
+)
+from modules.platform_admin.services.entitlement_service import (
+    PlatformEntitlementService,
 )
 
 logger = logging.getLogger(__name__)
@@ -274,13 +287,55 @@ def update_feature_flag(
     body: FeatureFlagUpdateRequest = ...,
     current_user: CurrentUser = Depends(require_authenticated),
     flag_service: FeatureFlagService = Depends(get_feature_flag_service),
+    db: Session = Depends(get_db),
 ) -> StandardResponse[FeatureFlagResponse]:
+    # RBAC gap hardened (Epic 9A Phase 10, T138, plan.md §14): feature
+    # flags can toggle module-wide behavior and had no permission check
+    # beyond active tenant membership. Reuses the same
+    # settings-management pattern already patched onto Accounting.
+    if not user_has_inventory_permission(
+        db,
+        company_id,
+        current_user.user_id,
+        INVENTORY_SETTINGS_MANAGE_PERMISSION,
+        user_roles=current_user.roles,
+    ):
+        raise InventoryPermissionDeniedError(INVENTORY_SETTINGS_MANAGE_PERMISSION)
+
     if flag_key not in INVENTORY_FLAG_BY_KEY:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Feature flag '{flag_key}' not found.",
         )
+
     if body.is_enabled:
+        # Entitlement ceiling at the mutation point (secondary guard,
+        # FR-9A-185, plan.md §14) — a tenant cannot switch a module-grain
+        # toggle ON beyond the Plan ceiling. Not the primary enforcement
+        # point (that is the mount-level require_capability_entitled
+        # dependency, plan.md §13.1) — this exists only so an out-of-
+        # ceiling attempt fails loudly and immediately rather than
+        # performing a write that would be silently ineffective at
+        # runtime. Retained per plan.md §14 even though, for this
+        # module-grain-only capability, the mount-level gate already
+        # denies the whole request first in practice (verified) — plan.md
+        # itself says removing this secondary check "would not create a
+        # runtime bypass".
+        entitlement_service = PlatformEntitlementService(
+            db=db,
+            plan_repo=PlanRepository(db),
+            subscription_repo=SubscriptionRepository(db),
+        )
+        if not entitlement_service.is_within_plan_ceiling(
+            company_id=company_id, capability_key="inventory"
+        ):
+            raise CapabilityNotEntitledError(
+                message=(
+                    "Cannot enable this feature: the 'inventory' capability "
+                    "is not entitled under the current plan."
+                ),
+                details={"capability_key": "inventory", "flag_key": flag_key},
+            )
         flag_service.enable(
             company_id=company_id,
             flag_key=flag_key,

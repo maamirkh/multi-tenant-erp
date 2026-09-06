@@ -178,6 +178,24 @@ async def admin_list_companies(
 # ---------------------------------------------------------------------------
 
 
+@router.get(
+    "",
+    response_model=StandardResponse[list[CompanyResponse]],
+    summary="List the current user's own companies",
+    description="Returns every non-deleted company owned by the current user.",
+)
+async def list_my_companies(
+    current_user: CurrentUser = Depends(require_authenticated),
+    service: CompanyService = Depends(get_company_service),
+) -> StandardResponse[list[CompanyResponse]]:
+    companies = service.list_user_companies(cast(UUID, current_user.user_id))
+    return StandardResponse(
+        data=[CompanyResponse.model_validate(c) for c in companies],
+        message=f"{len(companies)} compan{'y' if len(companies) == 1 else 'ies'} retrieved.",
+        meta=_meta(),
+    )
+
+
 @router.post(
     "",
     response_model=StandardResponse[CompanyResponse],

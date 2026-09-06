@@ -449,6 +449,32 @@ INITIAL_PERMISSIONS: Final[tuple[PermissionDefinition, ...]] = (
         "read",
         "View CRM reports/KPIs/dashboard",
     ),
+    # Epic 9A Phase 10 (T138-T141, plan.md §14) — feature-toggle mutation
+    # hardening for the three modules confirmed vulnerable during
+    # reconnaissance (Inventory, Sales, Purchase had no permission check
+    # beyond active tenant membership on PUT .../feature-flags/{key}).
+    # Accounting and CRM already had an equivalent code and are untouched.
+    PermissionDefinition(
+        "inventory.settings.manage",
+        "Manage Inventory Feature Flags",
+        "inventory",
+        "manage",
+        "Enable or disable inventory module feature flags",
+    ),
+    PermissionDefinition(
+        "sales.settings.manage",
+        "Manage Sales Feature Flags",
+        "sales",
+        "manage",
+        "Enable or disable sales module feature flags",
+    ),
+    PermissionDefinition(
+        "purchase.settings.manage",
+        "Manage Purchase Feature Flags",
+        "purchase",
+        "manage",
+        "Enable or disable purchase module feature flags",
+    ),
 )
 
 PERMISSION_BY_CODE: Final[dict[str, PermissionDefinition]] = {
@@ -682,6 +708,17 @@ _CRM_VIEWER: Final[frozenset[str]] = frozenset(
     }
 )
 
+# Epic 9A Phase 10 (T141, plan.md §14 risk mitigation) — granted to
+# owner/admin only, so existing tenant admins can still manage feature
+# toggles immediately after deploy; ordinary members cannot.
+_FEATURE_TOGGLE_MANAGE: Final[frozenset[str]] = frozenset(
+    {
+        "inventory.settings.manage",
+        "sales.settings.manage",
+        "purchase.settings.manage",
+    }
+)
+
 # Maps role slug → frozenset of permission codes granted by default
 DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
     "owner": frozenset(
@@ -703,6 +740,7 @@ DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
         }
         | _ACCOUNTING_CFO
         | _CRM_OWNER
+        | _FEATURE_TOGGLE_MANAGE
     ),
     "admin": frozenset(
         {
@@ -721,6 +759,7 @@ DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
             "profile.update",
         }
         | _ACCOUNTING_SYSTEM_ADMIN
+        | _FEATURE_TOGGLE_MANAGE
         | _CRM_ADMIN
     ),
     "manager": frozenset(
