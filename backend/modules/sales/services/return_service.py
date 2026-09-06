@@ -152,6 +152,7 @@ class ReturnService:
                 from modules.inventory.repositories.stock_position_repository import (  # noqa: PLC0415
                     StockPositionRepository,
                 )
+
                 from modules.inventory.repositories.warehouse_repository import (  # noqa: PLC0415
                     WarehouseRepository,
                 )

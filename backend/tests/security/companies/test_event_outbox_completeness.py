@@ -118,16 +118,16 @@ def _assert_event(
     count: int = 1,
 ) -> None:
     """Assert that exactly `count` events exist with valid aggregate and payload."""
-    assert (
-        len(events) == count
-    ), f"Expected {count} '{event_type}' event(s), got {len(events)}"
+    assert len(events) == count, (
+        f"Expected {count} '{event_type}' event(s), got {len(events)}"
+    )
     for ev in events:
-        assert (
-            ev["aggregate_id"] == company_id
-        ), f"aggregate_id mismatch: expected {company_id}, got {ev['aggregate_id']}"
-        assert (
-            ev["aggregate_type"] == _AGGREGATE_TYPE
-        ), f"aggregate_type mismatch: expected '{_AGGREGATE_TYPE}', got '{ev['aggregate_type']}'"
+        assert ev["aggregate_id"] == company_id, (
+            f"aggregate_id mismatch: expected {company_id}, got {ev['aggregate_id']}"
+        )
+        assert ev["aggregate_type"] == _AGGREGATE_TYPE, (
+            f"aggregate_type mismatch: expected '{_AGGREGATE_TYPE}', got '{ev['aggregate_type']}'"
+        )
         assert ev["payload"] is not None, f"Null payload for {event_type}"
         assert ev["payload"] != {}, f"Empty payload for {event_type}"
 
@@ -346,6 +346,6 @@ class TestOutboxEventPayloadIntegrity:
             for ev in events:
                 assert ev["payload"] is not None, f"Null payload for '{event_type}'"
                 assert ev["payload"] != {}, f"Empty payload for '{event_type}'"
-                assert (
-                    ev["aggregate_type"] == _AGGREGATE_TYPE
-                ), f"Wrong aggregate_type for '{event_type}': {ev['aggregate_type']}"
+                assert ev["aggregate_type"] == _AGGREGATE_TYPE, (
+                    f"Wrong aggregate_type for '{event_type}': {ev['aggregate_type']}"
+                )

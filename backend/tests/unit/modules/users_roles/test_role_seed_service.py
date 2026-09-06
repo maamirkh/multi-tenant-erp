@@ -47,8 +47,8 @@ def _make_service(
 
     # Default: no existing role-permission mappings
     codes_by_role = existing_permission_codes_by_role or {}
-    role_permission_repo.get_permission_codes_for_role.side_effect = (
-        lambda role_id: codes_by_role.get(str(role_id), set())
+    role_permission_repo.get_permission_codes_for_role.side_effect = lambda role_id: (
+        codes_by_role.get(str(role_id), set())
     )
 
     return RoleSeedService(

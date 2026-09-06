@@ -47,9 +47,9 @@ class TestFailedLoginLeavesNoDatabaseArtifacts:
             .scalars()
             .all()
         )
-        assert (
-            len(tokens) == 0
-        ), f"Failed login created {len(tokens)} orphaned refresh token(s)"
+        assert len(tokens) == 0, (
+            f"Failed login created {len(tokens)} orphaned refresh token(s)"
+        )
 
     def test_failed_login_with_nonexistent_user_creates_no_artifacts(
         self, test_client: TestClient, db_session: Session
@@ -94,9 +94,9 @@ class TestPasswordChangeAtomicity:
             "/api/v1/auth/login",
             json={"email": user.email, "password": password},
         )
-        assert (
-            re_login.status_code == 200
-        ), "Original password no longer valid after failed change — partial write occurred"
+        assert re_login.status_code == 200, (
+            "Original password no longer valid after failed change — partial write occurred"
+        )
 
 
 class TestPasswordResetAtomicity:
@@ -120,9 +120,9 @@ class TestPasswordResetAtomicity:
             "/api/v1/auth/login",
             json={"email": user.email, "password": password},
         )
-        assert (
-            login.status_code == 200
-        ), "Original password no longer valid after failed reset — partial write occurred"
+        assert login.status_code == 200, (
+            "Original password no longer valid after failed reset — partial write occurred"
+        )
 
 
 class TestRefreshRotationAtomicity:

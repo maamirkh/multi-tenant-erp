@@ -23,24 +23,20 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        """
+    op.execute("""
         INSERT INTO capabilities (key, module, display_name, grain, is_active)
         VALUES ('installments', 'installments', 'Installments', 'module', true)
         ON CONFLICT (key) DO NOTHING
-        """
-    )
+        """)
 
 
 def downgrade() -> None:
     # Guarded: skip the delete if any plan_capabilities row still references
     # this capability (that FK is ON DELETE RESTRICT) rather than raising.
-    op.execute(
-        """
+    op.execute("""
         DELETE FROM capabilities
         WHERE key = 'installments'
         AND NOT EXISTS (
             SELECT 1 FROM plan_capabilities WHERE capability_key = 'installments'
         )
-        """
-    )
+        """)

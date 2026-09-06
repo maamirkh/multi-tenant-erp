@@ -142,9 +142,9 @@ class TestSupplierSearchPerformance:
 
         p95 = _p95(latencies)
         print(f"\nSupplier list p95: {p95:.1f}ms (threshold: {self._THRESHOLD_MS}ms)")
-        assert (
-            p95 < self._THRESHOLD_MS
-        ), f"Supplier list p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        assert p95 < self._THRESHOLD_MS, (
+            f"Supplier list p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        )
 
     def test_supplier_search_p95(self, perf_auth):
         client, token, cid = perf_auth
@@ -164,9 +164,9 @@ class TestSupplierSearchPerformance:
 
         p95 = _p95(latencies)
         print(f"\nSupplier search p95: {p95:.1f}ms (threshold: {self._THRESHOLD_MS}ms)")
-        assert (
-            p95 < self._THRESHOLD_MS
-        ), f"Supplier search p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        assert p95 < self._THRESHOLD_MS, (
+            f"Supplier search p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -200,9 +200,9 @@ class TestPOListPerformance:
 
         p95 = _p95(latencies)
         print(f"\nPO list p95: {p95:.1f}ms (threshold: {self._THRESHOLD_MS}ms)")
-        assert (
-            p95 < self._THRESHOLD_MS
-        ), f"PO list p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        assert p95 < self._THRESHOLD_MS, (
+            f"PO list p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        )
 
     def test_po_detail_p95(self, perf_auth):
         client, token, cid = perf_auth
@@ -232,9 +232,9 @@ class TestPOListPerformance:
 
         p95 = _p95(latencies)
         print(f"\nPO detail p95: {p95:.1f}ms (threshold: {self._THRESHOLD_MS}ms)")
-        assert (
-            p95 < self._THRESHOLD_MS
-        ), f"PO detail p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        assert p95 < self._THRESHOLD_MS, (
+            f"PO detail p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -267,9 +267,9 @@ class TestReportPerformance:
 
         p95 = _p95(latencies)
         print(f"\nKPI report p95: {p95:.1f}ms (threshold: {self._THRESHOLD_MS}ms)")
-        assert (
-            p95 < self._THRESHOLD_MS
-        ), f"KPI report p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        assert p95 < self._THRESHOLD_MS, (
+            f"KPI report p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        )
 
     def test_po_summary_report_p95(self, perf_auth):
         client, token, cid = perf_auth
@@ -292,6 +292,6 @@ class TestReportPerformance:
         print(
             f"\nPO summary report p95: {p95:.1f}ms (threshold: {self._THRESHOLD_MS}ms)"
         )
-        assert (
-            p95 < self._THRESHOLD_MS
-        ), f"PO summary report p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        assert p95 < self._THRESHOLD_MS, (
+            f"PO summary report p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        )

@@ -143,9 +143,9 @@ class TestConcurrentSuspendExactlyOneCommits:
                     .scalars()
                     .all()
                 )
-                assert (
-                    len(audit_events) == 1
-                ), "exactly one audit row for the two concurrent attempts"
+                assert len(audit_events) == 1, (
+                    "exactly one audit row for the two concurrent attempts"
+                )
             finally:
                 verify.close()
         finally:

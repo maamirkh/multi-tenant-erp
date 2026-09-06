@@ -186,9 +186,9 @@ class TestGetRoleDetail:
         assert resp.status_code == 200
         permissions = resp.json()["data"]["permissions"]
         for p in permissions:
-            assert (
-                isinstance(p["module"], str) and p["module"]
-            ), "Module field missing/empty"
+            assert isinstance(p["module"], str) and p["module"], (
+                "Module field missing/empty"
+            )
 
     def test_permissions_sorted_by_module_then_code(
         self, test_client: TestClient, db_session: Session

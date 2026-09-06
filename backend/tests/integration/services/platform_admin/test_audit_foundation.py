@@ -111,9 +111,9 @@ class TestAuditFoundationFailClosed:
         repo = PlatformAdministratorRepository(db_session)
         reloaded = repo.get_by_id(administrator_id)
         assert reloaded is not None
-        assert (
-            reloaded.is_active is True
-        ), "the state change must not survive a failed audit write"
+        assert reloaded.is_active is True, (
+            "the state change must not survive a failed audit write"
+        )
         assert reloaded.deactivated_at is None
 
         # Scoped to the "deactivate" action specifically — the earlier,
@@ -130,6 +130,6 @@ class TestAuditFoundationFailClosed:
             .scalars()
             .all()
         )
-        assert (
-            deactivate_events == []
-        ), "no deactivate audit row may exist for a rolled-back mutation"
+        assert deactivate_events == [], (
+            "no deactivate audit row may exist for a rolled-back mutation"
+        )

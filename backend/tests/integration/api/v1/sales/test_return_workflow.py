@@ -151,9 +151,9 @@ class TestReturnApprovalWorkflow:
                 json={"auto_approved": False},
                 headers=_auth(token),
             )
-            assert (
-                approve_resp.status_code == 200
-            ), f"Approve failed: {approve_resp.text}"
+            assert approve_resp.status_code == 200, (
+                f"Approve failed: {approve_resp.text}"
+            )
             assert approve_resp.json()["data"]["status"] == "APPROVED"
 
         # Step 4: Verify final state via GET
@@ -392,6 +392,6 @@ class TestReturnTenantIsolation:
             _sales_url(company_b, f"/returns/{return_id}"),
             headers=_auth(token_b),
         )
-        assert (
-            resp.status_code == 404
-        ), f"Expected 404 for cross-company access, got {resp.status_code}"
+        assert resp.status_code == 404, (
+            f"Expected 404 for cross-company access, got {resp.status_code}"
+        )

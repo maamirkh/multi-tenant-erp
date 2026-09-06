@@ -407,8 +407,7 @@ def upgrade() -> None:
     # ------------------------------------------------------------------
     # PostgreSQL FTS trigger for customers
     # ------------------------------------------------------------------
-    op.execute(
-        """
+    op.execute("""
         CREATE OR REPLACE FUNCTION update_customer_tsvector()
         RETURNS TRIGGER LANGUAGE plpgsql AS $$
         BEGIN
@@ -421,15 +420,12 @@ def upgrade() -> None:
             RETURN NEW;
         END;
         $$;
-        """
-    )
-    op.execute(
-        """
+        """)
+    op.execute("""
         CREATE TRIGGER trg_customer_tsvector
         BEFORE INSERT OR UPDATE ON customers
         FOR EACH ROW EXECUTE FUNCTION update_customer_tsvector();
-        """
-    )
+        """)
 
 
 def downgrade() -> None:

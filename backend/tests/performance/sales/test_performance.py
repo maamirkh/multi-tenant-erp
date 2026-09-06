@@ -161,9 +161,9 @@ class TestCustomerSearchPerformance:
 
         p95 = _p95(latencies)
         print(f"\nCustomer list p95: {p95:.1f}ms (threshold: {self._THRESHOLD_MS}ms)")
-        assert (
-            p95 < self._THRESHOLD_MS
-        ), f"Customer list p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        assert p95 < self._THRESHOLD_MS, (
+            f"Customer list p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        )
 
     def test_customer_search_by_name_p95(self, perf_auth):
         client, token, cid = perf_auth
@@ -183,9 +183,9 @@ class TestCustomerSearchPerformance:
 
         p95 = _p95(latencies)
         print(f"\nCustomer search p95: {p95:.1f}ms (threshold: {self._THRESHOLD_MS}ms)")
-        assert (
-            p95 < self._THRESHOLD_MS
-        ), f"Customer search p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        assert p95 < self._THRESHOLD_MS, (
+            f"Customer search p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -216,9 +216,9 @@ class TestCustomerDetailPerformance:
 
         p95 = _p95(latencies)
         print(f"\nCustomer detail p95: {p95:.1f}ms (threshold: {self._THRESHOLD_MS}ms)")
-        assert (
-            p95 < self._THRESHOLD_MS
-        ), f"Customer detail p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        assert p95 < self._THRESHOLD_MS, (
+            f"Customer detail p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -248,9 +248,9 @@ class TestSalesOrderListPerformance:
 
         p95 = _p95(latencies)
         print(f"\nSO list p95: {p95:.1f}ms (threshold: {self._THRESHOLD_MS}ms)")
-        assert (
-            p95 < self._THRESHOLD_MS
-        ), f"SO list p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        assert p95 < self._THRESHOLD_MS, (
+            f"SO list p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        )
 
     def test_so_detail_p95(self, perf_auth):
         client, token, cid = perf_auth
@@ -270,9 +270,9 @@ class TestSalesOrderListPerformance:
 
         p95 = _p95(latencies)
         print(f"\nSO detail p95: {p95:.1f}ms (threshold: {self._THRESHOLD_MS}ms)")
-        assert (
-            p95 < self._THRESHOLD_MS
-        ), f"SO detail p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        assert p95 < self._THRESHOLD_MS, (
+            f"SO detail p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -312,9 +312,9 @@ class TestPriceResolutionPerformance:
         print(
             f"\nPrice resolution p95: {p95:.1f}ms (threshold: {self._THRESHOLD_MS}ms)"
         )
-        assert (
-            p95 < self._THRESHOLD_MS
-        ), f"Price resolution p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        assert p95 < self._THRESHOLD_MS, (
+            f"Price resolution p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -345,9 +345,9 @@ class TestReportGenerationPerformance:
 
         p95 = _p95(latencies)
         print(f"\nKPI dashboard p95: {p95:.1f}ms (threshold: {self._THRESHOLD_MS}ms)")
-        assert (
-            p95 < self._THRESHOLD_MS
-        ), f"KPI dashboard p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        assert p95 < self._THRESHOLD_MS, (
+            f"KPI dashboard p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        )
 
     def test_sales_report_p95(self, perf_auth):
         client, token, cid = perf_auth
@@ -366,9 +366,9 @@ class TestReportGenerationPerformance:
 
         p95 = _p95(latencies)
         print(f"\nSales report p95: {p95:.1f}ms (threshold: {self._THRESHOLD_MS}ms)")
-        assert (
-            p95 < self._THRESHOLD_MS
-        ), f"Sales report p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        assert p95 < self._THRESHOLD_MS, (
+            f"Sales report p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -407,9 +407,9 @@ class TestQuotationListPerformance:
 
         p95 = _p95(latencies)
         print(f"\nQuotation list p95: {p95:.1f}ms (threshold: {self._THRESHOLD_MS}ms)")
-        assert (
-            p95 < self._THRESHOLD_MS
-        ), f"Quotation list p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        assert p95 < self._THRESHOLD_MS, (
+            f"Quotation list p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -438,9 +438,9 @@ class TestDeliveryInvoicePerformance:
         print(
             f"\nDelivery note list p95: {p95:.1f}ms (threshold: {self._THRESHOLD_MS}ms)"
         )
-        assert (
-            p95 < self._THRESHOLD_MS
-        ), f"DN list p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        assert p95 < self._THRESHOLD_MS, (
+            f"DN list p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        )
 
     def test_invoice_list_p95(self, perf_auth):
         client, token, cid = perf_auth
@@ -455,6 +455,6 @@ class TestDeliveryInvoicePerformance:
 
         p95 = _p95(latencies)
         print(f"\nInvoice list p95: {p95:.1f}ms (threshold: {self._THRESHOLD_MS}ms)")
-        assert (
-            p95 < self._THRESHOLD_MS
-        ), f"Invoice list p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        assert p95 < self._THRESHOLD_MS, (
+            f"Invoice list p95 {p95:.1f}ms exceeds {self._THRESHOLD_MS}ms"
+        )

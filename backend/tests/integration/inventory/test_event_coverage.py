@@ -224,9 +224,9 @@ class TestEventCoverage:
 
     def test_all_32_event_classes_exist(self) -> None:
         """Verify exactly 32 domain event classes are defined."""
-        assert (
-            len(ALL_EVENT_CLASSES) == 32
-        ), f"Expected 32 domain event classes, found {len(ALL_EVENT_CLASSES)}"
+        assert len(ALL_EVENT_CLASSES) == 32, (
+            f"Expected 32 domain event classes, found {len(ALL_EVENT_CLASSES)}"
+        )
 
     @pytest.mark.parametrize("event_cls", ALL_EVENT_CLASSES, ids=lambda c: c.__name__)
     def test_event_class_instantiable(self, event_cls) -> None:
@@ -254,9 +254,9 @@ class TestEventCoverage:
         except Exception as exc:
             pytest.fail(f"Failed to serialise {event_cls.__name__}.to_dict(): {exc}")
 
-        assert (
-            len(serialised) > 2
-        ), f"{event_cls.__name__}.to_dict() returned empty JSON"
+        assert len(serialised) > 2, (
+            f"{event_cls.__name__}.to_dict() returned empty JSON"
+        )
         # Round-trip check
         parsed = json.loads(serialised)
         assert parsed["event_type"] == event.event_type
@@ -305,9 +305,9 @@ class TestEventCoverage:
             set_event_bus(original_bus)
 
         event_types = {e.event_type for e in captured}
-        assert (
-            "WarehouseCreated" in event_types
-        ), f"WarehouseCreated not captured. Got: {sorted(event_types)}"
+        assert "WarehouseCreated" in event_types, (
+            f"WarehouseCreated not captured. Got: {sorted(event_types)}"
+        )
 
     def test_global_event_bus_captures_stock_events(
         self, test_client: TestClient, db_session: Session
@@ -374,9 +374,9 @@ class TestEventCoverage:
             set_event_bus(original_bus)
 
         event_types = {e.event_type for e in captured}
-        assert (
-            "OpeningStockRecorded" in event_types
-        ), f"OpeningStockRecorded not captured. Got: {sorted(event_types)}"
+        assert "OpeningStockRecorded" in event_types, (
+            f"OpeningStockRecorded not captured. Got: {sorted(event_types)}"
+        )
 
     def test_all_event_types_documented(self) -> None:
         """Assert the event type strings match the expected spec §31 catalogue."""
@@ -425,6 +425,6 @@ class TestEventCoverage:
                 pass
 
         missing = expected_event_types - actual_event_types
-        assert (
-            not missing
-        ), f"Missing domain event types from catalogue: {sorted(missing)}"
+        assert not missing, (
+            f"Missing domain event types from catalogue: {sorted(missing)}"
+        )

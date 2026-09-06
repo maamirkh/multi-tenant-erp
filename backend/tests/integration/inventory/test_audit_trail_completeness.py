@@ -204,12 +204,12 @@ class TestAuditTrailCompleteness:
 
         assert len(movements) >= 1
         for mov in movements:
-            assert (
-                mov.performed_at is not None
-            ), f"Movement {mov.id} missing performed_at audit timestamp"
-            assert (
-                mov.company_id == company_id
-            ), f"Movement company_id mismatch: {mov.company_id} != {company_id}"
+            assert mov.performed_at is not None, (
+                f"Movement {mov.id} missing performed_at audit timestamp"
+            )
+            assert mov.company_id == company_id, (
+                f"Movement company_id mismatch: {mov.company_id} != {company_id}"
+            )
 
     def test_domain_events_published_on_opening_stock(
         self, test_client: TestClient, db_session: Session
@@ -262,9 +262,9 @@ class TestAuditTrailCompleteness:
             set_event_bus(original_bus)
 
         event_types = [e.event_type for e in captured_events]
-        assert (
-            "OpeningStockRecorded" in event_types
-        ), f"OpeningStockRecorded event not published. Got: {event_types}"
+        assert "OpeningStockRecorded" in event_types, (
+            f"OpeningStockRecorded event not published. Got: {event_types}"
+        )
 
     def test_warehouse_write_produces_domain_event(
         self, test_client: TestClient, db_session: Session
@@ -294,6 +294,6 @@ class TestAuditTrailCompleteness:
             set_event_bus(original_bus)
 
         event_types = [e.event_type for e in captured_events]
-        assert (
-            "WarehouseCreated" in event_types
-        ), f"WarehouseCreated event not published. Got: {event_types}"
+        assert "WarehouseCreated" in event_types, (
+            f"WarehouseCreated event not published. Got: {event_types}"
+        )

@@ -30,7 +30,8 @@ ModelType = TypeVar("ModelType", bound=TenantBaseModel)
 
 
 class BaseAccountingRepository(
-    BaseRepository[ModelType], Generic[ModelType]  # noqa: UP046
+    BaseRepository[ModelType],
+    Generic[ModelType],  # noqa: UP046
 ):
     """Base repository for all accounting domain entities.
 

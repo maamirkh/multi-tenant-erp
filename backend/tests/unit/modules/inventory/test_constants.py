@@ -35,9 +35,9 @@ class TestPermissions:
 
     def test_permission_codes_follow_naming_convention(self) -> None:
         for perm in INVENTORY_PERMISSIONS:
-            assert _PERMISSION_CODE_PATTERN.match(
-                perm.code
-            ), f"Permission code '{perm.code}' does not match 'inventory.<domain>.<action>'"
+            assert _PERMISSION_CODE_PATTERN.match(perm.code), (
+                f"Permission code '{perm.code}' does not match 'inventory.<domain>.<action>'"
+            )
 
     def test_permission_by_code_lookup_consistent(self) -> None:
         assert len(INVENTORY_PERMISSION_BY_CODE) == len(INVENTORY_PERMISSIONS)
@@ -64,9 +64,9 @@ class TestFeatureFlags:
 
     def test_flag_keys_follow_naming_convention(self) -> None:
         for flag in INVENTORY_FEATURE_FLAGS:
-            assert _FLAG_KEY_PATTERN.match(
-                flag.key
-            ), f"Flag key '{flag.key}' does not match 'inventory.<capability>'"
+            assert _FLAG_KEY_PATTERN.match(flag.key), (
+                f"Flag key '{flag.key}' does not match 'inventory.<capability>'"
+            )
 
     def test_flag_by_key_lookup_consistent(self) -> None:
         assert len(INVENTORY_FLAG_BY_KEY) == len(INVENTORY_FEATURE_FLAGS)

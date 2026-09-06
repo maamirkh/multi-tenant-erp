@@ -124,9 +124,9 @@ class TestRoleListPerformance:
             resp = test_client.get(url, headers=headers)
             elapsed_ms = (time.perf_counter() - start) * 1000
             latencies.append(elapsed_ms)
-            assert (
-                resp.status_code == 200
-            ), f"Unexpected status {resp.status_code}: {resp.text[:200]}"
+            assert resp.status_code == 200, (
+                f"Unexpected status {resp.status_code}: {resp.text[:200]}"
+            )
 
         latencies.sort()
         p95_index = max(int(len(latencies) * 0.95) - 1, 0)
@@ -160,9 +160,9 @@ class TestRoleListPerformance:
         roles = data["data"]
         # At minimum the 8 system roles must be present; custom roles may vary
         # by seed order but total should be at least TOTAL_ROLE_COUNT
-        assert (
-            len(roles) >= _SYSTEM_ROLE_COUNT
-        ), f"Expected at least {_SYSTEM_ROLE_COUNT} roles, got {len(roles)}"
+        assert len(roles) >= _SYSTEM_ROLE_COUNT, (
+            f"Expected at least {_SYSTEM_ROLE_COUNT} roles, got {len(roles)}"
+        )
 
     def test_role_list_includes_inactive_p95_under_200ms(
         self,

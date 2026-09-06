@@ -63,12 +63,12 @@ class TestListByUserId:
 class TestAppendOnly:
     def test_no_update_method_exposed(self) -> None:
         """AuditLogRepository must NOT expose an update method."""
-        assert not hasattr(
-            AuditLogRepository, "update"
-        ), "AuditLogRepository must be append-only — no update method allowed."
+        assert not hasattr(AuditLogRepository, "update"), (
+            "AuditLogRepository must be append-only — no update method allowed."
+        )
 
     def test_no_delete_method_exposed(self) -> None:
         """AuditLogRepository must NOT expose a delete method."""
-        assert not hasattr(
-            AuditLogRepository, "delete"
-        ), "AuditLogRepository must be append-only — no delete method allowed."
+        assert not hasattr(AuditLogRepository, "delete"), (
+            "AuditLogRepository must be append-only — no delete method allowed."
+        )

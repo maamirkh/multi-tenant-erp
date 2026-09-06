@@ -195,6 +195,6 @@ class TestCustomer360Performance:
 
         p95 = _p95(samples)
         print(f"Customer 360 p95 over {_SAMPLE_CALLS} calls: {p95:.3f}s")
-        assert (
-            p95 < _TARGET_SECONDS
-        ), f"Customer 360 p95 {p95:.3f}s exceeds {_TARGET_SECONDS}s"
+        assert p95 < _TARGET_SECONDS, (
+            f"Customer 360 p95 {p95:.3f}s exceeds {_TARGET_SECONDS}s"
+        )

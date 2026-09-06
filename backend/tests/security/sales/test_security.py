@@ -101,9 +101,9 @@ class TestAuthenticationEnforcement:
         cid = str(uuid.uuid4())
         url = _sales_url(cid, path_suffix)
         resp = getattr(test_client, method.lower())(url)
-        assert (
-            resp.status_code == 401
-        ), f"{method} {url} returned {resp.status_code}, expected 401"
+        assert resp.status_code == 401, (
+            f"{method} {url} returned {resp.status_code}, expected 401"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -179,9 +179,9 @@ class TestSQLInjectionResistance:
             headers=_auth(token),
             params={"q": payload},
         )
-        assert (
-            resp.status_code < 500
-        ), f"SQL injection in customer search caused {resp.status_code}: {resp.text[:200]}"
+        assert resp.status_code < 500, (
+            f"SQL injection in customer search caused {resp.status_code}: {resp.text[:200]}"
+        )
 
     @pytest.mark.parametrize("payload", SQL_INJECTION_PAYLOADS)
     def test_order_filter_injection(self, auth_token: tuple, payload: str) -> None:
@@ -191,9 +191,9 @@ class TestSQLInjectionResistance:
             headers=_auth(token),
             params={"customer_id": payload},
         )
-        assert (
-            resp.status_code < 500
-        ), f"SQL injection in order filter caused {resp.status_code}: {resp.text[:200]}"
+        assert resp.status_code < 500, (
+            f"SQL injection in order filter caused {resp.status_code}: {resp.text[:200]}"
+        )
 
     @pytest.mark.parametrize("payload", SQL_INJECTION_PAYLOADS)
     def test_quotation_search_injection(self, auth_token: tuple, payload: str) -> None:
@@ -203,9 +203,9 @@ class TestSQLInjectionResistance:
             headers=_auth(token),
             params={"q": payload},
         )
-        assert (
-            resp.status_code < 500
-        ), f"SQL injection in quotation search caused {resp.status_code}: {resp.text[:200]}"
+        assert resp.status_code < 500, (
+            f"SQL injection in quotation search caused {resp.status_code}: {resp.text[:200]}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -248,9 +248,9 @@ class TestXSSResistance:
             headers=_auth(token),
         )
         # Must not cause a server error; 201 (stored) or 422 (validation rejected)
-        assert (
-            resp.status_code < 500
-        ), f"XSS in legal_name caused server error: {resp.text[:200]}"
+        assert resp.status_code < 500, (
+            f"XSS in legal_name caused server error: {resp.text[:200]}"
+        )
 
     @pytest.mark.parametrize("payload", XSS_PAYLOADS)
     def test_order_notes_xss(self, auth_creds: tuple, payload: str) -> None:
@@ -266,9 +266,9 @@ class TestXSSResistance:
             },
             headers=_auth(token),
         )
-        assert (
-            resp.status_code < 500
-        ), f"XSS in order notes caused server error: {resp.text[:200]}"
+        assert resp.status_code < 500, (
+            f"XSS in order notes caused server error: {resp.text[:200]}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -315,9 +315,9 @@ class TestBOLATenantIsolation:
             _sales_url(cid_b, f"/customers/{cust_id}"),
             headers=_auth(token_b),
         )
-        assert (
-            cross_resp.status_code == 404
-        ), f"Cross-tenant customer access returned {cross_resp.status_code}, expected 404"
+        assert cross_resp.status_code == 404, (
+            f"Cross-tenant customer access returned {cross_resp.status_code}, expected 404"
+        )
 
     def test_cross_tenant_order_returns_404(self, two_tenants: tuple) -> None:
         client, token_a, cid_a, token_b, cid_b = two_tenants
@@ -341,9 +341,9 @@ class TestBOLATenantIsolation:
             _sales_url(cid_b, f"/sales-orders/{order_id}"),
             headers=_auth(token_b),
         )
-        assert (
-            cross_resp.status_code == 404
-        ), f"Cross-tenant order access returned {cross_resp.status_code}, expected 404"
+        assert cross_resp.status_code == 404, (
+            f"Cross-tenant order access returned {cross_resp.status_code}, expected 404"
+        )
 
     def test_cross_tenant_invoice_returns_404(self, two_tenants: tuple) -> None:
         client, token_a, cid_a, token_b, cid_b = two_tenants
@@ -372,9 +372,9 @@ class TestBOLATenantIsolation:
             _sales_url(cid_b, f"/invoices/{inv_id}"),
             headers=_auth(token_b),
         )
-        assert (
-            cross_resp.status_code == 404
-        ), f"Cross-tenant invoice access returned {cross_resp.status_code}, expected 404"
+        assert cross_resp.status_code == 404, (
+            f"Cross-tenant invoice access returned {cross_resp.status_code}, expected 404"
+        )
 
     def test_cross_tenant_quotation_returns_404(self, two_tenants: tuple) -> None:
         client, token_a, cid_a, token_b, cid_b = two_tenants
@@ -396,9 +396,9 @@ class TestBOLATenantIsolation:
             _sales_url(cid_b, f"/quotations/{quot_id}"),
             headers=_auth(token_b),
         )
-        assert (
-            cross_resp.status_code == 404
-        ), f"Cross-tenant quotation access returned {cross_resp.status_code}, expected 404"
+        assert cross_resp.status_code == 404, (
+            f"Cross-tenant quotation access returned {cross_resp.status_code}, expected 404"
+        )
 
     def test_cross_tenant_return_returns_404(self, two_tenants: tuple) -> None:
         client, token_a, cid_a, token_b, cid_b = two_tenants
@@ -427,9 +427,9 @@ class TestBOLATenantIsolation:
             _sales_url(cid_b, f"/returns/{return_id}"),
             headers=_auth(token_b),
         )
-        assert (
-            cross_resp.status_code == 404
-        ), f"Cross-tenant return access returned {cross_resp.status_code}, expected 404"
+        assert cross_resp.status_code == 404, (
+            f"Cross-tenant return access returned {cross_resp.status_code}, expected 404"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -463,9 +463,9 @@ class TestOversizedPayloadRejection:
             },
             headers=_auth(token),
         )
-        assert (
-            resp.status_code < 500
-        ), f"Oversized customer_code caused server error {resp.status_code}"
+        assert resp.status_code < 500, (
+            f"Oversized customer_code caused server error {resp.status_code}"
+        )
         assert resp.status_code in (
             400,
             422,
@@ -485,6 +485,6 @@ class TestOversizedPayloadRejection:
             headers=_auth(token),
         )
         # Either accepted (201) or rejected with validation (422) — never 500
-        assert (
-            resp.status_code < 500
-        ), f"Oversized notes caused server error {resp.status_code}"
+        assert resp.status_code < 500, (
+            f"Oversized notes caused server error {resp.status_code}"
+        )

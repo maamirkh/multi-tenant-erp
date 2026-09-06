@@ -404,16 +404,16 @@ class TestLargeBatchImport:
         resp = _post_csv(client, token, cid, csv_bytes)
         elapsed = time.monotonic() - start
 
-        assert (
-            resp.status_code == 200
-        ), f"Expected 200, got {resp.status_code}: {resp.text[:200]}"
+        assert resp.status_code == 200, (
+            f"Expected 200, got {resp.status_code}: {resp.text[:200]}"
+        )
         data = resp.json()["data"]
         # All rows either created or skipped/failed — no 5xx
         total = data["created"] + data["skipped"] + data["failed"]
         assert total == 10_000, f"Expected 10000 total rows processed, got {total}"
-        assert (
-            data["created"] >= 9_990
-        ), f"Expected most rows created, got {data['created']}"
+        assert data["created"] >= 9_990, (
+            f"Expected most rows created, got {data['created']}"
+        )
 
         # Performance: SQLite in-memory should handle 10k rows in < 60s
         assert elapsed < 60, f"10k import took {elapsed:.1f}s — expected < 60s"

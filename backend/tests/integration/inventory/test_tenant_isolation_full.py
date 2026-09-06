@@ -207,9 +207,9 @@ class TestTenantIsolationFull:
         resp = test_client.get(_url(company_b_id, "/warehouses"), headers=headers_b)
         assert resp.status_code == 200
         warehouses = resp.json()["data"]
-        assert (
-            warehouses == []
-        ), f"Expected empty list, got {len(warehouses)} warehouses"
+        assert warehouses == [], (
+            f"Expected empty list, got {len(warehouses)} warehouses"
+        )
 
     def test_stock_positions_isolated(
         self, test_client: TestClient, db_session: Session
@@ -347,9 +347,9 @@ class TestTenantIsolationFull:
         ]
         for path in endpoints:
             resp = test_client.get(_url(company_id, path))
-            assert (
-                resp.status_code == 401
-            ), f"Expected 401 for {path}, got {resp.status_code}"
+            assert resp.status_code == 401, (
+                f"Expected 401 for {path}, got {resp.status_code}"
+            )
 
     def test_categories_isolated(
         self, test_client: TestClient, db_session: Session

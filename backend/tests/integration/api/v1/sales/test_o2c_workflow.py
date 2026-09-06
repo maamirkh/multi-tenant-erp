@@ -119,9 +119,9 @@ class TestO2CWorkflow:
             },
             headers=_auth(token),
         )
-        assert (
-            cust_resp.status_code == 201
-        ), f"Customer creation failed: {cust_resp.text}"
+        assert cust_resp.status_code == 201, (
+            f"Customer creation failed: {cust_resp.text}"
+        )
         customer_id = cust_resp.json()["data"]["id"]
 
         # -----------------------------------------------------------------
@@ -145,9 +145,9 @@ class TestO2CWorkflow:
             },
             headers=_auth(token),
         )
-        assert (
-            order_resp.status_code == 201
-        ), f"Order creation failed: {order_resp.text}"
+        assert order_resp.status_code == 201, (
+            f"Order creation failed: {order_resp.text}"
+        )
         order_data = order_resp.json()["data"]
         order_id = order_data["id"]
         assert order_data["status"] == "DRAFT"
@@ -178,9 +178,9 @@ class TestO2CWorkflow:
                 json={"comments": "Approved"},
                 headers=_auth(token),
             )
-            assert (
-                approve_resp.status_code == 200
-            ), f"Approve failed: {approve_resp.text}"
+            assert approve_resp.status_code == 200, (
+                f"Approve failed: {approve_resp.text}"
+            )
             assert approve_resp.json()["data"]["status"] == "APPROVED"
 
         # -----------------------------------------------------------------
@@ -190,9 +190,9 @@ class TestO2CWorkflow:
             _sales_url(company_id, f"/sales-orders/{order_id}"),
             headers=_auth(token),
         )
-        assert (
-            order_detail_resp.status_code == 200
-        ), f"Get order failed: {order_detail_resp.text}"
+        assert order_detail_resp.status_code == 200, (
+            f"Get order failed: {order_detail_resp.text}"
+        )
         order_detail = order_detail_resp.json()["data"]
         order_lines = order_detail.get("lines", [])
         assert len(order_lines) >= 1, "Order must have at least one line"
@@ -227,9 +227,9 @@ class TestO2CWorkflow:
             json={"dispatch_date": "2026-08-05"},
             headers=_auth(token),
         )
-        assert (
-            dispatch_resp.status_code == 200
-        ), f"Dispatch failed: {dispatch_resp.text}"
+        assert dispatch_resp.status_code == 200, (
+            f"Dispatch failed: {dispatch_resp.text}"
+        )
         assert dispatch_resp.json()["data"]["status"] == "DISPATCHED"
 
         # -----------------------------------------------------------------
@@ -505,6 +505,6 @@ class TestO2CWorkflowEdgeCases:
             _sales_url(company_b, f"/sales-orders/{order_id}"),
             headers=_auth(token_b),
         )
-        assert (
-            cross_resp.status_code == 404
-        ), f"Expected 404 but got {cross_resp.status_code}: {cross_resp.text}"
+        assert cross_resp.status_code == 404, (
+            f"Expected 404 but got {cross_resp.status_code}: {cross_resp.text}"
+        )

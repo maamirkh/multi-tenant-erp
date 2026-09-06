@@ -422,6 +422,6 @@ class TestCreateCostEntry:
     def test_immutability_no_update_method(self):
         """CostService has no update_cost_entry method — immutability contract."""
         svc = _make_service()
-        assert not hasattr(
-            svc, "update_cost_entry"
-        ), "CostService must NOT expose an update_cost_entry method — entries are immutable."
+        assert not hasattr(svc, "update_cost_entry"), (
+            "CostService must NOT expose an update_cost_entry method — entries are immutable."
+        )

@@ -84,9 +84,9 @@ def test_all_event_types_count() -> None:
 def test_all_event_types_are_subclasses() -> None:
     """Every entry in ALL_EVENT_TYPES must be a subclass of InventoryDomainEvent."""
     for cls in ALL_EVENT_TYPES:
-        assert issubclass(
-            cls, InventoryDomainEvent
-        ), f"{cls} is not a subclass of InventoryDomainEvent"
+        assert issubclass(cls, InventoryDomainEvent), (
+            f"{cls} is not a subclass of InventoryDomainEvent"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -765,6 +765,6 @@ class TestBaseFields:
         self, event_cls: type[InventoryDomainEvent]
     ) -> None:
         event = event_cls(aggregate_id=_PRODUCT, company_id=_COMPANY)
-        assert (
-            event.event_type == event_cls.__name__
-        ), f"{event_cls.__name__}.event_type={event.event_type!r} does not match class name"
+        assert event.event_type == event_cls.__name__, (
+            f"{event_cls.__name__}.event_type={event.event_type!r} does not match class name"
+        )

@@ -107,9 +107,9 @@ class TestApproveRejectRace:
         session_b.close()
 
         outcomes = [results["approve"][0], results["reject"][0]]
-        assert (
-            outcomes.count("success") == 1
-        ), f"expected exactly one success, got: {results}"
+        assert outcomes.count("success") == 1, (
+            f"expected exactly one success, got: {results}"
+        )
         assert outcomes.count("error") == 1
 
         loser_key = "approve" if results["approve"][0] == "error" else "reject"

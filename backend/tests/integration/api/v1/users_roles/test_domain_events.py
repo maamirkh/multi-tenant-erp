@@ -99,9 +99,9 @@ class TestDomainEvents:
         token = _login(test_client, user.email, pwd)
         company_id = _create_company(test_client, token, "Events Company Corp")
 
-        assert _has_event(
-            db_session, company_id, "member.created"
-        ), "Expected member.created event in outbox after company creation (bootstrap owner)"
+        assert _has_event(db_session, company_id, "member.created"), (
+            "Expected member.created event in outbox after company creation (bootstrap owner)"
+        )
 
     def test_add_member_emits_member_created_event(
         self, test_client: TestClient, db_session: Session

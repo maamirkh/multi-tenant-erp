@@ -171,9 +171,9 @@ class TestEC01_P1FunctionalRequirements:
         ]
         for path in paths:
             resp = client.get(f"{_base(cid)}{path}", headers=_auth(token))
-            assert (
-                resp.status_code == 200
-            ), f"EC-01: {path} not reachable — returned {resp.status_code}"
+            assert resp.status_code == 200, (
+                f"EC-01: {path} not reachable — returned {resp.status_code}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -220,9 +220,9 @@ class TestEC02_AcceptanceCriteria:
             ),
             "create PO for EC02",
         )
-        assert data["po_number"].startswith(
-            "PO-"
-        ), f"EC-02: PO number must start with 'PO-', got {data['po_number']!r}"
+        assert data["po_number"].startswith("PO-"), (
+            f"EC-02: PO number must start with 'PO-', got {data['po_number']!r}"
+        )
 
     def test_gr_requires_approved_po(self, ec_auth):
         """AC: GR cannot be created against a DRAFT/PENDING PO."""
@@ -453,9 +453,9 @@ class TestEC06_GoodsReceiving:
         po_status = client.get(
             f"{_base(cid)}/purchase-orders/{po_id}", headers=_auth(token)
         ).json()["data"]["status"]
-        assert (
-            po_status == "PARTIALLY_RECEIVED"
-        ), f"EC-06: PO should be PARTIALLY_RECEIVED after partial GR, got {po_status}"
+        assert po_status == "PARTIALLY_RECEIVED", (
+            f"EC-06: PO should be PARTIALLY_RECEIVED after partial GR, got {po_status}"
+        )
 
     def test_over_receipt_returns_warning_or_rejection(self, ec_auth):
         """Over-receipt policy: system warns or rejects depending on feature flag."""
@@ -579,9 +579,9 @@ class TestEC09_Reporting:
             headers=_auth(token),
             params={"date_from": "2020-01-01", "date_to": "2030-12-31"},
         )
-        assert (
-            resp.status_code == 200
-        ), f"EC-09: Report /{report_path} returned {resp.status_code}"
+        assert resp.status_code == 200, (
+            f"EC-09: Report /{report_path} returned {resp.status_code}"
+        )
 
     def test_kpi_endpoint_returns_10_kpis(self, ec_auth):
         client, token, cid = ec_auth
@@ -712,9 +712,9 @@ class TestEC13_Performance:
         elapsed_ms = (time.perf_counter() - start) * 1000
 
         assert resp.status_code == 200
-        assert (
-            elapsed_ms < 1000
-        ), f"EC-13: Supplier list took {elapsed_ms:.1f}ms, expected < 1000ms (warm)"
+        assert elapsed_ms < 1000, (
+            f"EC-13: Supplier list took {elapsed_ms:.1f}ms, expected < 1000ms (warm)"
+        )
 
     def test_po_list_responds_within_500ms(self, ec_auth):
         import time
@@ -729,9 +729,9 @@ class TestEC13_Performance:
         elapsed_ms = (time.perf_counter() - start) * 1000
 
         assert resp.status_code == 200
-        assert (
-            elapsed_ms < 1000
-        ), f"EC-13: PO list took {elapsed_ms:.1f}ms, expected < 1000ms (warm)"
+        assert elapsed_ms < 1000, (
+            f"EC-13: PO list took {elapsed_ms:.1f}ms, expected < 1000ms (warm)"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -773,7 +773,7 @@ class TestEC15_Docker:
         resp = client.get(f"{_base(cid)}/health", headers=_auth(token))
         assert resp.status_code == 200
         data = resp.json()
-        assert (
-            data["status"] == "healthy"
-        ), f"EC-15: Expected healthy, got {data['status']!r}"
+        assert data["status"] == "healthy", (
+            f"EC-15: Expected healthy, got {data['status']!r}"
+        )
         assert data["module"] == "purchase"

@@ -66,9 +66,9 @@ def _audit_actions(db: Session, company_id: str) -> list[str]:
 def _assert_audit_contains(db: Session, company_id: str, action: str) -> None:
     """Assert that an audit entry with the given action exists."""
     actions = _audit_actions(db, company_id)
-    assert (
-        action in actions
-    ), f"Expected audit action '{action}' not found. Recorded: {actions}"
+    assert action in actions, (
+        f"Expected audit action '{action}' not found. Recorded: {actions}"
+    )
 
 
 def _get_role_id(db: Session, company_id: str, slug: str) -> str:

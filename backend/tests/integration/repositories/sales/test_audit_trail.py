@@ -193,9 +193,9 @@ class TestQuotationAuditTrail:
         )
         assert resp.status_code == 201
         data = resp.json()["data"]
-        assert data["quotation_number"].startswith(
-            "SQ-"
-        ), f"Quotation number should start with SQ-, got: {data['quotation_number']}"
+        assert data["quotation_number"].startswith("SQ-"), (
+            f"Quotation number should start with SQ-, got: {data['quotation_number']}"
+        )
         assert data["status"] == "DRAFT"
 
     def test_quotation_status_fields_updated_on_send(self, audit_ctx: tuple) -> None:
@@ -249,9 +249,9 @@ class TestSalesOrderAuditTrail:
         )
         assert resp.status_code == 201
         data = resp.json()["data"]
-        assert data["order_number"].startswith(
-            "SO-"
-        ), f"Order number should start with SO-, got: {data['order_number']}"
+        assert data["order_number"].startswith("SO-"), (
+            f"Order number should start with SO-, got: {data['order_number']}"
+        )
         assert data["id"] is not None
         assert data["status"] == "DRAFT"
 
@@ -356,9 +356,9 @@ class TestInvoiceAuditTrail:
         assert issued.status_code == 200
         data = issued.json()["data"]
         assert data["status"] == "ISSUED"
-        assert data["invoice_number"].startswith(
-            "SI-"
-        ), f"Invoice number should start with SI-, got: {data['invoice_number']}"
+        assert data["invoice_number"].startswith("SI-"), (
+            f"Invoice number should start with SI-, got: {data['invoice_number']}"
+        )
         assert data["updated_at"] is not None
 
     def test_two_invoices_have_sequential_numbers(self, audit_ctx: tuple) -> None:
@@ -434,9 +434,9 @@ class TestReturnAuditTrail:
         )
         assert resp.status_code == 201
         data = resp.json()["data"]
-        assert data["return_number"].startswith(
-            "SR-"
-        ), f"Return number should start with SR-, got: {data['return_number']}"
+        assert data["return_number"].startswith("SR-"), (
+            f"Return number should start with SR-, got: {data['return_number']}"
+        )
         assert data["created_at"] is not None
         assert data["status"] == "DRAFT"
 
@@ -539,8 +539,8 @@ class TestDeliveryNoteAuditTrail:
         )
         assert dn.status_code == 201
         data = dn.json()["data"]
-        assert data["delivery_number"].startswith(
-            "DN-"
-        ), f"DN number should start with DN-, got: {data['delivery_number']}"
+        assert data["delivery_number"].startswith("DN-"), (
+            f"DN number should start with DN-, got: {data['delivery_number']}"
+        )
         assert data["created_at"] is not None
         assert data["status"] == "DRAFT"

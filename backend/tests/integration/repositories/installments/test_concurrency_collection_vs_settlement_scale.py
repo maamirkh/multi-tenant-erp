@@ -139,9 +139,9 @@ class TestConcurrentCollectionVsSettlementAtScale:
             session_b.close()
 
             outcomes = [results["collection"][0], results["settlement"][0]]
-            assert (
-                outcomes.count("success") == 1
-            ), f"repetition {rep}: expected exactly one success, got: {results}"
+            assert outcomes.count("success") == 1, (
+                f"repetition {rep}: expected exactly one success, got: {results}"
+            )
             assert outcomes.count("error") == 1, f"repetition {rep}: {results}"
 
             loser_key = (
@@ -154,9 +154,9 @@ class TestConcurrentCollectionVsSettlementAtScale:
                     InstallmentOverCollectionError | InstallmentActivationFailedError,
                 ), f"repetition {rep}: {results}"
             else:
-                assert isinstance(
-                    loser_exc, InstallmentSettlementNotAllowedError
-                ), f"repetition {rep}: {results}"
+                assert isinstance(loser_exc, InstallmentSettlementNotAllowedError), (
+                    f"repetition {rep}: {results}"
+                )
 
             # No matter which operation won, the durable financial
             # effect is exactly-once, company-wide — never a double
@@ -187,9 +187,9 @@ class TestConcurrentCollectionVsSettlementAtScale:
                     .scalars()
                     .all()
                 )
-                assert (
-                    len(all_payments) == 1
-                ), f"repetition {rep}: expected exactly 1 Payment, found {len(all_payments)}"
+                assert len(all_payments) == 1, (
+                    f"repetition {rep}: expected exactly 1 Payment, found {len(all_payments)}"
+                )
                 assert all_payments[0].id == winning_payment_id
 
                 all_payment_journal_entries = (

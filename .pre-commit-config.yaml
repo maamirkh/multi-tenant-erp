@@ -11,20 +11,22 @@ repos:
         # contract deliverables (Epic 5/8), legitimately >500KB.
         exclude: ^specs/(005-inventory-management|008-accounting-finance)/contracts/(inventory-v1\.json|accounting-v1\.yaml)$
 
-  # --- Python formatting ---
-  - repo: https://github.com/psf/black
-    rev: 24.10.0
-    hooks:
-      - id: black
-        language_version: python3.12
-        files: ^backend/
-
-  # --- Python linting ---
+  # --- Python linting + formatting ---
+  # ruff format replaces black: running both as separate gates let them
+  # disagree on ~100 files' formatting (each tool's fix reintroduced a
+  # style the other tool flags), which is unresolvable without dropping
+  # one — ruff format is the faster, actively-maintained superset.
+  # Pinned to match backend/poetry.lock's ruff version exactly — ruff's
+  # own formatting output has changed across releases too, so a
+  # pre-commit hook running a different ruff version than CI recreates
+  # the exact same kind of unresolvable back-and-forth.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.6
+    rev: v0.15.21
     hooks:
       - id: ruff
         args: [--fix]
+        files: ^backend/
+      - id: ruff-format
         files: ^backend/
 
   # --- Python type checking (run via CI, not pre-commit) ---

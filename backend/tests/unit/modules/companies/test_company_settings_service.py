@@ -145,13 +145,13 @@ class TestAllowedSettingsRegistry:
     def test_all_entries_have_correct_structure(self) -> None:
         for key, value in ALLOWED_SETTINGS.items():
             assert isinstance(key, str), f"Key {key!r} is not a str"
-            assert (
-                isinstance(value, tuple) and len(value) == 2
-            ), f"Entry for {key!r} must be a 2-tuple"
+            assert isinstance(value, tuple) and len(value) == 2, (
+                f"Entry for {key!r} must be a 2-tuple"
+            )
             expected_type, allowed_values = value
-            assert isinstance(
-                expected_type, type
-            ), f"First element for {key!r} must be a type"
-            assert allowed_values is None or isinstance(
-                allowed_values, list
-            ), f"Second element for {key!r} must be a list or None"
+            assert isinstance(expected_type, type), (
+                f"First element for {key!r} must be a type"
+            )
+            assert allowed_values is None or isinstance(allowed_values, list), (
+                f"Second element for {key!r} must be a list or None"
+            )

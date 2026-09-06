@@ -101,9 +101,9 @@ class TestCustomerSalesDocumentEligibility:
         customer = _make_customer(status=status)
         # Simulate the guard a sales order service would call
         eligible_statuses = {"ACTIVE", "ON_HOLD"}  # ON_HOLD: existing orders ok
-        assert (
-            customer.status not in eligible_statuses
-        ), f"Customer in '{status}' should not be eligible for new sales documents"
+        assert customer.status not in eligible_statuses, (
+            f"Customer in '{status}' should not be eligible for new sales documents"
+        )
 
     def test_active_customer_is_eligible(self) -> None:
         customer = _make_customer(status="ACTIVE")

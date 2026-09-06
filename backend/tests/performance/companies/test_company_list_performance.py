@@ -139,9 +139,9 @@ class TestCompanyListPerformance:
             f" (threshold: {_P95_LIST_THRESHOLD_MS}ms,"
             f" samples: {_SAMPLE_COUNT})"
         )
-        assert (
-            p95_ms < _P95_LIST_THRESHOLD_MS
-        ), f"p95 list latency {p95_ms:.1f}ms exceeds {_P95_LIST_THRESHOLD_MS}ms threshold"
+        assert p95_ms < _P95_LIST_THRESHOLD_MS, (
+            f"p95 list latency {p95_ms:.1f}ms exceeds {_P95_LIST_THRESHOLD_MS}ms threshold"
+        )
 
     def test_search_companies_p95_under_threshold(
         self,
@@ -182,6 +182,6 @@ class TestCompanyListPerformance:
             f" (threshold: {_P95_SEARCH_THRESHOLD_MS}ms,"
             f" samples: {_SAMPLE_COUNT})"
         )
-        assert (
-            p95_ms < _P95_SEARCH_THRESHOLD_MS
-        ), f"p95 search latency {p95_ms:.1f}ms exceeds {_P95_SEARCH_THRESHOLD_MS}ms threshold"
+        assert p95_ms < _P95_SEARCH_THRESHOLD_MS, (
+            f"p95 search latency {p95_ms:.1f}ms exceeds {_P95_SEARCH_THRESHOLD_MS}ms threshold"
+        )

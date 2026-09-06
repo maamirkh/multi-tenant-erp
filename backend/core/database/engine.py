@@ -50,9 +50,7 @@ engine: Engine = create_engine(
 
 
 @event.listens_for(engine, "connect")
-def _set_pg_lock_timeout(
-    dbapi_connection: object, connection_record: object
-) -> None:  # noqa: ARG001
+def _set_pg_lock_timeout(dbapi_connection: object, connection_record: object) -> None:  # noqa: ARG001
     """Set PostgreSQL lock_timeout on every new connection.
 
     Skipped for SQLite (test environment) since it uses a different dialect.

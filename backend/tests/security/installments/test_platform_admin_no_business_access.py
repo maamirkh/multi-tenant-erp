@@ -167,7 +167,9 @@ class TestGrantingInstallmentsOverrideExposesNoBusinessData:
         for key in data:
             assert not any(
                 marker in key.lower() for marker in _INSTALLMENTS_DOMAIN_FIELD_MARKERS
-            ), f"unexpected Installments-domain-shaped field in governance response: {key}"
+            ), (
+                f"unexpected Installments-domain-shaped field in governance response: {key}"
+            )
         assert data["capability_key"] == "installments"
 
     def test_no_installments_business_endpoint_exists_under_the_platform_prefix(

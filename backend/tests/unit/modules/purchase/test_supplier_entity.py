@@ -186,6 +186,6 @@ class TestTransitionMatrixCompleteness:
     def test_all_target_statuses_valid(self) -> None:
         for current, targets in _VALID_TRANSITIONS.items():
             for target in targets:
-                assert (
-                    target in self.KNOWN_STATUSES
-                ), f"'{target}' in transitions from '{current}' is not a known status"
+                assert target in self.KNOWN_STATUSES, (
+                    f"'{target}' in transitions from '{current}' is not a known status"
+                )

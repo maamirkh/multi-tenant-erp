@@ -28,9 +28,9 @@ def _assert_no_sensitive_data(metadata: dict | None, event_type: str) -> None:
         return
     metadata_str = str(metadata).lower()
     for keyword in _SENSITIVE_KEYWORDS:
-        assert (
-            keyword not in metadata_str
-        ), f"Sensitive keyword '{keyword}' found in {event_type} audit metadata: {metadata}"
+        assert keyword not in metadata_str, (
+            f"Sensitive keyword '{keyword}' found in {event_type} audit metadata: {metadata}"
+        )
 
 
 class TestAuditLogCompleteness:

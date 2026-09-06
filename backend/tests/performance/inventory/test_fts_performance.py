@@ -150,9 +150,9 @@ class TestFTSPerformance:
             assert resp.status_code == 200, f"Unexpected status: {resp.status_code}"
             data = resp.json()
             # Should find products matching the prefix
-            assert (
-                data["data"]["total"] > 0
-            ), "Expected search to find matching products"
+            assert data["data"]["total"] > 0, (
+                "Expected search to find matching products"
+            )
 
         p95_ms = _p95(latencies)
         print(
@@ -193,9 +193,9 @@ class TestFTSPerformance:
         print(
             f"\nProduct list (no query) p95: {p95_ms:.1f}ms (threshold: {_P95_THRESHOLD_MS}ms)"
         )
-        assert (
-            p95_ms < _P95_THRESHOLD_MS
-        ), f"Product list p95 {p95_ms:.1f}ms exceeds {_P95_THRESHOLD_MS}ms"
+        assert p95_ms < _P95_THRESHOLD_MS, (
+            f"Product list p95 {p95_ms:.1f}ms exceeds {_P95_THRESHOLD_MS}ms"
+        )
 
     def test_fts_returns_correct_results(
         self, test_client: TestClient, db_session: Session
@@ -216,9 +216,9 @@ class TestFTSPerformance:
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert (
-            data["data"]["total"] == 50
-        ), f"Expected 50 products for prefix {prefix}, got {data['data']['total']}"
+        assert data["data"]["total"] == 50, (
+            f"Expected 50 products for prefix {prefix}, got {data['data']['total']}"
+        )
 
         # All returned products must contain the prefix in their code or name
         for item in data["data"]["items"]:

@@ -34,9 +34,9 @@ class TestSensitiveDataNotLogged:
                 json={"email": user.email, "password": _SENTINEL_PASSWORD},
             )
         log_output = caplog.text
-        assert (
-            _SENTINEL_PASSWORD not in log_output
-        ), "Plaintext password must not appear in log output."
+        assert _SENTINEL_PASSWORD not in log_output, (
+            "Plaintext password must not appear in log output."
+        )
 
     def test_wrong_password_not_in_log_output(
         self,

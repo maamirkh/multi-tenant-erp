@@ -171,9 +171,9 @@ class TestConcurrentWrites:
             if resp.status_code in (200, 201):
                 success_count += 1
             # Allow 409 conflict (if duplicate opening stock not permitted) but not 5xx
-            assert (
-                resp.status_code != 500
-            ), f"Server error on write {i + 1}: {resp.text}"
+            assert resp.status_code != 500, (
+                f"Server error on write {i + 1}: {resp.text}"
+            )
 
         # Read back position from DB (bypass API to get raw value)
         pos = (
@@ -301,6 +301,6 @@ class TestConcurrentWrites:
             f"reserve+release cycles, got {final_pos.qty_reserved}"
         )
 
-        assert final_pos.qty_on_hand == Decimal(
-            "100"
-        ), f"On-hand changed unexpectedly: expected 100, got {final_pos.qty_on_hand}"
+        assert final_pos.qty_on_hand == Decimal("100"), (
+            f"On-hand changed unexpectedly: expected 100, got {final_pos.qty_on_hand}"
+        )

@@ -367,6 +367,6 @@ class TestManipulationCannotFabricateFreshness:
                 ):
                     offenders.append(name)
 
-        assert (
-            offenders == []
-        ), f"Request schema(s) accept a client-supplied created_at: {offenders}"
+        assert offenders == [], (
+            f"Request schema(s) accept a client-supplied created_at: {offenders}"
+        )

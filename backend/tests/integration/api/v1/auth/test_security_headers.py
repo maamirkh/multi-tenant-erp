@@ -22,9 +22,9 @@ _REQUIRED_HEADERS = {
 
 def _assert_security_headers(response_headers: dict) -> None:
     for name, value in _REQUIRED_HEADERS.items():
-        assert (
-            response_headers.get(name) == value
-        ), f"Missing or wrong security header: {name}={response_headers.get(name)!r}"
+        assert response_headers.get(name) == value, (
+            f"Missing or wrong security header: {name}={response_headers.get(name)!r}"
+        )
 
 
 class TestSecurityHeadersOnAuthEndpoints:

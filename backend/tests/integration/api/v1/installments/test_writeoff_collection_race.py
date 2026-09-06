@@ -152,9 +152,9 @@ class TestWriteoffVsCollectionRace:
         # the lock first commits WRITTEN_OFF or COMPLETED; the second,
         # reading the now-committed non-DEFAULTED status, is rejected by
         # its own status guard.
-        assert (
-            outcomes.count("success") == 1
-        ), f"expected exactly one success, got: {results}"
+        assert outcomes.count("success") == 1, (
+            f"expected exactly one success, got: {results}"
+        )
         assert outcomes.count("error") == 1
 
         loser_key = "writeoff" if results["writeoff"][0] == "error" else "collection"
@@ -259,37 +259,37 @@ class TestWriteoffVsCollectionRace:
             )
 
             if refreshed_contract.status == "WRITTEN_OFF":
-                assert (
-                    len(all_payments_for_company) == 0
-                ), f"write-off must create ZERO Payment rows, found {len(all_payments_for_company)}"
-                assert (
-                    len(all_refs_for_company) == 0
-                ), f"write-off must create ZERO InstallmentAllocationReference rows, found {len(all_refs_for_company)}"
-                assert (
-                    len(all_payment_journal_entries) == 0
-                ), f"write-off must create ZERO PAYMENT-sourced JournalEntry rows, found {len(all_payment_journal_entries)}"
-                assert (
-                    len(all_payment_credit_ar_transactions) == 0
-                ), f"write-off must create ZERO payment-sourced ARTransaction rows, found {len(all_payment_credit_ar_transactions)}"
-                assert (
-                    len(all_writeoff_journal_entries) == 1
-                ), f"expected exactly 1 write-off JournalEntry, found {len(all_writeoff_journal_entries)}"
+                assert len(all_payments_for_company) == 0, (
+                    f"write-off must create ZERO Payment rows, found {len(all_payments_for_company)}"
+                )
+                assert len(all_refs_for_company) == 0, (
+                    f"write-off must create ZERO InstallmentAllocationReference rows, found {len(all_refs_for_company)}"
+                )
+                assert len(all_payment_journal_entries) == 0, (
+                    f"write-off must create ZERO PAYMENT-sourced JournalEntry rows, found {len(all_payment_journal_entries)}"
+                )
+                assert len(all_payment_credit_ar_transactions) == 0, (
+                    f"write-off must create ZERO payment-sourced ARTransaction rows, found {len(all_payment_credit_ar_transactions)}"
+                )
+                assert len(all_writeoff_journal_entries) == 1, (
+                    f"expected exactly 1 write-off JournalEntry, found {len(all_writeoff_journal_entries)}"
+                )
             else:
-                assert (
-                    len(all_payments_for_company) == 1
-                ), f"expected exactly 1 Payment company-wide, found {len(all_payments_for_company)}"
-                assert (
-                    len(all_refs_for_company) == 1
-                ), f"expected exactly 1 InstallmentAllocationReference, found {len(all_refs_for_company)}"
-                assert (
-                    len(all_payment_journal_entries) == 1
-                ), f"expected exactly 1 payment-sourced JournalEntry, found {len(all_payment_journal_entries)}"
-                assert (
-                    len(all_payment_credit_ar_transactions) == 1
-                ), f"expected exactly 1 payment-sourced ARTransaction, found {len(all_payment_credit_ar_transactions)}"
-                assert (
-                    len(all_writeoff_journal_entries) == 0
-                ), f"a successful collection must leave ZERO write-off JournalEntry rows, found {len(all_writeoff_journal_entries)}"
+                assert len(all_payments_for_company) == 1, (
+                    f"expected exactly 1 Payment company-wide, found {len(all_payments_for_company)}"
+                )
+                assert len(all_refs_for_company) == 1, (
+                    f"expected exactly 1 InstallmentAllocationReference, found {len(all_refs_for_company)}"
+                )
+                assert len(all_payment_journal_entries) == 1, (
+                    f"expected exactly 1 payment-sourced JournalEntry, found {len(all_payment_journal_entries)}"
+                )
+                assert len(all_payment_credit_ar_transactions) == 1, (
+                    f"expected exactly 1 payment-sourced ARTransaction, found {len(all_payment_credit_ar_transactions)}"
+                )
+                assert len(all_writeoff_journal_entries) == 0, (
+                    f"a successful collection must leave ZERO write-off JournalEntry rows, found {len(all_writeoff_journal_entries)}"
+                )
                 assert (
                     all_payments_for_company[0].id
                     == all_refs_for_company[0].accounting_payment_id

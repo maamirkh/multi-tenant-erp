@@ -120,12 +120,12 @@ class TestConcurrentSameKeySamePayloadAtScale:
             s.close()
 
         outcomes = [results[i]["outcome"] for i in range(_CONCURRENCY)]
-        assert (
-            outcomes.count("RESERVED") == 1
-        ), f"expected exactly 1 RESERVED winner out of {_CONCURRENCY}, got: {outcomes}"
-        assert (
-            outcomes.count("REPLAY") == _CONCURRENCY - 1
-        ), f"expected exactly {_CONCURRENCY - 1} REPLAY outcomes, got: {outcomes}"
+        assert outcomes.count("RESERVED") == 1, (
+            f"expected exactly 1 RESERVED winner out of {_CONCURRENCY}, got: {outcomes}"
+        )
+        assert outcomes.count("REPLAY") == _CONCURRENCY - 1, (
+            f"expected exactly {_CONCURRENCY - 1} REPLAY outcomes, got: {outcomes}"
+        )
 
         winner_idx = next(
             i for i in range(_CONCURRENCY) if results[i]["outcome"] == "RESERVED"
@@ -136,7 +136,9 @@ class TestConcurrentSameKeySamePayloadAtScale:
             assert results[i]["payload"] == {
                 "activated": True,
                 "winner": winner_idx,
-            }, f"loser {i} did not replay the winner's exact stored result: {results[i]}"
+            }, (
+                f"loser {i} did not replay the winner's exact stored result: {results[i]}"
+            )
 
         verify_session = session_factory()
         try:

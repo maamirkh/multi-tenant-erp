@@ -936,11 +936,11 @@ class TestAllEventsCoverage:
     ]
 
     def test_total_event_count(self):
-        assert (
-            len(self.ALL_EVENT_TYPES) == 33
-        ), f"Expected 33, got {len(self.ALL_EVENT_TYPES)}"
+        assert len(self.ALL_EVENT_TYPES) == 33, (
+            f"Expected 33, got {len(self.ALL_EVENT_TYPES)}"
+        )
 
     def test_no_duplicate_event_types(self):
-        assert len(self.ALL_EVENT_TYPES) == len(
-            set(self.ALL_EVENT_TYPES)
-        ), "Duplicate event types found"
+        assert len(self.ALL_EVENT_TYPES) == len(set(self.ALL_EVENT_TYPES)), (
+            "Duplicate event types found"
+        )

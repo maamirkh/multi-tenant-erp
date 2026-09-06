@@ -121,9 +121,9 @@ class TestConcurrentFullAmountCollectionsAtScale:
             s.close()
 
         outcomes = [results[i][0] for i in range(_CONCURRENCY)]
-        assert (
-            outcomes.count("success") == 1
-        ), f"expected exactly one success out of {_CONCURRENCY}, got: {outcomes}"
+        assert outcomes.count("success") == 1, (
+            f"expected exactly one success out of {_CONCURRENCY}, got: {outcomes}"
+        )
         assert outcomes.count("error") == _CONCURRENCY - 1
 
         for i in range(_CONCURRENCY):
@@ -162,9 +162,9 @@ class TestConcurrentFullAmountCollectionsAtScale:
                 .scalars()
                 .all()
             )
-            assert (
-                len(all_payments_for_company) == 1
-            ), f"expected exactly 1 Payment company-wide, found {len(all_payments_for_company)}"
+            assert len(all_payments_for_company) == 1, (
+                f"expected exactly 1 Payment company-wide, found {len(all_payments_for_company)}"
+            )
             assert all_payments_for_company[0].id == winning_payment_id
             assert all_payments_for_company[0].amount_foreign == Decimal("500.00")
 
@@ -177,9 +177,9 @@ class TestConcurrentFullAmountCollectionsAtScale:
                 .scalars()
                 .all()
             )
-            assert (
-                len(all_payment_journal_entries) == 1
-            ), f"expected exactly 1 payment-sourced JournalEntry, found {len(all_payment_journal_entries)}"
+            assert len(all_payment_journal_entries) == 1, (
+                f"expected exactly 1 payment-sourced JournalEntry, found {len(all_payment_journal_entries)}"
+            )
 
             all_payment_ar_transactions = (
                 verify_session.execute(
@@ -191,9 +191,9 @@ class TestConcurrentFullAmountCollectionsAtScale:
                 .scalars()
                 .all()
             )
-            assert (
-                len(all_payment_ar_transactions) == 1
-            ), f"expected exactly 1 payment-sourced ARTransaction, found {len(all_payment_ar_transactions)}"
+            assert len(all_payment_ar_transactions) == 1, (
+                f"expected exactly 1 payment-sourced ARTransaction, found {len(all_payment_ar_transactions)}"
+            )
             assert (
                 all_payment_ar_transactions[0].source_document_id == winning_payment_id
             )

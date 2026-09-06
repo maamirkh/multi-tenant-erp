@@ -62,9 +62,9 @@ class TestStateMachineDefinition:
 
     def test_terminal_statuses_have_no_transitions(self) -> None:
         for terminal in _TERMINAL_STATUSES:
-            assert (
-                _VALID_TRANSITIONS[terminal] == []
-            ), f"{terminal} should have no transitions"
+            assert _VALID_TRANSITIONS[terminal] == [], (
+                f"{terminal} should have no transitions"
+            )
 
     def test_terminal_statuses_set(self) -> None:
         assert "CLOSED" in _TERMINAL_STATUSES

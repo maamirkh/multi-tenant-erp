@@ -182,15 +182,15 @@ class TestGLExportPerformance:
                 company_id=company_id, cursor=cursor, limit=_PAGE_SIZE
             )
             page_count += 1
-            assert (
-                rows
-            ), "cursor query returned an empty page while has_more was still true"
+            assert rows, (
+                "cursor query returned an empty page while has_more was still true"
+            )
 
             for row in rows:
                 key = (row["journal_entry_id"], row["line_number"])
-                assert (
-                    key not in seen_keys
-                ), f"duplicate row visited across pages: {key}"
+                assert key not in seen_keys, (
+                    f"duplicate row visited across pages: {key}"
+                )
                 seen_keys.add(key)
 
             last = rows[-1]

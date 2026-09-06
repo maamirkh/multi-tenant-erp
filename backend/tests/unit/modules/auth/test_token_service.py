@@ -127,7 +127,6 @@ class TestRotateRefreshToken:
                 svc, "create_refresh_token", return_value=(new_raw, new_record)
             ),
         ):
-
             result_raw, result_record = svc.rotate_refresh_token(
                 raw, ip=None, user_agent=None
             )
@@ -159,7 +158,6 @@ class TestRotateRefreshToken:
             ),
             patch.object(svc._refresh_repo, "revoke_all_by_user") as mock_revoke_all,
         ):
-
             with pytest.raises(TokenRevokedException):
                 svc.rotate_refresh_token(raw, ip=None, user_agent=None)
 
@@ -194,7 +192,6 @@ class TestConsumePasswordResetToken:
             patch.object(svc._reset_repo, "find_by_token_hash", return_value=record),
             patch.object(svc._reset_repo, "mark_consumed") as mock_consumed,
         ):
-
             result = svc.consume_password_reset_token(raw)
 
         mock_consumed.assert_called_once_with(record.id)

@@ -134,9 +134,9 @@ class TestMemberListPerformance:
             resp = test_client.get(url, headers=headers)
             elapsed_ms = (time.perf_counter() - start) * 1000
             latencies.append(elapsed_ms)
-            assert (
-                resp.status_code == 200
-            ), f"Unexpected status {resp.status_code}: {resp.text[:200]}"
+            assert resp.status_code == 200, (
+                f"Unexpected status {resp.status_code}: {resp.text[:200]}"
+            )
 
         latencies.sort()
         p95_index = max(int(len(latencies) * 0.95) - 1, 0)
@@ -162,8 +162,7 @@ class TestMemberListPerformance:
         owner_token, company_id = seeded_members
         headers = {"Authorization": f"Bearer {owner_token}"}
         url = (
-            f"/api/v1/companies/{company_id}/members"
-            "?status=active&page=1&page_size=25"
+            f"/api/v1/companies/{company_id}/members?status=active&page=1&page_size=25"
         )
 
         latencies: list[float] = []

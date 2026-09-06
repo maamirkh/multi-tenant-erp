@@ -5,7 +5,7 @@
 # Jobs:      lint → test → security → build (sequential quality gates)
 #
 # Quality gates (all must pass before merge):
-#   - Ruff (lint + isort), Black (format), MyPy (type-checking)
+#   - Ruff (lint + isort + format), MyPy (type-checking)
 #   - pytest with coverage (global fail_under=80, auth module target ≥90%)
 #   - Bandit (zero HIGH/CRITICAL findings)
 #   - pip-audit (zero HIGH vulnerabilities in production deps)
@@ -41,7 +41,7 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Job 1: Lint & Format (Ruff, Black, MyPy)
+  # Job 1: Lint & Format (Ruff, MyPy)
   # ---------------------------------------------------------------------------
   lint:
     name: Lint & Type-Check
@@ -78,9 +78,6 @@ jobs:
 
       - name: Ruff format check
         run: poetry run ruff format --check .
-
-      - name: Black format check
-        run: poetry run black --check .
 
       - name: MyPy type-check
         run: poetry run mypy .

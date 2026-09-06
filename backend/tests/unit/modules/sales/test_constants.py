@@ -30,15 +30,15 @@ class TestSalesPermissions:
 
     def test_permission_codes_are_unique(self) -> None:
         codes = [p.code for p in SALES_PERMISSIONS]
-        assert len(codes) == len(
-            set(codes)
-        ), f"Duplicate codes: {[c for c in codes if codes.count(c) > 1]}"
+        assert len(codes) == len(set(codes)), (
+            f"Duplicate codes: {[c for c in codes if codes.count(c) > 1]}"
+        )
 
     def test_all_permissions_follow_naming_convention(self) -> None:
         for p in SALES_PERMISSIONS:
-            assert p.code.startswith(
-                "sales."
-            ), f"Permission '{p.code}' does not start with 'sales.'"
+            assert p.code.startswith("sales."), (
+                f"Permission '{p.code}' does not start with 'sales.'"
+            )
 
     def test_all_permissions_have_module_sales(self) -> None:
         for p in SALES_PERMISSIONS:
@@ -62,15 +62,15 @@ class TestSalesFeatureFlags:
 
     def test_flag_keys_are_unique(self) -> None:
         keys = [f.key for f in SALES_FEATURE_FLAGS]
-        assert len(keys) == len(
-            set(keys)
-        ), f"Duplicate keys: {[k for k in keys if keys.count(k) > 1]}"
+        assert len(keys) == len(set(keys)), (
+            f"Duplicate keys: {[k for k in keys if keys.count(k) > 1]}"
+        )
 
     def test_all_flags_follow_naming_convention(self) -> None:
         for f in SALES_FEATURE_FLAGS:
-            assert f.key.startswith(
-                "sales."
-            ), f"Flag '{f.key}' does not start with 'sales.'"
+            assert f.key.startswith("sales."), (
+                f"Flag '{f.key}' does not start with 'sales.'"
+            )
 
     def test_lookup_dict_contains_all_flags(self) -> None:
         assert len(SALES_FLAG_BY_KEY) == len(SALES_FEATURE_FLAGS)

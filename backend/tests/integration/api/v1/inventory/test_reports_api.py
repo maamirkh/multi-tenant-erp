@@ -203,9 +203,9 @@ class TestReportsAuth:
         _, _, company_id, _, _ = _seed_company(db_session, test_client)
         for path in REPORT_PATHS:
             resp = test_client.get(_url(company_id, path))
-            assert (
-                resp.status_code == 401
-            ), f"{path} should require auth, got {resp.status_code}"
+            assert resp.status_code == 401, (
+                f"{path} should require auth, got {resp.status_code}"
+            )
 
 
 # ---------------------------------------------------------------------------

@@ -72,13 +72,11 @@ def upgrade() -> None:
     # may be reused (FR-INST-013: deactivation never affects existing
     # contracts, and a deleted template's name must not permanently block
     # re-registration).
-    op.execute(
-        """
+    op.execute("""
         CREATE UNIQUE INDEX uq_installment_plan_templates_company_name
         ON installment_plan_templates (company_id, name)
         WHERE is_deleted = false
-        """
-    )
+        """)
 
 
 def downgrade() -> None:

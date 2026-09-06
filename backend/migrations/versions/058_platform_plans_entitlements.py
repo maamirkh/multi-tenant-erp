@@ -199,13 +199,11 @@ def upgrade() -> None:
     op.create_index("ix_subscriptions_company_id", "subscriptions", ["company_id"])
     # One active subscription per tenant — PostgreSQL-native partial unique
     # index, not an application-only check (plan.md §26).
-    op.execute(
-        """
+    op.execute("""
         CREATE UNIQUE INDEX uq_subscriptions_company_active
         ON subscriptions (company_id)
         WHERE status = 'active'
-        """
-    )
+        """)
 
     # Real FK on the existing, already-nullable, already-unused
     # companies.subscription_id column (plan.md ADR-9). Existing rows keep

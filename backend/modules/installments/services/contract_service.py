@@ -343,9 +343,9 @@ class InstallmentContractService:
         ``InstallmentNotFoundError`` if the contract has never been
         activated (no active version exists yet)."""
         self._authorize(company_id, InstallmentOperationClass.READ)
-        assert (
-            self._schedule is not None
-        ), "get_active_schedule() requires schedule_repo"
+        assert self._schedule is not None, (
+            "get_active_schedule() requires schedule_repo"
+        )
         contract = self._get_or_404(company_id, contract_id)
         version = self._schedule.get_active_version(company_id, contract_id)
         if version is None:
@@ -362,9 +362,9 @@ class InstallmentContractService:
         a specific (possibly superseded) schedule version, for historical
         explanation."""
         self._authorize(company_id, InstallmentOperationClass.READ)
-        assert (
-            self._schedule is not None
-        ), "get_schedule_version() requires schedule_repo"
+        assert self._schedule is not None, (
+            "get_schedule_version() requires schedule_repo"
+        )
         contract = self._get_or_404(company_id, contract_id)
         version = self._schedule.get_version(company_id, contract_id, version_number)
         if version is None:
@@ -794,9 +794,9 @@ class InstallmentContractService:
                 request (409).
         """
         self._authorize(company_id, InstallmentOperationClass.ORIGINATION)
-        assert (
-            self._idempotency is not None
-        ), "default_command() requires idempotency_service"
+        assert self._idempotency is not None, (
+            "default_command() requires idempotency_service"
+        )
         assert self._outbox is not None, "default_command() requires outbox_repo"
 
         fingerprint = hashlib.sha256(
@@ -938,7 +938,7 @@ class InstallmentContractService:
         self._authorize(company_id, InstallmentOperationClass.ORIGINATION)
         if not reason or not reason.strip():
             raise ValidationException(
-                message="A reason is required to write off an installment " "contract."
+                message="A reason is required to write off an installment contract."
             )
         assert self._idempotency is not None, "writeoff() requires idempotency_service"
         assert self._outbox is not None, "writeoff() requires outbox_repo"

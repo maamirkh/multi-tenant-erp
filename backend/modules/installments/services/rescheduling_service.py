@@ -170,7 +170,7 @@ class InstallmentReschedulingService:
             )
         if not reason or not reason.strip():
             raise ValidationException(
-                message="A reason is required to reschedule an installment " "contract."
+                message="A reason is required to reschedule an installment contract."
             )
 
         fingerprint = hashlib.sha256(

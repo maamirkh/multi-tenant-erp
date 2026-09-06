@@ -106,12 +106,12 @@ class TestOneNonTerminalContractPerObligationRaceAtScale:
             s.close()
 
         outcomes = [results[i][0] for i in range(_CONCURRENCY)]
-        assert (
-            outcomes.count("success") == 1
-        ), f"Expected exactly one success out of {_CONCURRENCY}, got: {outcomes}"
-        assert (
-            outcomes.count("integrity_error") == _CONCURRENCY - 1
-        ), f"Expected exactly {_CONCURRENCY - 1} IntegrityErrors, got: {outcomes}"
+        assert outcomes.count("success") == 1, (
+            f"Expected exactly one success out of {_CONCURRENCY}, got: {outcomes}"
+        )
+        assert outcomes.count("integrity_error") == _CONCURRENCY - 1, (
+            f"Expected exactly {_CONCURRENCY - 1} IntegrityErrors, got: {outcomes}"
+        )
 
         # Every loser's error must carry exactly the constraint-name
         # signature create_draft() detects and translates to a clean 409
@@ -124,7 +124,9 @@ class TestOneNonTerminalContractPerObligationRaceAtScale:
             constraint_name = getattr(diag, "constraint_name", None)
             assert constraint_name == (
                 "uq_installment_contracts_one_nonterminal_per_obligation"
-            ), f"attempt {i}: unexpected constraint name {constraint_name!r} ({payload})"
+            ), (
+                f"attempt {i}: unexpected constraint name {constraint_name!r} ({payload})"
+            )
 
         verify_session = session_factory()
         try:
@@ -134,8 +136,8 @@ class TestOneNonTerminalContractPerObligationRaceAtScale:
                 .filter(InstallmentContract.sales_invoice_id == sales_invoice_id)
                 .all()
             )
-            assert (
-                len(rows) == 1
-            ), f"expected exactly 1 durable contract row after the race, found {len(rows)}"
+            assert len(rows) == 1, (
+                f"expected exactly 1 durable contract row after the race, found {len(rows)}"
+            )
         finally:
             verify_session.close()

@@ -109,12 +109,12 @@ class TestOneNonTerminalContractPerObligationRace:
         session_b.close()
 
         outcomes = [results["a"][0], results["b"][0]]
-        assert (
-            outcomes.count("success") == 1
-        ), f"Expected exactly one success, got: {results}"
-        assert (
-            outcomes.count("integrity_error") == 1
-        ), f"Expected exactly one IntegrityError, got: {results}"
+        assert outcomes.count("success") == 1, (
+            f"Expected exactly one success, got: {results}"
+        )
+        assert outcomes.count("integrity_error") == 1, (
+            f"Expected exactly one IntegrityError, got: {results}"
+        )
 
         loser_key = "a" if results["a"][0] == "integrity_error" else "b"
         loser_exc: IntegrityError = results[loser_key][1]

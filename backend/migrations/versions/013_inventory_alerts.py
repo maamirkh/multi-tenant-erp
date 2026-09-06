@@ -128,13 +128,11 @@ def upgrade() -> None:
         ["company_id", "product_id"],
     )
     # Partial unique index for deduplication — only one OPEN alert per type × product × warehouse
-    op.execute(
-        """
+    op.execute("""
         CREATE UNIQUE INDEX uq_inv_alert_open_dedup
         ON inventory_low_stock_alerts (company_id, product_id, warehouse_id, alert_type)
         WHERE status = 'OPEN'
-        """
-    )
+        """)
 
     # ── ReorderSuggestion ────────────────────────────────────────────────────
     op.create_table(

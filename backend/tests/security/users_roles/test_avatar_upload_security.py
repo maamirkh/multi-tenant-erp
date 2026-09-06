@@ -144,9 +144,9 @@ class TestAvatarFileWithWrongExtensionButValidMagicBytes:
                 "document.txt",
                 "text/plain",
             )
-            assert (
-                resp.status_code == 200
-            ), f"PNG magic in .txt should be accepted; got {resp.status_code}: {resp.json()}"
+            assert resp.status_code == 200, (
+                f"PNG magic in .txt should be accepted; got {resp.status_code}: {resp.json()}"
+            )
         finally:
             app.dependency_overrides.pop(get_profile_service, None)
 
@@ -166,9 +166,9 @@ class TestAvatarFileWithWrongExtensionButValidMagicBytes:
                 "photo.exe",
                 "application/octet-stream",
             )
-            assert (
-                resp.status_code == 200
-            ), f"JPEG magic in .exe should be accepted; got {resp.status_code}: {resp.json()}"
+            assert resp.status_code == 200, (
+                f"JPEG magic in .exe should be accepted; got {resp.status_code}: {resp.json()}"
+            )
         finally:
             app.dependency_overrides.pop(get_profile_service, None)
 
@@ -188,9 +188,9 @@ class TestAvatarFileWithWrongExtensionButValidMagicBytes:
                 "data.bin",
                 "application/octet-stream",
             )
-            assert (
-                resp.status_code == 200
-            ), f"WebP magic in .bin should be accepted; got {resp.status_code}: {resp.json()}"
+            assert resp.status_code == 200, (
+                f"WebP magic in .bin should be accepted; got {resp.status_code}: {resp.json()}"
+            )
         finally:
             app.dependency_overrides.pop(get_profile_service, None)
 

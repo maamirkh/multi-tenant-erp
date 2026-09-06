@@ -105,9 +105,9 @@ class TestSoftDeleteCompleteness:
             .scalars()
             .one_or_none()
         )
-        assert (
-            category is not None
-        ), "Row was hard-deleted from DB (should be soft-deleted)"
+        assert category is not None, (
+            "Row was hard-deleted from DB (should be soft-deleted)"
+        )
         assert category.is_deleted is True, f"is_deleted not set: {category.is_deleted}"
 
         # Verify excluded from list

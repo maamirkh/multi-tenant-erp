@@ -98,12 +98,12 @@ class TestLedgerImmutability:
         movement_put = [p for p in put_paths if "movements" in p]
         movement_patch = [p for p in patch_paths if "movements" in p]
 
-        assert (
-            not movement_put
-        ), f"Found PUT endpoints for stock movements (should be immutable): {movement_put}"
-        assert (
-            not movement_patch
-        ), f"Found PATCH endpoints for stock movements (should be immutable): {movement_patch}"
+        assert not movement_put, (
+            f"Found PUT endpoints for stock movements (should be immutable): {movement_put}"
+        )
+        assert not movement_patch, (
+            f"Found PATCH endpoints for stock movements (should be immutable): {movement_patch}"
+        )
 
     def test_no_delete_endpoint_for_stock_movements(self) -> None:
         """Code scan: router.py must not register DELETE on /stock/movements."""
@@ -120,9 +120,9 @@ class TestLedgerImmutability:
         delete_paths = re.findall(r'@router\.delete\(\s*"(/[^"]+)"', router_source)
         movement_delete = [p for p in delete_paths if "movements" in p]
 
-        assert (
-            not movement_delete
-        ), f"Found DELETE endpoints for stock movements (should be immutable): {movement_delete}"
+        assert not movement_delete, (
+            f"Found DELETE endpoints for stock movements (should be immutable): {movement_delete}"
+        )
 
     def test_movement_api_returns_405_on_delete(
         self, test_client: TestClient, db_session: Session
@@ -256,6 +256,6 @@ class TestLedgerImmutability:
             .all()
         )
 
-        assert (
-            len(movements_after) >= count_before
-        ), "Movements count decreased — ledger appears to have deleted/updated records"
+        assert len(movements_after) >= count_before, (
+            "Movements count decreased — ledger appears to have deleted/updated records"
+        )

@@ -295,6 +295,6 @@ class TestFeatureFlagTenantIsolation:
         assert resp_b.status_code == 200
         flags_b = {f["flag_key"]: f["is_enabled"] for f in resp_b.json()["data"]}
         if "purchase.bulk_import_suppliers" in flags_b:
-            assert (
-                flags_b["purchase.bulk_import_suppliers"] is True
-            ), "Company B's flag should not be affected by Company A's toggle"
+            assert flags_b["purchase.bulk_import_suppliers"] is True, (
+                "Company B's flag should not be affected by Company A's toggle"
+            )
