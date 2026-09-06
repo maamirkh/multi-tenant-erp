@@ -68,7 +68,7 @@ jobs:
             ':(exclude)history/' 2>/dev/null || true)
 
           # Check for patterns that look like hardcoded secrets
-          if echo "$DIFF" | grep -qiE '(SECRET_KEY|JWT_SECRET|PASSWORD|API_KEY)\s*=\s*["\x27][^"\'<>{}\[\]]{8,}'; then
+          if echo "$DIFF" | grep -qiE '(SECRET_KEY|JWT_SECRET|PASSWORD|API_KEY)\s*=\s*["'\''][^"'\''<>{}\[\]]{8,}'; then
             echo "WARNING: Possible hardcoded secret detected in diff."
             echo "Review the diff manually before merging."
             echo "If these are test fixtures or example values, suppress with # nosec"
