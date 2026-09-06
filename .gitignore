@@ -82,3 +82,4 @@ logs/
 
 # --- Claude Code local settings ---
 .claude/settings.local.json
+ echo # Auto-generated large API contract files echo specs/*/contracts/*.json git rm --cached specs/005-inventory-management/contracts/inventory-v1.json

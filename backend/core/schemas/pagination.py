@@ -35,7 +35,7 @@ from core.schemas.response import ResponseMeta
 T = TypeVar("T")
 
 
-class PaginatedData(BaseModel, Generic[T]):
+class PaginatedData(BaseModel, Generic[T]):  # noqa: UP046
     """Paginated payload wrapper.
 
     Fields:
@@ -55,7 +55,7 @@ class PaginatedData(BaseModel, Generic[T]):
     pages: int
 
 
-class PaginatedResponse(BaseModel, Generic[T]):
+class PaginatedResponse(BaseModel, Generic[T]):  # noqa: UP046
     """Envelope for paginated list API responses.
 
     Example JSON::
