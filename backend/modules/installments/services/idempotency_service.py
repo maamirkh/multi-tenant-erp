@@ -125,8 +125,7 @@ class InstallmentIdempotencyService:
         # plan.md §20.3: should never occur under normal operation.
         raise InstallmentIdempotencyConflictError(
             message=(
-                "Idempotency reservation observed in an unexpected "
-                "in-progress state."
+                "Idempotency reservation observed in an unexpected in-progress state."
             ),
             code="IDEMPOTENCY_UNEXPECTED_STATE",
             idempotency_key=idempotency_key,

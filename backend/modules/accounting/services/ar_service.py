@@ -667,9 +667,7 @@ class AccountsReceivableService:
                 credit_status=credit_status,
                 actor_id=actor_id,
             )
-        except (
-            Exception
-        ):  # noqa: BLE001 — sync failure must not break the Accounting-side hold
+        except Exception:  # noqa: BLE001 — sync failure must not break the Accounting-side hold
             logger.exception(
                 "AccountsReceivableService: failed to sync credit_status to Sales "
                 "(customer_id=%s, credit_status=%s)",

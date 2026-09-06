@@ -30,26 +30,25 @@ class TestTokenEntropy:
     def test_no_duplicate_tokens(self) -> None:
         """1000 generated tokens must all be unique."""
         tokens = [_generate_token() for _ in range(_NUM_TOKENS)]
-        assert (
-            len(set(tokens)) == _NUM_TOKENS
-        ), "Duplicate refresh tokens detected — entropy source is insufficient."
+        assert len(set(tokens)) == _NUM_TOKENS, (
+            "Duplicate refresh tokens detected — entropy source is insufficient."
+        )
 
     def test_each_token_meets_minimum_length(self) -> None:
         """Each token must be >= 86 characters (covers 64 bytes of entropy)."""
         tokens = [_generate_token() for _ in range(_NUM_TOKENS)]
         short = [t for t in tokens if len(t) < _MIN_TOKEN_LENGTH]
         assert len(short) == 0, (
-            f"{len(short)} tokens shorter than {_MIN_TOKEN_LENGTH} chars: "
-            f"{short[:3]!r}"
+            f"{len(short)} tokens shorter than {_MIN_TOKEN_LENGTH} chars: {short[:3]!r}"
         )
 
     def test_stored_hash_differs_from_raw_token(self) -> None:
         """For every token, SHA-256(token) != token (hash is not identity)."""
         tokens = [_generate_token() for _ in range(_NUM_TOKENS)]
         for raw in tokens:
-            assert (
-                _sha256(raw) != raw
-            ), "SHA-256 digest equals the raw token — hash function not applied."
+            assert _sha256(raw) != raw, (
+                "SHA-256 digest equals the raw token — hash function not applied."
+            )
 
     def test_token_is_url_safe(self) -> None:
         """Tokens must only contain URL-safe characters (base64url alphabet)."""
@@ -58,6 +57,6 @@ class TestTokenEntropy:
         _url_safe = re.compile(r"^[A-Za-z0-9\-_]+$")
         tokens = [_generate_token() for _ in range(100)]
         for token in tokens:
-            assert _url_safe.match(
-                token
-            ), f"Token contains non-URL-safe characters: {token[:20]!r}"
+            assert _url_safe.match(token), (
+                f"Token contains non-URL-safe characters: {token[:20]!r}"
+            )

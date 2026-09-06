@@ -329,8 +329,7 @@ def upgrade() -> None:
     )
 
     # --- Immutability trigger on accounting_journal_lines ---
-    op.execute(
-        f"""
+    op.execute(f"""
         CREATE OR REPLACE FUNCTION {_TRIGGER_FUNCTION_NAME}()
         RETURNS TRIGGER AS $$
         BEGIN
@@ -339,15 +338,12 @@ def upgrade() -> None:
                 TG_OP;
         END;
         $$ LANGUAGE plpgsql;
-        """
-    )
-    op.execute(
-        f"""
+        """)
+    op.execute(f"""
         CREATE TRIGGER {_TRIGGER_NAME}
         BEFORE UPDATE OR DELETE ON accounting_journal_lines
         FOR EACH ROW EXECUTE FUNCTION {_TRIGGER_FUNCTION_NAME}();
-        """
-    )
+        """)
 
 
 def downgrade() -> None:

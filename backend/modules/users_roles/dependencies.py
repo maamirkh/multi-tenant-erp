@@ -218,7 +218,8 @@ def get_current_company_member(
 
     member_repo = CompanyMemberRepository(db)
     member = member_repo.get_by_user_id(
-        user_id=current_user.user_id, company_id=company_id  # type: ignore[arg-type]
+        user_id=current_user.user_id,
+        company_id=company_id,  # type: ignore[arg-type]
     )
 
     if member is None or member.status not in ("active", "pending_invitation"):

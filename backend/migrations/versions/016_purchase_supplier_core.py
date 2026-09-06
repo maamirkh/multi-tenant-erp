@@ -116,8 +116,7 @@ def upgrade() -> None:
     # ------------------------------------------------------------------
     # FTS trigger — maintains tsvector_search on INSERT/UPDATE
     # ------------------------------------------------------------------
-    op.execute(
-        """
+    op.execute("""
         CREATE OR REPLACE FUNCTION suppliers_tsvector_update() RETURNS trigger AS $$
         BEGIN
             NEW.tsvector_search :=
@@ -128,16 +127,13 @@ def upgrade() -> None:
             RETURN NEW;
         END;
         $$ LANGUAGE plpgsql;
-    """
-    )
+    """)
 
-    op.execute(
-        """
+    op.execute("""
         CREATE TRIGGER suppliers_tsvector_trigger
         BEFORE INSERT OR UPDATE ON suppliers
         FOR EACH ROW EXECUTE FUNCTION suppliers_tsvector_update();
-    """
-    )
+    """)
 
     # ------------------------------------------------------------------
     # supplier_contacts

@@ -491,7 +491,7 @@ Backend
 
 ruff check
 
-black .
+ruff format
 
 mypy
 

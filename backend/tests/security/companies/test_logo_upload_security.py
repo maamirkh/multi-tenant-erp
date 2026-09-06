@@ -36,7 +36,7 @@ _SVG_WITH_SCRIPT = b"<svg><script>alert('xss')</script></svg>"
 _SVG_CLEAN = (
     b"<svg xmlns='http://www.w3.org/2000/svg'><rect width='10' height='10'/></svg>"
 )
-_CORRUPTED_JPEG = b"\x00\x00\x00\x00\xFF\xFF\xFF\xFF" + b"\x00" * 50
+_CORRUPTED_JPEG = b"\x00\x00\x00\x00\xff\xff\xff\xff" + b"\x00" * 50
 _PDF_BYTES = b"%PDF-1.4\n%%EOF" + b"\x00" * 50
 
 
@@ -217,9 +217,9 @@ class TestLogoUploadSecurity:
                 "malware.exe",
                 "application/octet-stream",
             )
-            assert (
-                resp.status_code == 200
-            ), f"PNG renamed to .exe should be accepted; got {resp.status_code}: {resp.json()}"
+            assert resp.status_code == 200, (
+                f"PNG renamed to .exe should be accepted; got {resp.status_code}: {resp.json()}"
+            )
         finally:
             app.dependency_overrides.clear()
 

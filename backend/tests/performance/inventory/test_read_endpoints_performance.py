@@ -269,10 +269,9 @@ class TestReadEndpointsPerformance:
         for label, p95_ms, status in results:
             print(f"{label:<35} {p95_ms:>10.1f} {status:>8}")
 
-        assert (
-            not failures
-        ), f"The following endpoints exceed {_P95_THRESHOLD_MS}ms p95:\n" + "\n".join(
-            failures
+        assert not failures, (
+            f"The following endpoints exceed {_P95_THRESHOLD_MS}ms p95:\n"
+            + "\n".join(failures)
         )
 
     def test_reports_endpoints_p95(

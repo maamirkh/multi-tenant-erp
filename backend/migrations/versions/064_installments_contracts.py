@@ -134,13 +134,11 @@ def upgrade() -> None:
     )
     # BR-INST-042/ADR-INST-03: at most one non-terminal contract per
     # originating obligation.
-    op.execute(
-        """
+    op.execute("""
         CREATE UNIQUE INDEX uq_installment_contracts_one_nonterminal_per_obligation
         ON installment_contracts (company_id, sales_invoice_id)
         WHERE status NOT IN ('CANCELLED', 'COMPLETED', 'WRITTEN_OFF')
-        """
-    )
+        """)
 
 
 def downgrade() -> None:

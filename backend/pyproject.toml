@@ -30,14 +30,9 @@ pytest = "*"
 pytest-cov = "*"
 pytest-asyncio = "*"
 httpx = "*"
-black = "*"
 ruff = "*"
 mypy = "*"
 pre-commit = "*"
-
-[tool.black]
-line-length = 88
-target-version = ["py312"]
 
 [tool.ruff]
 line-length = 88

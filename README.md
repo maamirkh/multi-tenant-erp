@@ -89,8 +89,8 @@ docker compose exec web npm test
 
 ```bash
 # Backend
-docker compose exec api black --check .
 docker compose exec api ruff check .
+docker compose exec api ruff format --check .
 docker compose exec api mypy .
 
 # Frontend

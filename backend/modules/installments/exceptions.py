@@ -460,8 +460,7 @@ class DegenerateScheduleError(ValidationException):
     def __init__(self, message: str | None = None) -> None:
         super().__init__(
             message=message
-            or "The generated schedule's final installment would be zero "
-            "or negative.",
+            or "The generated schedule's final installment would be zero or negative.",
         )
         self.code = "DEGENERATE_SCHEDULE"
 

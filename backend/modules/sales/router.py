@@ -3010,14 +3010,14 @@ async def list_approval_matrices(
     user: CurrentUser = Depends(require_authenticated),
     svc: ApprovalService = Depends(get_approval_service),
 ) -> StandardResponse[list[SalesApprovalMatrixRead]]:
-
     matrices = svc._matrix_repo.list_for_company(company_id, document_type)
     result = []
     for m in matrices:
         rules = svc._rule_repo.list_for_matrix(company_id, m.id)
         matrix_read = SalesApprovalMatrixRead.model_validate(m)
         matrix_read.rules = [
-            SalesApprovalMatrixRead.__fields__ for _ in rules  # type: ignore  # noqa
+            SalesApprovalMatrixRead.__fields__
+            for _ in rules  # type: ignore  # noqa
         ]
         result.append(matrix_read)
 

@@ -40,8 +40,7 @@ class TestLoginRateLimit:
 
         # 11th must be rate-limited.
         assert statuses[10] == 429, (
-            f"Expected 429 on request #11, got {statuses[10]}. "
-            f"All statuses: {statuses}"
+            f"Expected 429 on request #11, got {statuses[10]}. All statuses: {statuses}"
         )
 
     def test_rate_limited_login_returns_json_error(
@@ -79,14 +78,13 @@ class TestForgotPasswordRateLimit:
 
         # First 3 should return 200 (anti-enumeration: always 200).
         for i, status in enumerate(statuses[:3]):
-            assert (
-                status == 200
-            ), f"Request #{i + 1} to forgot-password returned {status}, expected 200"
+            assert status == 200, (
+                f"Request #{i + 1} to forgot-password returned {status}, expected 200"
+            )
 
         # 4th must be rate-limited.
         assert statuses[3] == 429, (
-            f"Expected 429 on request #4, got {statuses[3]}. "
-            f"All statuses: {statuses}"
+            f"Expected 429 on request #4, got {statuses[3]}. All statuses: {statuses}"
         )
 
     def test_rate_limited_forgot_password_returns_json_error(

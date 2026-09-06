@@ -316,9 +316,7 @@ class RecurringJournalService:
                 if template.approval_required:
                     self._engine.submit(template.company_id, entry.id, None)
                 journal_entry_id = entry.id
-        except (
-            Exception
-        ) as exc:  # noqa: BLE001 — one template's failure must not stop the batch
+        except Exception as exc:  # noqa: BLE001 — one template's failure must not stop the batch
             status = RecurringInstanceStatus.FAILED.value
             error_message = str(exc)
             logger.exception(

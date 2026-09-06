@@ -252,7 +252,7 @@ class TestReportService:
         cid = _customer_id()
         # Use different dates so each invoice appears as a separate row in grouped summary
         for i in range(5):
-            _make_invoice(db_session, company_id, cid, invoice_date=f"2026-0{i+1}-01")
+            _make_invoice(db_session, company_id, cid, invoice_date=f"2026-0{i + 1}-01")
         db_session.flush()
 
         svc = ReportService(db_session)

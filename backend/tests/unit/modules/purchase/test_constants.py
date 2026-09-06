@@ -31,13 +31,13 @@ class TestPermissionConstants:
 
     def test_permission_codes_follow_naming_convention(self) -> None:
         for perm in PURCHASE_PERMISSIONS:
-            assert perm.code.startswith(
-                "purchase."
-            ), f"Permission code '{perm.code}' must start with 'purchase.'"
+            assert perm.code.startswith("purchase."), (
+                f"Permission code '{perm.code}' must start with 'purchase.'"
+            )
             parts = perm.code.split(".")
-            assert (
-                len(parts) >= 3
-            ), f"Permission code '{perm.code}' must follow 'purchase.<domain>.<action>'"
+            assert len(parts) >= 3, (
+                f"Permission code '{perm.code}' must follow 'purchase.<domain>.<action>'"
+            )
 
     def test_permission_by_code_dict_matches_tuple(self) -> None:
         assert len(PURCHASE_PERMISSION_BY_CODE) == len(PURCHASE_PERMISSIONS)
@@ -55,9 +55,9 @@ class TestPermissionConstants:
             "purchase.settings.update",
         ]
         for code in required:
-            assert (
-                code in PURCHASE_PERMISSION_BY_CODE
-            ), f"Required permission '{code}' missing"
+            assert code in PURCHASE_PERMISSION_BY_CODE, (
+                f"Required permission '{code}' missing"
+            )
 
     def test_permission_module_field_is_purchase(self) -> None:
         for perm in PURCHASE_PERMISSIONS:
@@ -71,14 +71,14 @@ class TestFeatureFlagConstants:
 
     def test_flag_keys_follow_naming_convention(self) -> None:
         for flag in PURCHASE_FEATURE_FLAGS:
-            assert flag.key.startswith(
-                "purchase."
-            ), f"Feature flag key '{flag.key}' must start with 'purchase.'"
+            assert flag.key.startswith("purchase."), (
+                f"Feature flag key '{flag.key}' must start with 'purchase.'"
+            )
 
     def test_exactly_12_feature_flags(self) -> None:
-        assert (
-            len(PURCHASE_FEATURE_FLAGS) == 14
-        ), f"Expected 14 purchase feature flags, got {len(PURCHASE_FEATURE_FLAGS)}"
+        assert len(PURCHASE_FEATURE_FLAGS) == 14, (
+            f"Expected 14 purchase feature flags, got {len(PURCHASE_FEATURE_FLAGS)}"
+        )
 
     def test_flag_by_key_dict_matches_tuple(self) -> None:
         assert len(PURCHASE_FLAG_BY_KEY) == len(PURCHASE_FEATURE_FLAGS)
@@ -93,9 +93,7 @@ class TestFeatureFlagConstants:
         ]
         for key in approval_flags:
             assert key in PURCHASE_FLAG_BY_KEY, f"Approval flag '{key}' missing"
-            assert PURCHASE_FLAG_BY_KEY[
-                key
-            ].default_enabled, (
+            assert PURCHASE_FLAG_BY_KEY[key].default_enabled, (
                 f"Approval flag '{key}' should default to enabled (safe default)"
             )
 
@@ -107,9 +105,9 @@ class TestFeatureFlagConstants:
         ]
         for key in opt_in_flags:
             assert key in PURCHASE_FLAG_BY_KEY, f"Flag '{key}' missing"
-            assert not PURCHASE_FLAG_BY_KEY[
-                key
-            ].default_enabled, f"Flag '{key}' should default to disabled (opt-in)"
+            assert not PURCHASE_FLAG_BY_KEY[key].default_enabled, (
+                f"Flag '{key}' should default to disabled (opt-in)"
+            )
 
     def test_default_enabled_flags_set_is_consistent(self) -> None:
         expected = frozenset(f.key for f in PURCHASE_FEATURE_FLAGS if f.default_enabled)

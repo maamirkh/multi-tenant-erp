@@ -160,9 +160,9 @@ class TestPermissionMatrix:
         ]
         for path in read_endpoints:
             resp = test_client.get(_url(company_id, path))
-            assert (
-                resp.status_code == 401
-            ), f"Expected 401 for GET {path}, got {resp.status_code}"
+            assert resp.status_code == 401, (
+                f"Expected 401 for GET {path}, got {resp.status_code}"
+            )
 
     def test_unauthenticated_gets_401_on_all_write_endpoints(
         self, test_client: TestClient
@@ -178,9 +178,9 @@ class TestPermissionMatrix:
         ]
         for method, path in write_endpoints:
             resp = test_client.request(method, _url(company_id, path), json={})
-            assert (
-                resp.status_code == 401
-            ), f"Expected 401 for {method} {path}, got {resp.status_code}"
+            assert resp.status_code == 401, (
+                f"Expected 401 for {method} {path}, got {resp.status_code}"
+            )
 
     def test_authenticated_user_can_read_inventory(
         self, test_client: TestClient, db_session: Session
@@ -209,9 +209,9 @@ class TestPermissionMatrix:
             if resp.status_code != 200:
                 failures.append(f"GET {path} → {resp.status_code}")
 
-        assert (
-            not failures
-        ), "Authenticated user blocked from read endpoints:\n" + "\n".join(failures)
+        assert not failures, (
+            "Authenticated user blocked from read endpoints:\n" + "\n".join(failures)
+        )
 
     def test_authentication_required_matrix_summary(
         self, test_client: TestClient, db_session: Session
@@ -264,8 +264,7 @@ class TestPermissionMatrix:
 
         # Assert: all unauthenticated requests blocked (401)
         unauth_failures = [(p, s) for p, _, s in results if s != 401]
-        assert (
-            not unauth_failures
-        ), "Unauthenticated requests not blocked:\n" + "\n".join(
-            f"  {p}: {s}" for p, s in unauth_failures
+        assert not unauth_failures, (
+            "Unauthenticated requests not blocked:\n"
+            + "\n".join(f"  {p}: {s}" for p, s in unauth_failures)
         )

@@ -153,13 +153,11 @@ def upgrade() -> None:
         comment="Company-configurable CRM sales pipelines",
     )
     # BR-008: exactly one active default pipeline per company.
-    op.execute(
-        """
+    op.execute("""
         CREATE UNIQUE INDEX uq_crm_pipelines_company_default
         ON crm_pipelines (company_id)
         WHERE is_default = true AND is_deleted = false
-        """
-    )
+        """)
 
     # --- crm_pipeline_stages ---
     op.create_table(
@@ -214,20 +212,16 @@ def upgrade() -> None:
         ["company_id", "pipeline_id", "sequence"],
     )
     # At most one won-stage and one lost-stage per pipeline.
-    op.execute(
-        """
+    op.execute("""
         CREATE UNIQUE INDEX uq_crm_pipeline_stages_won
         ON crm_pipeline_stages (pipeline_id)
         WHERE is_won_stage = true AND is_deleted = false
-        """
-    )
-    op.execute(
-        """
+        """)
+    op.execute("""
         CREATE UNIQUE INDEX uq_crm_pipeline_stages_lost
         ON crm_pipeline_stages (pipeline_id)
         WHERE is_lost_stage = true AND is_deleted = false
-        """
-    )
+        """)
 
     # --- crm_leads ---
     op.create_table(

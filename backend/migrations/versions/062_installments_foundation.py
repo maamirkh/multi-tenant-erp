@@ -200,20 +200,16 @@ def upgrade() -> None:
     # insufficient plain UNIQUE(company_id, branch_id): PostgreSQL treats
     # multiple NULLs in branch_id as distinct, so a plain composite unique
     # constraint would never block a second company-level default row.
-    op.execute(
-        """
+    op.execute("""
         CREATE UNIQUE INDEX uq_installment_configurations_branch
         ON installment_configurations (company_id, branch_id)
         WHERE branch_id IS NOT NULL
-        """
-    )
-    op.execute(
-        """
+        """)
+    op.execute("""
         CREATE UNIQUE INDEX uq_installment_configurations_company_default
         ON installment_configurations (company_id)
         WHERE branch_id IS NULL
-        """
-    )
+        """)
 
 
 def downgrade() -> None:

@@ -230,7 +230,7 @@ class PlatformRbacService:
             )
             self._db.commit()
             raise SelfEscalationError(
-                "Only an existing Platform Owner may grant the Platform " "Owner role."
+                "Only an existing Platform Owner may grant the Platform Owner role."
             )
 
         assignment = self._repo.assign_role(

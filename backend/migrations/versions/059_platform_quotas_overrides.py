@@ -160,13 +160,11 @@ def upgrade() -> None:
         "tenant_quota_overrides",
         ["company_id"],
     )
-    op.execute(
-        """
+    op.execute("""
         CREATE UNIQUE INDEX uq_tenant_quota_overrides_company_quota_active
         ON tenant_quota_overrides (company_id, quota_key)
         WHERE is_active = true
-        """
-    )
+        """)
 
     # --- entitlement_overrides ---
     op.create_table(
@@ -225,13 +223,11 @@ def upgrade() -> None:
         "entitlement_overrides",
         ["company_id"],
     )
-    op.execute(
-        """
+    op.execute("""
         CREATE UNIQUE INDEX uq_entitlement_overrides_company_capability_active
         ON entitlement_overrides (company_id, capability_key)
         WHERE is_active = true
-        """
-    )
+        """)
 
 
 def downgrade() -> None:
