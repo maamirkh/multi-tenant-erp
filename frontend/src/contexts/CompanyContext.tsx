@@ -25,6 +25,28 @@ import type { CompanySummary } from '@/types/companies';
 
 const STORAGE_KEY = 'erp_active_company_id';
 
+/**
+ * Dispatched on `window` whenever the persisted active-company id changes
+ * (set, cleared, or reset on session expiry). `CompanyProvider` only wraps
+ * the `(companies)` route group, so modules elsewhere in the app (e.g.
+ * Installments — see `apiErrors.ts::getCompanyId()`) that read the id
+ * directly from `localStorage` cannot rely on React context re-renders to
+ * notice a switch; they listen for this event instead so tenant-scoped
+ * state (e.g. `useInstallmentsPermissions`) never keeps serving the
+ * previous company's data/permissions after a switch.
+ */
+export const ACTIVE_COMPANY_CHANGED_EVENT = 'erp-active-company-changed';
+
+function persistActiveCompanyId(id: string | null): void {
+  if (typeof window === 'undefined') return;
+  if (id) {
+    window.localStorage.setItem(STORAGE_KEY, id);
+  } else {
+    window.localStorage.removeItem(STORAGE_KEY);
+  }
+  window.dispatchEvent(new Event(ACTIVE_COMPANY_CHANGED_EVENT));
+}
+
 export interface CompanyContextValue {
   /** Currently selected company, or null if none is selected. */
   activeCompany: CompanySummary | null;
@@ -59,7 +81,7 @@ export function CompanyProvider({
 
     function handleSessionExpired(): void {
       setActiveCompanyState(null);
-      window.localStorage.removeItem(STORAGE_KEY);
+      persistActiveCompanyId(null);
     }
 
     window.addEventListener('session-expired', handleSessionExpired);
@@ -69,16 +91,12 @@ export function CompanyProvider({
   const setActiveCompany = useCallback((company: CompanySummary): void => {
     setActiveCompanyState(company);
     setIsLoading(false);
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(STORAGE_KEY, company.id);
-    }
+    persistActiveCompanyId(company.id);
   }, []);
 
   const clearActiveCompany = useCallback((): void => {
     setActiveCompanyState(null);
-    if (typeof window !== 'undefined') {
-      window.localStorage.removeItem(STORAGE_KEY);
-    }
+    persistActiveCompanyId(null);
   }, []);
 
   /** Return the persisted company id even before the full summary is loaded. */

@@ -175,13 +175,18 @@ class TestMigration057RemediationPath:
         assert "access_invalidated_at" in columns
 
         # Re-run continues cleanly through the rest of the Epic 9A chain.
-        alembic_upgrade(pg_test_db, "head")
+        # Pinned to "061" (Epic 9A's own last migration), not "head" — later
+        # epics (e.g. Epic 10, migrations 062+) legitimately extend the
+        # chain past 061, and this test's concern is only that Epic 9A's
+        # own chain (through 061) still applies cleanly, not the platform's
+        # current overall head.
+        alembic_upgrade(pg_test_db, "061")
         assert _current_alembic_version(engine) == "061"
 
         # Up/down/up on real PostgreSQL (partial unique indexes and CHECK
         # constraints are Postgres-specific; SQLite cannot substitute).
         alembic_downgrade(pg_test_db, "056")
         assert _current_alembic_version(engine) == "056"
-        alembic_upgrade(pg_test_db, "head")
+        alembic_upgrade(pg_test_db, "061")
         assert _current_alembic_version(engine) == "061"
         engine.dispose()

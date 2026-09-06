@@ -10,6 +10,7 @@
 import {
   clearTokens,
   getAccessToken,
+  getEpoch,
   getRefreshToken,
   storeTokens,
 } from '@/lib/auth/tokenStorage';
@@ -53,5 +54,13 @@ describe('T123 — tokenStorage', () => {
   it('getRefreshToken returns value from localStorage', () => {
     storeTokens('tok-abc', 'ref-xyz');
     expect(getRefreshToken()).toBe('ref-xyz');
+  });
+
+  it('getEpoch increments on every storeTokens/clearTokens call', () => {
+    const start = getEpoch();
+    storeTokens('tok-abc', 'ref-xyz');
+    expect(getEpoch()).toBe(start + 1);
+    clearTokens();
+    expect(getEpoch()).toBe(start + 2);
   });
 });

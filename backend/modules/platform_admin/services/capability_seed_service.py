@@ -28,6 +28,7 @@ MODULE_CAPABILITY_CATALOGUE: tuple[dict[str, str], ...] = (
     {"key": "sales", "module": "sales", "display_name": "Sales"},
     {"key": "accounting", "module": "accounting", "display_name": "Accounting"},
     {"key": "crm", "module": "crm", "display_name": "CRM"},
+    {"key": "installments", "module": "installments", "display_name": "Installments"},
 )
 
 

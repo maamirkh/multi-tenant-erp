@@ -18,7 +18,8 @@ Tasks ref: specs/008-accounting-finance/tasks.md T208-T211
 
 from __future__ import annotations
 
-from datetime import date
+from dataclasses import dataclass
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -45,6 +46,7 @@ from modules.accounting.exceptions import (
 )
 from modules.accounting.models.ap import APTransaction
 from modules.accounting.models.ar import ARTransaction
+from modules.accounting.models.gl import JournalEntry
 from modules.accounting.models.payments import (
     Payment,
     PaymentAllocationLine,
@@ -76,6 +78,30 @@ from modules.accounting.services.posting_engine import PostingEngine, PostingRes
 
 _WHT_FLAG_KEY = "accounting.taxwithholding.enabled"
 _APPROVAL_FLAG_KEY = "accounting.approvalworkflow.enabled"
+
+
+@dataclass
+class DraftPaymentResult:
+    """Sentinel returned by ``stage_customer_payment()`` for the pre-
+    existing above-payment_approval_threshold DRAFT branch (plan.md
+    §12.3.1) — no GL/AR truth exists yet, so there is nothing for a
+    caller to bundle with it. That branch keeps its existing early
+    commit unchanged."""
+
+    payment: Payment
+
+
+@dataclass
+class StagedCustomerPayment:
+    """Flush-only result of ``stage_customer_payment()``'s immediate-
+    post branch (plan.md §12.3.1). The GL entry, ``Payment``, and credit
+    ``ARTransaction`` exist in the session, fully built, but not
+    committed. Pass to ``finalize_customer_payment()`` to commit."""
+
+    payment: Payment
+    journal_entry: JournalEntry
+    journal_number: str
+    posted_at: datetime
 
 
 class PaymentService:
@@ -211,6 +237,61 @@ class PaymentService:
         cheque_id: UUID | None = None,
         actor_id: UUID | None = None,
     ) -> tuple[Payment, PostingResult | None]:
+        """Thin, 100%-backward-compatible wrapper of
+        ``stage_customer_payment()`` + ``finalize_customer_payment()``
+        (plan.md §12.3.1) — identical behavior/return type for every
+        existing standalone caller."""
+        staged = self.stage_customer_payment(
+            company_id=company_id,
+            customer_id=customer_id,
+            payment_method=payment_method,
+            payment_date=payment_date,
+            amount=amount,
+            currency_code=currency_code,
+            exchange_rate=exchange_rate,
+            payment_type=payment_type,
+            bank_account_id=bank_account_id,
+            cash_account_id=cash_account_id,
+            advance_account_id=advance_account_id,
+            reference=reference,
+            notes=notes,
+            cheque_id=cheque_id,
+            actor_id=actor_id,
+        )
+        if isinstance(staged, DraftPaymentResult):
+            return staged.payment, None
+        return self.finalize_customer_payment(staged, actor_id)
+
+    def stage_customer_payment(
+        self,
+        company_id: UUID,
+        customer_id: UUID,
+        payment_method: str,
+        payment_date: date,
+        amount: Decimal,
+        currency_code: str,
+        exchange_rate: Decimal = Decimal("1"),
+        payment_type: str = PaymentType.CUSTOMER_RECEIPT.value,
+        bank_account_id: UUID | None = None,
+        cash_account_id: UUID | None = None,
+        advance_account_id: UUID | None = None,
+        reference: str | None = None,
+        notes: str | None = None,
+        cheque_id: UUID | None = None,
+        actor_id: UUID | None = None,
+    ) -> StagedCustomerPayment | DraftPaymentResult:
+        """Stage a customer payment (plan.md §12.3.1) — flush only, no
+        commit for the immediate-post branch (mirrors ``ar_service.py``'s
+        ``stage_adjustment()``). The pre-existing above-threshold DRAFT
+        branch is unchanged (self-contained, no Accounting truth created
+        yet) and keeps its own early commit, returning
+        ``DraftPaymentResult`` instead.
+
+        The caller may stage further writes into the same session (e.g.
+        Installments' ``InstallmentAllocationReference`` rows) before
+        calling ``finalize_customer_payment()``, which performs the sole
+        commit for everything staged since this call.
+        """
         if amount <= 0:
             raise PostingValidationError("Payment amount must be positive.")
         debit_account_id = self._resolve_payment_account(
@@ -277,7 +358,7 @@ class PaymentService:
             )
             self.db.commit()
             self.db.refresh(pending)
-            return pending, None
+            return DraftPaymentResult(payment=pending)
 
         if is_advance:
             if advance_account_id is None:
@@ -371,11 +452,24 @@ class PaymentService:
         self.db.flush()
         self._recompute_customer_ledger_balance(company_id, ledger.id)
 
-        result = self._engine.finalize_and_publish(
-            entry, journal_number, posted_at, actor_id
+        return StagedCustomerPayment(
+            payment=payment,
+            journal_entry=entry,
+            journal_number=journal_number,
+            posted_at=posted_at,
         )
-        self.db.refresh(payment)
-        return payment, result
+
+    def finalize_customer_payment(
+        self, staged: StagedCustomerPayment, actor_id: UUID | None
+    ) -> tuple[Payment, PostingResult]:
+        """The sole commit point for ``stage_customer_payment()``'s
+        immediate-post branch — thin wrapper over
+        ``PostingEngine.finalize_and_publish()`` (plan.md §12.3.1)."""
+        result = self._engine.finalize_and_publish(
+            staged.journal_entry, staged.journal_number, staged.posted_at, actor_id
+        )
+        self.db.refresh(staged.payment)
+        return staged.payment, result
 
     # ------------------------------------------------------------------
     # Supplier disbursements

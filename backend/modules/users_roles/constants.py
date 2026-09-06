@@ -105,6 +105,128 @@ class PermissionDefinition:
     description: str
 
 
+# Epic 10 (Installments) — all 16 installments.* permission codes
+# (plan.md §16.1), unioned into INITIAL_PERMISSIONS below so
+# RoleSeedService grants them to every NEW company automatically at
+# creation time (plan.md §30.1 point 1). Existing companies are backfilled
+# separately by migration 071_installments_permission_backfill.py, which
+# this tuple's codes/labels/descriptions intentionally match exactly.
+INSTALLMENTS_PERMISSIONS: Final[tuple[PermissionDefinition, ...]] = (
+    PermissionDefinition(
+        "installments.config.manage",
+        "Manage Installments Configuration",
+        "installments",
+        "manage",
+        "Configure tenant-level installment policy",
+    ),
+    PermissionDefinition(
+        "installments.plan.manage",
+        "Manage Installment Plan Templates",
+        "installments",
+        "manage",
+        "Create/edit/deactivate installment plan templates",
+    ),
+    PermissionDefinition(
+        "installments.contract.view",
+        "View Installment Contracts",
+        "installments",
+        "read",
+        "View installment contracts and schedules",
+    ),
+    PermissionDefinition(
+        "installments.contract.create",
+        "Create Installment Contracts",
+        "installments",
+        "create",
+        "Create a draft installment contract / quote",
+    ),
+    PermissionDefinition(
+        "installments.contract.approve",
+        "Approve Installment Contracts",
+        "installments",
+        "manage",
+        "Approve a submitted installment contract",
+    ),
+    PermissionDefinition(
+        "installments.contract.activate",
+        "Activate Installment Contracts",
+        "installments",
+        "manage",
+        "Activate an approved installment contract",
+    ),
+    PermissionDefinition(
+        "installments.collection.create",
+        "Record Installment Collections",
+        "installments",
+        "create",
+        "Record an installment collection",
+    ),
+    PermissionDefinition(
+        "installments.collection.reverse",
+        "Reverse Installment Collections",
+        "installments",
+        "manage",
+        "Reverse a recorded installment collection",
+    ),
+    PermissionDefinition(
+        "installments.charge.waive",
+        "Waive Late Charges",
+        "installments",
+        "manage",
+        "Waive an installment late charge",
+    ),
+    PermissionDefinition(
+        "installments.contract.reschedule",
+        "Reschedule Installment Contracts",
+        "installments",
+        "manage",
+        "Controlled due-date amendment of an installment schedule",
+    ),
+    PermissionDefinition(
+        "installments.contract.cancel",
+        "Cancel Installment Contracts",
+        "installments",
+        "manage",
+        "Cancel an installment contract",
+    ),
+    PermissionDefinition(
+        "installments.contract.default",
+        "Mark Installment Contracts Defaulted",
+        "installments",
+        "manage",
+        "Mark an installment contract as defaulted",
+    ),
+    PermissionDefinition(
+        "installments.contract.cure",
+        "Cure Defaulted Installment Contracts",
+        "installments",
+        "manage",
+        "Restore a defaulted installment contract to active",
+    ),
+    PermissionDefinition(
+        "installments.contract.writeoff",
+        "Write Off Installment Contracts",
+        "installments",
+        "manage",
+        "Write off a defaulted installment balance",
+    ),
+    PermissionDefinition(
+        "installments.settlement.execute",
+        "Execute Installment Settlements",
+        "installments",
+        "manage",
+        "Generate/execute an early installment settlement",
+    ),
+    PermissionDefinition(
+        "installments.report.view",
+        "View Installment Reports",
+        "installments",
+        "read",
+        "View installment reports/dashboards",
+    ),
+)
+
+
 INITIAL_PERMISSIONS: Final[tuple[PermissionDefinition, ...]] = (
     # Members module
     PermissionDefinition(
@@ -475,7 +597,7 @@ INITIAL_PERMISSIONS: Final[tuple[PermissionDefinition, ...]] = (
         "manage",
         "Enable or disable purchase module feature flags",
     ),
-)
+) + INSTALLMENTS_PERMISSIONS
 
 PERMISSION_BY_CODE: Final[dict[str, PermissionDefinition]] = {
     p.code: p for p in INITIAL_PERMISSIONS
@@ -708,6 +830,101 @@ _CRM_VIEWER: Final[frozenset[str]] = frozenset(
     }
 )
 
+# Epic 10 (Installments) role mapping — plan.md §30.1's own per-role grant
+# table, matching migration 071_installments_permission_backfill.py's
+# ``_ROLE_GRANTS`` exactly (that migration backfills existing companies;
+# these frozensets cover every NEW company via RoleSeedService). Deliberate
+# deviation from CRM's "cashier/store-keeper get zero" precedent:
+# Installments' spec explicitly names Cashier/Collector as an actor who
+# records collections, so cashier receives two grants below;
+# store-keeper remains at zero (no relevance to Installments, matching
+# CRM's own precedent for that role — no frozenset, no union added).
+_INSTALLMENTS_OWNER: Final[frozenset[str]] = frozenset(
+    {
+        "installments.config.manage",
+        "installments.plan.manage",
+        "installments.contract.view",
+        "installments.contract.create",
+        "installments.contract.approve",
+        "installments.contract.activate",
+        "installments.collection.create",
+        "installments.collection.reverse",
+        "installments.charge.waive",
+        "installments.contract.reschedule",
+        "installments.contract.cancel",
+        "installments.contract.default",
+        "installments.contract.cure",
+        "installments.contract.writeoff",
+        "installments.settlement.execute",
+        "installments.report.view",
+    }
+)
+# Admin's Installments grants are identical to Owner's per plan.md §30.1's
+# table (both get all 16) — kept as its own named constant, not a reused
+# reference, matching the existing per-role-constant convention used
+# throughout this file (see _CRM_ADMIN's identical rationale above).
+_INSTALLMENTS_ADMIN: Final[frozenset[str]] = frozenset(
+    {
+        "installments.config.manage",
+        "installments.plan.manage",
+        "installments.contract.view",
+        "installments.contract.create",
+        "installments.contract.approve",
+        "installments.contract.activate",
+        "installments.collection.create",
+        "installments.collection.reverse",
+        "installments.charge.waive",
+        "installments.contract.reschedule",
+        "installments.contract.cancel",
+        "installments.contract.default",
+        "installments.contract.cure",
+        "installments.contract.writeoff",
+        "installments.settlement.execute",
+        "installments.report.view",
+    }
+)
+_INSTALLMENTS_MANAGER: Final[frozenset[str]] = frozenset(
+    {
+        "installments.contract.view",
+        "installments.contract.approve",
+        "installments.contract.reschedule",
+        "installments.contract.cancel",
+        "installments.contract.default",
+        "installments.contract.writeoff",
+        "installments.charge.waive",
+        "installments.settlement.execute",
+        "installments.contract.cure",
+        "installments.report.view",
+    }
+)
+_INSTALLMENTS_ACCOUNTANT: Final[frozenset[str]] = frozenset(
+    {
+        "installments.contract.view",
+        "installments.collection.reverse",
+        "installments.settlement.execute",
+        "installments.report.view",
+    }
+)
+_INSTALLMENTS_SALESPERSON: Final[frozenset[str]] = frozenset(
+    {
+        "installments.contract.view",
+        "installments.contract.create",
+        "installments.plan.manage",
+    }
+)
+_INSTALLMENTS_CASHIER: Final[frozenset[str]] = frozenset(
+    {
+        "installments.contract.view",
+        "installments.collection.create",
+    }
+)
+_INSTALLMENTS_VIEWER: Final[frozenset[str]] = frozenset(
+    {
+        "installments.contract.view",
+        "installments.report.view",
+    }
+)
+
 # Epic 9A Phase 10 (T141, plan.md §14 risk mitigation) — granted to
 # owner/admin only, so existing tenant admins can still manage feature
 # toggles immediately after deploy; ordinary members cannot.
@@ -741,6 +958,7 @@ DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
         | _ACCOUNTING_CFO
         | _CRM_OWNER
         | _FEATURE_TOGGLE_MANAGE
+        | _INSTALLMENTS_OWNER
     ),
     "admin": frozenset(
         {
@@ -761,6 +979,7 @@ DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
         | _ACCOUNTING_SYSTEM_ADMIN
         | _FEATURE_TOGGLE_MANAGE
         | _CRM_ADMIN
+        | _INSTALLMENTS_ADMIN
     ),
     "manager": frozenset(
         {
@@ -772,6 +991,7 @@ DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
         }
         | _ACCOUNTING_CONTROLLER
         | _CRM_MANAGER
+        | _INSTALLMENTS_MANAGER
     ),
     "accountant": frozenset(
         {
@@ -783,6 +1003,7 @@ DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
         }
         | _ACCOUNTING_ACCOUNTANT
         | _CRM_ACCOUNTANT
+        | _INSTALLMENTS_ACCOUNTANT
     ),
     "salesperson": frozenset(
         {
@@ -794,6 +1015,7 @@ DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
         }
         | _ACCOUNTING_AR_CLERK
         | _CRM_SALESPERSON
+        | _INSTALLMENTS_SALESPERSON
     ),
     "cashier": frozenset(
         {
@@ -804,6 +1026,7 @@ DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
             "profile.update",
         }
         | _ACCOUNTING_CASHIER
+        | _INSTALLMENTS_CASHIER
     ),
     "store-keeper": frozenset(
         {
@@ -824,6 +1047,7 @@ DEFAULT_ROLE_PERMISSIONS: Final[dict[str, frozenset[str]]] = {
         }
         | _ACCOUNTING_VIEWER
         | _CRM_VIEWER
+        | _INSTALLMENTS_VIEWER
     ),
 }
 

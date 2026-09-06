@@ -106,11 +106,12 @@ export class ApiClient {
   private async request<T>(
     method: string,
     path: string,
-    body?: unknown
+    body?: unknown,
+    extraHeaders?: Record<string, string>
   ): Promise<StandardResponse<T>> {
     const init: RequestInit = {
       method,
-      headers: this.buildHeaders(),
+      headers: { ...this.buildHeaders(), ...extraHeaders },
     };
 
     if (body !== undefined) {
@@ -128,7 +129,7 @@ export class ApiClient {
           // Retry the original request with the new access token.
           const retryInit: RequestInit = {
             method,
-            headers: this.buildHeaders(),
+            headers: { ...this.buildHeaders(), ...extraHeaders },
           };
           if (body !== undefined) {
             retryInit.body = JSON.stringify(body);
@@ -170,6 +171,22 @@ export class ApiClient {
   /** HTTP POST — create a resource. */
   async post<T>(path: string, body: unknown): Promise<StandardResponse<T>> {
     return this.request<T>('POST', path, body);
+  }
+
+  /**
+   * HTTP POST with extra request headers (e.g. `Idempotency-Key` for
+   * protected commands — Installments' activation/collection/reversal/
+   * settlement/reschedule/cancel/default/writeoff endpoints, plan.md §20).
+   * No existing module needed this before Installments; kept as a
+   * separate method rather than changing `post()`'s signature so every
+   * existing call site is untouched.
+   */
+  async postWithHeaders<T>(
+    path: string,
+    body: unknown,
+    extraHeaders: Record<string, string>
+  ): Promise<StandardResponse<T>> {
+    return this.request<T>('POST', path, body, extraHeaders);
   }
 
   /** HTTP PATCH — partially update a resource. */

@@ -25,7 +25,8 @@ Spec ref: specs/008-accounting-finance/spec.md §18 Accounts Receivable
 from __future__ import annotations
 
 import logging
-from datetime import date
+from dataclasses import dataclass
+from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
@@ -55,6 +56,7 @@ from modules.accounting.models.ar import (
     CustomerCreditHistory,
     CustomerLedger,
 )
+from modules.accounting.models.gl import JournalEntry
 from modules.accounting.repositories.ar import (
     ARPaymentAllocationRepository,
     ARTransactionRepository,
@@ -73,6 +75,29 @@ logger = logging.getLogger(__name__)
 
 #: GOOD/WARNING boundary — matches Sales' own default (customer_service.py).
 DEFAULT_WARNING_THRESHOLD_PCT = Decimal("80")
+
+
+@dataclass
+class StagedAdjustment:
+    """Flush-only result of ``stage_adjustment()`` — plan.md §12.1. The
+    GL entry and ``ARTransaction`` exist in the session, fully built, but
+    not committed; ``CustomerLedger`` has already been recomputed
+    in-session too. Pass to ``finalize_adjustment()`` to commit."""
+
+    ar_transaction: ARTransaction
+    journal_entry: JournalEntry
+    journal_number: str
+    posted_at: datetime
+
+
+@dataclass
+class StagedWriteOff:
+    """Flush-only result of ``stage_write_off()`` — plan.md §12.3.3."""
+
+    ar_transaction: ARTransaction
+    journal_entry: JournalEntry
+    journal_number: str
+    posted_at: datetime
 
 
 class AccountsReceivableService:
@@ -124,12 +149,23 @@ class AccountsReceivableService:
     def get_or_create_ledger(
         self, company_id: UUID, customer_id: UUID
     ) -> CustomerLedger:
+        """Flush only — never commits (fixed post-Phase-6-verification: the
+        previous ``self._ledgers.create(...)`` call inherited
+        ``BaseRepository.create()``'s internal ``db.commit()``, which
+        committed a new ledger — and anything else already flushed in the
+        same session — before any caller-side validation could run,
+        breaking every staged/finalize method that calls this as its
+        first step. Mirrors ``PaymentService._get_or_create_customer_ledger()``'s
+        already-correct flush-only pattern). The caller commits together
+        with the rest of its own unit of work.
+        """
         ledger = self._ledgers.find_by_customer(company_id, customer_id)
         if ledger is not None:
             return ledger
-        return self._ledgers.create(
-            CustomerLedger(company_id=company_id, customer_id=customer_id)
-        )
+        new_ledger = CustomerLedger(company_id=company_id, customer_id=customer_id)
+        self.db.add(new_ledger)
+        self.db.flush()
+        return new_ledger
 
     def get_customer_ledger(
         self, company_id: UUID, customer_id: UUID
@@ -144,6 +180,41 @@ class AccountsReceivableService:
     ) -> list[ARTransaction]:
         ledger = self.get_customer_ledger(company_id, customer_id)
         return self._ledgers.get_open_transactions(company_id, ledger.id)
+
+    def find_transaction_by_source_document(
+        self, company_id: UUID, source_document_type: str, source_document_id: UUID
+    ) -> ARTransaction | None:
+        """Read-only lookup by originating source document — the public
+        counterpart to ``ARTransactionRepository.find_by_source_document()``,
+        added for external module integration gateways (e.g. Installments'
+        ``AccountingIntegrationGateway``, plan.md §12) that need a live
+        outstanding-amount read for a specific document without importing
+        Accounting's repository layer directly."""
+        return self._transactions.find_by_source_document(
+            company_id, source_document_type, source_document_id
+        )
+
+    def get_transaction_by_id(
+        self, company_id: UUID, ar_transaction_id: UUID
+    ) -> ARTransaction | None:
+        """Read-only lookup by id, returning ``None`` rather than raising —
+        the public counterpart to ``_get_transaction()`` for external module
+        integration gateways (e.g. Installments' ``AccountingIntegrationGateway``)
+        that need to distinguish "not found" from an exception."""
+        return self._transactions.get_by_id_or_none(
+            id=ar_transaction_id, company_id=company_id
+        )
+
+    def sum_outstanding_by_ids(
+        self, company_id: UUID, ar_transaction_ids: list[UUID]
+    ) -> Decimal:
+        """Bounded batch counterpart to calling ``get_transaction_by_id()``
+        once per id and summing ``outstanding_amount`` for the non-
+        ``WRITTEN_OFF``, positive-outstanding ones — one aggregate query
+        regardless of how many ids are passed. Read-only, no commit."""
+        return self._transactions.sum_outstanding_excluding_written_off(
+            company_id, ar_transaction_ids
+        )
 
     # ------------------------------------------------------------------
     # Sales integration (T141/T142) — GL posting + ARTransaction creation
@@ -610,7 +681,7 @@ class AccountsReceivableService:
     # Adjustments
     # ------------------------------------------------------------------
 
-    def adjust_receivable(
+    def stage_adjustment(
         self,
         company_id: UUID,
         customer_id: UUID,
@@ -619,11 +690,22 @@ class AccountsReceivableService:
         reason: str,
         posting_date: date,
         actor_id: UUID | None,
-    ) -> ARTransaction:
-        """Post an AR adjustment (dispute, discount, rounding) to the ledger and GL.
+        transaction_type: str = "ADJUSTMENT",
+        source_document_type: str | None = None,
+        source_document_id: UUID | None = None,
+    ) -> StagedAdjustment:
+        """Stage an AR adjustment (dispute, discount, rounding, or — with
+        ``transaction_type="DEBIT_NOTE"`` — an Installments late charge,
+        plan.md §12.1) to the ledger and GL — flush only, no commit.
 
         ``amount`` > 0 increases the receivable (DR AR / CR contra);
         ``amount`` < 0 decreases it (DR contra / CR AR).
+
+        The caller may stage further writes into the same session (e.g.
+        an ``InstallmentLateCharge`` row) before calling
+        ``finalize_adjustment()``, which performs the sole commit for
+        everything staged since this call (plan.md §12.2's general
+        commit-ownership contract for cross-module Accounting calls).
         """
         ledger = self.get_or_create_ledger(company_id, customer_id)
         config = self._config_repo.get_for_company(company_id=company_id)
@@ -664,7 +746,7 @@ class AccountsReceivableService:
                 },
             ]
 
-        result = self._engine.post_direct(
+        entry, journal_number, posted_at = self._engine.stage_direct_posting(
             company_id=company_id,
             journal_type="ADJUSTING",
             posting_source="MANUAL",
@@ -672,22 +754,24 @@ class AccountsReceivableService:
             lines=lines,
             currency_code=config.base_currency_code if config else "USD",
             description=f"AR adjustment: {reason}",
-            source_document_type="ARAdjustment",
-            source_document_id=ledger.id,
+            source_document_type=source_document_type or "ARAdjustment",
+            source_document_id=source_document_id or ledger.id,
             actor_id=actor_id,
         )
 
         transaction = ARTransaction(
             company_id=company_id,
             customer_ledger_id=ledger.id,
-            transaction_type="ADJUSTMENT",
+            transaction_type=transaction_type,
             transaction_date=posting_date,
             currency_code=config.base_currency_code if config else "USD",
             amount_foreign=amount,
             amount_base=amount,
             outstanding_amount=amount,
             status=ARTransactionStatus.OPEN.value,
-            journal_entry_id=result.journal_entry_id,
+            journal_entry_id=entry.id,
+            source_document_type=source_document_type,
+            source_document_id=source_document_id,
             created_by=actor_id,
         )
         self.db.add(transaction)
@@ -701,8 +785,107 @@ class AccountsReceivableService:
             after=self._ar_transaction_snapshot(transaction),
             reason=reason,
         )
-        transaction = self._transactions.create(transaction)
-        self._recompute_ledger_balance(company_id, ledger.id)
+        self._recompute_ledger_balance_staged(company_id, ledger.id)
+        return StagedAdjustment(
+            ar_transaction=transaction,
+            journal_entry=entry,
+            journal_number=journal_number,
+            posted_at=posted_at,
+        )
+
+    def finalize_adjustment(
+        self, staged: StagedAdjustment, actor_id: UUID | None
+    ) -> ARTransaction:
+        """The sole commit point for ``stage_adjustment()`` — thin
+        wrapper over ``PostingEngine.finalize_and_publish()`` (plan.md
+        §12.1). No new business logic."""
+        self._engine.finalize_and_publish(
+            staged.journal_entry, staged.journal_number, staged.posted_at, actor_id
+        )
+        self.db.refresh(staged.ar_transaction)
+        return staged.ar_transaction
+
+    def adjust_receivable(
+        self,
+        company_id: UUID,
+        customer_id: UUID,
+        amount: Decimal,
+        contra_account_id: UUID,
+        reason: str,
+        posting_date: date,
+        actor_id: UUID | None,
+    ) -> ARTransaction:
+        """Post an AR adjustment (dispute, discount, rounding) to the ledger and GL.
+
+        Thin, 100%-backward-compatible wrapper of ``stage_adjustment()``
+        + ``finalize_adjustment()`` (plan.md §12.1) — identical behavior,
+        return type, and single-call ergonomics as before this change.
+        """
+        staged = self.stage_adjustment(
+            company_id=company_id,
+            customer_id=customer_id,
+            amount=amount,
+            contra_account_id=contra_account_id,
+            reason=reason,
+            posting_date=posting_date,
+            actor_id=actor_id,
+        )
+        return self.finalize_adjustment(staged, actor_id)
+
+    def reverse_adjustment(
+        self,
+        company_id: UUID,
+        ar_transaction_id: UUID,
+        reason: str,
+        actor_id: UUID | None,
+    ) -> ARTransaction:
+        """Reverse a previously-posted AR adjustment (plan.md §12.1) —
+        modeled directly on ``PaymentService.cancel_payment()``'s
+        stage-then-``PostingEngine.reverse()`` pattern.
+
+        Zeroes ``outstanding_amount`` and recomputes the ledger (both
+        flush-only), then calls ``PostingEngine.reverse()``, whose single
+        commit covers both the reversal journal and everything staged
+        above it in this same session — including anything the caller
+        staged before calling this method (e.g. an Installments late-
+        charge waiver row, plan.md §12.2's Waiver row).
+        """
+        transaction = self._get_transaction(company_id, ar_transaction_id)
+        ledger = self._ledgers.get_by_id(
+            id=transaction.customer_ledger_id, company_id=company_id
+        )
+        if transaction.journal_entry_id is None:
+            from modules.accounting.exceptions import PostingValidationError
+
+            raise PostingValidationError(
+                f"AR transaction '{ar_transaction_id}' has no associated "
+                "journal entry to reverse."
+            )
+
+        before = self._ar_transaction_snapshot(transaction)
+        transaction.outstanding_amount = Decimal("0")
+        transaction.status = ARTransactionStatus.PAID.value
+        self.db.add(transaction)
+        self.db.flush()
+        self._audit.record(
+            company_id=company_id,
+            entity_type="ARTransaction",
+            entity_id=transaction.id,
+            action="REVERSED",
+            actor_id=actor_id,
+            before=before,
+            after=self._ar_transaction_snapshot(transaction),
+            reason=reason,
+        )
+        self._recompute_ledger_balance_staged(company_id, ledger.id)
+
+        self._engine.reverse(
+            company_id=company_id,
+            journal_id=transaction.journal_entry_id,
+            actor_id=actor_id,
+            reason=reason,
+        )
+        self.db.refresh(transaction)
         return transaction
 
     # ------------------------------------------------------------------
@@ -741,10 +924,38 @@ class AccountsReceivableService:
         """Execute the write-off: zero the outstanding balance, mark WRITTEN_OFF,
         and post DR Bad Debt Expense / CR AR to the GL.
 
+        Thin, 100%-backward-compatible wrapper of ``stage_write_off()`` +
+        ``finalize_write_off()`` (plan.md §12.3.3) — identical behavior,
+        return type, and single-call ergonomics as before this change.
+
         Reversible in principle via the standard journal-reversal mechanism
         (Phase 4/5 ``PostingEngine.reverse()``) on the write-off's own
         journal entry — restoring the ARTransaction's OPEN status on
         recovery is a manual follow-up step, not automated in this phase.
+        """
+        staged = self.stage_write_off(company_id, ar_transaction_id, reason, actor_id)
+        return self.finalize_write_off(staged, actor_id)
+
+    def stage_write_off(
+        self,
+        company_id: UUID,
+        ar_transaction_id: UUID,
+        reason: str,
+        actor_id: UUID | None,
+    ) -> StagedWriteOff:
+        """Stage a write-off — flush only, no commit (plan.md §12.3.3).
+
+        Fixes the pre-existing three-separate-commit defect: the original
+        ``confirm_write_off()`` called ``post_direct()`` (commits
+        immediately), then ``self._transactions.update()`` (a **second**
+        commit — ``BaseRepository.update()`` commits internally), then
+        ``self._recompute_ledger_balance()`` → ``self._ledgers.update()``
+        (a **third** commit). This method performs the equivalent work
+        entirely via ``flush()``: ``stage_direct_posting()`` for the GL
+        entry, ``db.add()``+``db.flush()`` directly for the transaction's
+        status/outstanding-amount change (never ``self._transactions.
+        update()``), and the ledger recompute inlined the same way (never
+        ``self._ledgers.update()``).
         """
         transaction = self.initiate_write_off(
             company_id, ar_transaction_id, reason, actor_id
@@ -765,7 +976,7 @@ class AccountsReceivableService:
             )
 
         write_off_amount = transaction.outstanding_amount
-        result = self._engine.post_direct(
+        entry, journal_number, posted_at = self._engine.stage_direct_posting(
             company_id=company_id,
             journal_type="STANDARD",
             posting_source="MANUAL",
@@ -792,6 +1003,8 @@ class AccountsReceivableService:
         before = self._ar_transaction_snapshot(transaction)
         transaction.status = ARTransactionStatus.WRITTEN_OFF.value
         transaction.outstanding_amount = Decimal("0")
+        self.db.add(transaction)
+        self.db.flush()
         self._audit.record(
             company_id=company_id,
             entity_type="ARTransaction",
@@ -802,11 +1015,27 @@ class AccountsReceivableService:
             after=self._ar_transaction_snapshot(transaction),
             reason=reason,
         )
-        self._transactions.update(transaction)
-        self._recompute_ledger_balance(company_id, ledger.id)
+        self._recompute_ledger_balance_staged(company_id, ledger.id)
 
-        _ = result  # journal_entry_id already known via transaction; kept for clarity
-        return transaction
+        return StagedWriteOff(
+            ar_transaction=transaction,
+            journal_entry=entry,
+            journal_number=journal_number,
+            posted_at=posted_at,
+        )
+
+    def finalize_write_off(
+        self, staged: StagedWriteOff, actor_id: UUID | None
+    ) -> ARTransaction:
+        """The sole commit point for ``stage_write_off()`` — thin wrapper
+        over ``PostingEngine.finalize_and_publish()``, committing the GL
+        entry, the transaction status/outstanding change, and the ledger
+        recompute together (plan.md §12.3.3)."""
+        self._engine.finalize_and_publish(
+            staged.journal_entry, staged.journal_number, staged.posted_at, actor_id
+        )
+        self.db.refresh(staged.ar_transaction)
+        return staged.ar_transaction
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -822,12 +1051,15 @@ class AccountsReceivableService:
             raise ARTransactionNotFoundError(ar_transaction_id=str(ar_transaction_id))
         return transaction
 
-    def _recompute_ledger_balance(
+    def _recompute_ledger_balance_staged(
         self, company_id: UUID, customer_ledger_id: UUID
     ) -> CustomerLedger:
         """Recompute ``total_outstanding_base`` from the transactions table
         (never incremented/decremented in place — research.md Decision 3)
-        and re-derive ``credit_status`` (unless manually on HOLD).
+        and re-derive ``credit_status`` (unless manually on HOLD) —
+        flush only, never ``self._ledgers.update()`` (which commits
+        internally, ``core/repositories/base.py:92-106`` — exactly the
+        extra commit plan.md §12.3.3 requires eliminating).
         """
         ledger = self._ledgers.get_by_id(id=customer_ledger_id, company_id=company_id)
         open_transactions = self._ledgers.get_open_transactions(company_id, ledger.id)
@@ -838,7 +1070,9 @@ class AccountsReceivableService:
             ledger.credit_status = self.compute_credit_status(
                 ledger.total_outstanding_base, ledger.credit_limit
             )
-        return self._ledgers.update(ledger)
+        self.db.add(ledger)
+        self.db.flush()
+        return ledger
 
     # ------------------------------------------------------------------
     # Reconciliation (T140) — financial-integrity backstop
