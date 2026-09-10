@@ -52,7 +52,7 @@ from core.database.base import Base
 try:
     from sqlalchemy.dialects.postgresql import JSONB as _JSONB  # noqa: F401
 
-    def _visit_jsonb(self, type_: object, **kw: object) -> str:  # type: ignore[override]
+    def _visit_jsonb(self, type_: object, **kw: object) -> str:
         return "TEXT"
 
     SQLiteTypeCompiler.visit_JSONB = _visit_jsonb  # type: ignore[attr-defined]
@@ -62,7 +62,7 @@ except ImportError:
 try:
     from sqlalchemy.dialects.postgresql import INET as _INET  # noqa: F401
 
-    def _visit_inet(self, type_: object, **kw: object) -> str:  # type: ignore[override]
+    def _visit_inet(self, type_: object, **kw: object) -> str:
         return "TEXT"
 
     SQLiteTypeCompiler.visit_INET = _visit_inet  # type: ignore[attr-defined]
@@ -72,7 +72,7 @@ except ImportError:
 try:
     from sqlalchemy.dialects.postgresql import TSVECTOR as _TSVECTOR  # noqa: F401
 
-    def _visit_tsvector(self, type_: object, **kw: object) -> str:  # type: ignore[override]
+    def _visit_tsvector(self, type_: object, **kw: object) -> str:
         return "TEXT"
 
     SQLiteTypeCompiler.visit_TSVECTOR = _visit_tsvector  # type: ignore[attr-defined]
@@ -131,7 +131,7 @@ _TEST_DATABASE_URL = "sqlite:///:memory:"
 # which deliberately does NOT use these overrides so it keeps validating
 # the real production defaults.
 # ---------------------------------------------------------------------------
-_TEST_ARGON2_KWARGS: dict[str, int] = {
+_TEST_ARGON2_KWARGS: dict[str, Any] = {
     "ARGON2_TIME_COST": 1,
     "ARGON2_MEMORY_COST": 19456,
     "ARGON2_PARALLELISM": 1,

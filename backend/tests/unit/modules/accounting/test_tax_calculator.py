@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -33,7 +34,7 @@ from modules.accounting.services.tax_calculator import TaxCalculator
 
 
 @pytest.fixture
-def setup(db_session: Session) -> dict:
+def setup(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     company_id = uuid4()
 
@@ -125,7 +126,7 @@ def calculator(db_session: Session) -> TaxCalculator:
 
 class TestRateResolutionByTransactionDate:
     def test_correct_rate_applied_for_transaction_date(
-        self, calculator: TaxCalculator, setup: dict
+        self, calculator: TaxCalculator, setup: dict[str, Any]
     ) -> None:
         setup["tax_rate_repo"].create(
             TaxRate(
@@ -165,7 +166,7 @@ class TestRateResolutionByTransactionDate:
         assert results_after[0].tax_amount == Decimal("175.00")
 
     def test_date_range_boundaries_are_inclusive(
-        self, calculator: TaxCalculator, setup: dict
+        self, calculator: TaxCalculator, setup: dict[str, Any]
     ) -> None:
         setup["tax_rate_repo"].create(
             TaxRate(
@@ -203,7 +204,7 @@ class TestRateResolutionByTransactionDate:
         assert first_day_new[0].tax_rate == Decimal("17.5")
 
     def test_no_rate_configured_for_date_raises(
-        self, calculator: TaxCalculator, setup: dict
+        self, calculator: TaxCalculator, setup: dict[str, Any]
     ) -> None:
         setup["tax_rate_repo"].create(
             TaxRate(
@@ -225,7 +226,7 @@ class TestRateResolutionByTransactionDate:
 
 class TestZeroRatedAndOutOfScope:
     def test_zero_rated_returns_zero_amount_but_still_reportable(
-        self, calculator: TaxCalculator, setup: dict
+        self, calculator: TaxCalculator, setup: dict[str, Any]
     ) -> None:
         setup["tax_rate_repo"].create(
             TaxRate(
@@ -247,7 +248,7 @@ class TestZeroRatedAndOutOfScope:
         assert results[0].base_amount == Decimal("500.00")
 
     def test_out_of_scope_produces_no_line_at_all(
-        self, calculator: TaxCalculator, setup: dict
+        self, calculator: TaxCalculator, setup: dict[str, Any]
     ) -> None:
         # No TaxRate configured at all — OUT_OF_SCOPE must not need one.
         results = calculator.calculate(
@@ -261,7 +262,7 @@ class TestZeroRatedAndOutOfScope:
 
 class TestTaxGroup:
     def test_tax_group_applies_all_member_codes_simultaneously(
-        self, calculator: TaxCalculator, setup: dict, db_session: Session
+        self, calculator: TaxCalculator, setup: dict[str, Any], db_session: Session
     ) -> None:
         setup["tax_rate_repo"].create(
             TaxRate(
@@ -321,7 +322,7 @@ class TestTaxGroup:
         assert by_code["PROV-TAX"].tax_amount == Decimal("50.00")
 
     def test_unknown_id_raises_not_found(
-        self, calculator: TaxCalculator, setup: dict
+        self, calculator: TaxCalculator, setup: dict[str, Any]
     ) -> None:
         with pytest.raises(TaxCodeNotFoundError):
             calculator.calculate(
@@ -334,7 +335,7 @@ class TestTaxGroup:
 
 class TestTaxInclusiveCalculation:
     def test_tax_inclusive_backs_out_the_tax_portion(
-        self, calculator: TaxCalculator, setup: dict
+        self, calculator: TaxCalculator, setup: dict[str, Any]
     ) -> None:
         setup["tax_rate_repo"].create(
             TaxRate(

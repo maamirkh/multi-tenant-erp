@@ -17,6 +17,7 @@ Task: T145
 from __future__ import annotations
 
 import uuid as _uuid
+from typing import Any
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -33,10 +34,10 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -54,7 +55,7 @@ def _create_company(client: TestClient, token: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _url(company_id: str, path: str = "") -> str:
@@ -69,7 +70,9 @@ def _setup(client: TestClient, db: Session, suffix: str = "") -> tuple[str, str]
     return token, company_id
 
 
-def _create_po(client: TestClient, token: str, company_id: str, **kwargs) -> dict:
+def _create_po(
+    client: TestClient, token: str, company_id: str, **kwargs
+) -> dict[str, Any]:
     payload = {
         "currency_code": kwargs.get("currency_code", "USD"),
         "lines": kwargs.get("lines", []),
@@ -80,14 +83,14 @@ def _create_po(client: TestClient, token: str, company_id: str, **kwargs) -> dic
         payload["notes"] = kwargs["notes"]
     resp = client.post(_url(company_id), json=payload, headers=_auth(token))
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]
+    return dict(resp.json()["data"])
 
 
 def _line_payload(
     description: str = "Widget",
     qty: str = "5",
     unit_cost: str = "10.00",
-) -> dict:
+) -> dict[str, Any]:
     return {
         "product_description": description,
         "quantity_ordered": qty,

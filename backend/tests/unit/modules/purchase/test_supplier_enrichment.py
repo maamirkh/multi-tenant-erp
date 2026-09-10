@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -331,7 +332,7 @@ class TestPreferredSupplierDesignation:
         supplier.company_id = cid
         svc = self._make_service_with_supplier(supplier)
 
-        published_events = []
+        published_events: list[Any] = []
         with patch.object(
             svc._event_bus, "publish", side_effect=published_events.append
         ):

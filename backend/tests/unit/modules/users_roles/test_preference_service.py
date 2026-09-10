@@ -10,6 +10,7 @@ Spec reference: tasks T066.
 from __future__ import annotations
 
 import uuid
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -171,7 +172,7 @@ class TestValidation:
         with pytest.raises(InvalidPreferenceValueError) as exc_info:
             service.update_preferences(user_id, timezone="Not/A/Timezone")
 
-        assert "timezone" in exc_info.value.details["field"]
+        assert "timezone" in cast(str, exc_info.value.details["field"])
 
     def test_invalid_language_too_short_raises_error(self):
         user_id = uuid.uuid4()
@@ -180,7 +181,7 @@ class TestValidation:
         with pytest.raises(InvalidPreferenceValueError) as exc_info:
             service.update_preferences(user_id, language="x")  # too short (< 2 chars)
 
-        assert "language" in exc_info.value.details["field"]
+        assert "language" in cast(str, exc_info.value.details["field"])
 
     def test_invalid_language_too_long_raises_error(self):
         user_id = uuid.uuid4()
@@ -189,7 +190,7 @@ class TestValidation:
         with pytest.raises(InvalidPreferenceValueError) as exc_info:
             service.update_preferences(user_id, language="toolonglanguagetag")
 
-        assert "language" in exc_info.value.details["field"]
+        assert "language" in cast(str, exc_info.value.details["field"])
 
     def test_invalid_date_format_raises_error(self):
         user_id = uuid.uuid4()
@@ -198,7 +199,7 @@ class TestValidation:
         with pytest.raises(InvalidPreferenceValueError) as exc_info:
             service.update_preferences(user_id, date_format="YY/MM/DD")
 
-        assert "date_format" in exc_info.value.details["field"]
+        assert "date_format" in cast(str, exc_info.value.details["field"])
 
     def test_invalid_theme_raises_error(self):
         user_id = uuid.uuid4()
@@ -207,7 +208,7 @@ class TestValidation:
         with pytest.raises(InvalidPreferenceValueError) as exc_info:
             service.update_preferences(user_id, theme="rainbow")
 
-        assert "theme" in exc_info.value.details["field"]
+        assert "theme" in cast(str, exc_info.value.details["field"])
 
     def test_valid_utc_timezone_accepted(self):
         user_id = uuid.uuid4()

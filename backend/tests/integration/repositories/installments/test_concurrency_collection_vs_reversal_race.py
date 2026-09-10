@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import threading
 import uuid
+from collections.abc import Generator
 from decimal import Decimal
 
 import pytest
@@ -70,7 +71,7 @@ def pg_engine(request: pytest.FixtureRequest):
 
 
 @pytest.fixture
-def db_session(pg_engine) -> Session:
+def db_session(pg_engine) -> Generator[Session, None, None]:
     session_factory = sessionmaker(bind=pg_engine)
     session = session_factory()
     try:
@@ -108,7 +109,7 @@ class TestCollectionVsReversalRaceAtScale:
 
             session_a = session_factory()
             session_b = session_factory()
-            results: dict[str, object] = {}
+            results: dict[str, tuple[str, object]] = {}
 
             def _second_collection(session) -> None:
                 try:

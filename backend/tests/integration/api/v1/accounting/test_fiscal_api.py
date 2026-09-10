@@ -14,6 +14,7 @@ Spec ref: specs/008-accounting-finance/tasks.md T087
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -26,7 +27,7 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -61,7 +62,7 @@ def _create_company(client: TestClient, token: str) -> uuid.UUID:
 
 def _create_fiscal_year(
     test_client: TestClient, cid: str, token: str, name: str, start: str, end: str
-) -> dict:
+) -> dict[str, Any]:
     resp = test_client.post(
         _url(cid, "/fiscal-years"),
         json={
@@ -73,7 +74,7 @@ def _create_fiscal_year(
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]
+    return dict(resp.json()["data"])
 
 
 class TestUnauthenticated:

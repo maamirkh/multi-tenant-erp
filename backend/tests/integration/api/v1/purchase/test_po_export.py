@@ -38,7 +38,7 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -73,7 +73,7 @@ def _create_supplier(
     client.post(
         _supplier_url(company_id, f"/{supplier_id}/activate"), headers=_auth(token)
     )
-    return supplier_id
+    return str(supplier_id)
 
 
 def _create_po(
@@ -89,7 +89,7 @@ def _create_po(
         },
     )
     assert resp.status_code in (200, 201), resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _add_line(
@@ -111,7 +111,7 @@ def _add_line(
         },
     )
     assert resp.status_code in (200, 201), resp.text
-    return resp.json()["data"]["lines"][-1]["id"]
+    return str(resp.json()["data"]["lines"][-1]["id"])
 
 
 def _add_charge(client: TestClient, token: str, company_id: str, po_id: str) -> None:
@@ -144,7 +144,7 @@ def _create_company(client: TestClient, token: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 # ---------------------------------------------------------------------------

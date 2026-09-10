@@ -16,6 +16,7 @@ from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx import Response
 from sqlalchemy.orm import Session
 
 from core.config.settings import get_settings
@@ -151,15 +152,18 @@ def _make_platform_token_with_permissions(
 
 def _request(
     test_client: TestClient, method: str, path: str, token: str | None
-) -> object:
+) -> Response:
     headers = {"Authorization": f"Bearer {token}"} if token else {}
+    resp: Response
     if method == "GET":
-        return test_client.get(path, headers=headers)
-    if method == "POST":
-        return test_client.post(path, json={}, headers=headers)
-    if method == "PATCH":
-        return test_client.patch(path, json={"is_active": True}, headers=headers)
-    raise AssertionError(f"Unhandled method {method}")
+        resp = test_client.get(path, headers=headers)
+    elif method == "POST":
+        resp = test_client.post(path, json={}, headers=headers)
+    elif method == "PATCH":
+        resp = test_client.patch(path, json={"is_active": True}, headers=headers)
+    else:
+        raise AssertionError(f"Unhandled method {method}")
+    return resp
 
 
 # ---------------------------------------------------------------------------

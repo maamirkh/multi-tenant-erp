@@ -14,6 +14,7 @@ Task: T146
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
 from unittest.mock import MagicMock
 from uuid import UUID, uuid4
@@ -35,16 +36,48 @@ from modules.purchase.services.po_service import (
 # ---------------------------------------------------------------------------
 
 
-def _make_po_service() -> POService:
+@dataclass
+class _ServiceUnderTest:
+    """Bundles the real ``POService`` with its own constructor mocks, so
+    tests assert against the mocks directly (``m.po_repo...``) rather
+    than through ``svc.po_repo...`` — the latter is statically typed as
+    the real repository class regardless of what was actually passed at
+    construction, so MagicMock-only members like ``.return_value``/
+    ``.assert_called_once_with()`` don't type-check on it."""
+
+    service: POService
+    db: MagicMock
+    po_repo: MagicMock
+    line_repo: MagicMock
+    charge_repo: MagicMock
+    amendment_repo: MagicMock
+    sequence_service: MagicMock
+
+
+def _make_po_service() -> _ServiceUnderTest:
+    db = MagicMock()
+    po_repo = MagicMock()
+    line_repo = MagicMock()
+    charge_repo = MagicMock()
+    amendment_repo = MagicMock()
+    sequence_service = MagicMock()
     svc = POService(
-        db=MagicMock(),
-        po_repo=MagicMock(),
-        line_repo=MagicMock(),
-        charge_repo=MagicMock(),
-        amendment_repo=MagicMock(),
-        sequence_service=MagicMock(),
+        db=db,
+        po_repo=po_repo,
+        line_repo=line_repo,
+        charge_repo=charge_repo,
+        amendment_repo=amendment_repo,
+        sequence_service=sequence_service,
     )
-    return svc
+    return _ServiceUnderTest(
+        service=svc,
+        db=db,
+        po_repo=po_repo,
+        line_repo=line_repo,
+        charge_repo=charge_repo,
+        amendment_repo=amendment_repo,
+        sequence_service=sequence_service,
+    )
 
 
 def _make_po(
@@ -103,24 +136,24 @@ class TestBlockedSupplierRejection:
     """
 
     def test_submit_po_without_supplier_raises_missing_supplier_error(self):
-        svc = _make_po_service()
+        m = _make_po_service()
         po = _make_po(status="DRAFT", supplier_id=None)
         po.supplier_id = None
-        svc.po_repo.get_by_id_or_none.return_value = po
-        svc.line_repo.list_for_po.return_value = [MagicMock()]  # has lines
+        m.po_repo.get_by_id_or_none.return_value = po
+        m.line_repo.list_for_po.return_value = [MagicMock()]  # has lines
 
         with pytest.raises(POMissingSupplierError):
-            svc.submit_po(po.id, po.company_id, uuid4())
+            m.service.submit_po(po.id, po.company_id, uuid4())
 
     def test_submit_po_with_supplier_set_proceeds_to_line_check(self):
         """With supplier set but zero lines, we get POMissingLinesError (not supplier error)."""
-        svc = _make_po_service()
+        m = _make_po_service()
         po = _make_po(status="DRAFT", supplier_id=str(uuid4()))
-        svc.po_repo.get_by_id_or_none.return_value = po
-        svc.line_repo.list_for_po.return_value = []
+        m.po_repo.get_by_id_or_none.return_value = po
+        m.line_repo.list_for_po.return_value = []
 
         with pytest.raises(POMissingLinesError):
-            svc.submit_po(po.id, po.company_id, uuid4())
+            m.service.submit_po(po.id, po.company_id, uuid4())
 
     def test_blocked_supplier_status_is_not_active(self):
         """A supplier with status=BLOCKED fails the 'ACTIVE' eligibility gate."""
@@ -204,54 +237,54 @@ class TestCreditLimitBlockMode:
 
 class TestCancelBlockedByGR:
     def test_cancel_blocked_when_confirmed_gr_exists(self):
-        svc = _make_po_service()
+        m = _make_po_service()
         po = _make_po(status="APPROVED")
-        svc.po_repo.get_by_id_or_none.return_value = po
+        m.po_repo.get_by_id_or_none.return_value = po
 
         with pytest.raises(POCancelBlockedError):
-            svc.cancel_po(po.id, po.company_id, uuid4(), has_confirmed_gr=True)
+            m.service.cancel_po(po.id, po.company_id, uuid4(), has_confirmed_gr=True)
 
     def test_cancel_allowed_when_no_gr_exists(self):
-        svc = _make_po_service()
+        m = _make_po_service()
         po = _make_po(status="APPROVED")
-        svc.po_repo.get_by_id_or_none.return_value = po
-        svc.line_repo.list_for_po.return_value = []
-        svc.charge_repo.list_for_po.return_value = []
-        svc.amendment_repo.list_for_po.return_value = []
+        m.po_repo.get_by_id_or_none.return_value = po
+        m.line_repo.list_for_po.return_value = []
+        m.charge_repo.list_for_po.return_value = []
+        m.amendment_repo.list_for_po.return_value = []
 
-        svc.cancel_po(po.id, po.company_id, uuid4(), has_confirmed_gr=False)
-        svc.po_repo.update_status.assert_called_once_with(
+        m.service.cancel_po(po.id, po.company_id, uuid4(), has_confirmed_gr=False)
+        m.po_repo.update_status.assert_called_once_with(
             po.id, po.company_id, "CANCELLED"
         )
 
     def test_cancel_from_draft_allowed_without_gr(self):
-        svc = _make_po_service()
+        m = _make_po_service()
         po = _make_po(status="DRAFT")
-        svc.po_repo.get_by_id_or_none.return_value = po
-        svc.line_repo.list_for_po.return_value = []
-        svc.charge_repo.list_for_po.return_value = []
-        svc.amendment_repo.list_for_po.return_value = []
+        m.po_repo.get_by_id_or_none.return_value = po
+        m.line_repo.list_for_po.return_value = []
+        m.charge_repo.list_for_po.return_value = []
+        m.amendment_repo.list_for_po.return_value = []
 
-        svc.cancel_po(po.id, po.company_id, uuid4(), has_confirmed_gr=False)
-        svc.po_repo.update_status.assert_called_once_with(
+        m.service.cancel_po(po.id, po.company_id, uuid4(), has_confirmed_gr=False)
+        m.po_repo.update_status.assert_called_once_with(
             po.id, po.company_id, "CANCELLED"
         )
 
     def test_cancel_from_fully_received_raises_invalid_transition(self):
-        svc = _make_po_service()
+        m = _make_po_service()
         po = _make_po(status="FULLY_RECEIVED")
-        svc.po_repo.get_by_id_or_none.return_value = po
+        m.po_repo.get_by_id_or_none.return_value = po
 
         with pytest.raises(InvalidPOStatusTransitionError):
-            svc.cancel_po(po.id, po.company_id, uuid4(), has_confirmed_gr=False)
+            m.service.cancel_po(po.id, po.company_id, uuid4(), has_confirmed_gr=False)
 
     def test_cancel_from_closed_raises_invalid_transition(self):
-        svc = _make_po_service()
+        m = _make_po_service()
         po = _make_po(status="CLOSED")
-        svc.po_repo.get_by_id_or_none.return_value = po
+        m.po_repo.get_by_id_or_none.return_value = po
 
         with pytest.raises(InvalidPOStatusTransitionError):
-            svc.cancel_po(po.id, po.company_id, uuid4(), has_confirmed_gr=False)
+            m.service.cancel_po(po.id, po.company_id, uuid4(), has_confirmed_gr=False)
 
 
 # ===========================================================================
@@ -263,63 +296,65 @@ class TestImmutabilityAfterApproval:
     def test_update_approved_po_raises_po_immutable_error(self):
         from modules.purchase.schemas.purchase_order import PurchaseOrderUpdate
 
-        svc = _make_po_service()
+        m = _make_po_service()
         po = _make_po(status="APPROVED")
-        svc.po_repo.get_by_id_or_none.return_value = po
+        m.po_repo.get_by_id_or_none.return_value = po
 
         with pytest.raises(POImmutableError):
-            svc.update_po(
+            m.service.update_po(
                 po.id, po.company_id, PurchaseOrderUpdate(notes="change"), uuid4()
             )
 
     def test_update_partially_received_raises_po_immutable_error(self):
         from modules.purchase.schemas.purchase_order import PurchaseOrderUpdate
 
-        svc = _make_po_service()
+        m = _make_po_service()
         po = _make_po(status="PARTIALLY_RECEIVED")
-        svc.po_repo.get_by_id_or_none.return_value = po
+        m.po_repo.get_by_id_or_none.return_value = po
 
         with pytest.raises(POImmutableError):
-            svc.update_po(
+            m.service.update_po(
                 po.id, po.company_id, PurchaseOrderUpdate(notes="no"), uuid4()
             )
 
     def test_update_fully_received_raises_po_immutable_error(self):
         from modules.purchase.schemas.purchase_order import PurchaseOrderUpdate
 
-        svc = _make_po_service()
+        m = _make_po_service()
         po = _make_po(status="FULLY_RECEIVED")
-        svc.po_repo.get_by_id_or_none.return_value = po
+        m.po_repo.get_by_id_or_none.return_value = po
 
         with pytest.raises(POImmutableError):
-            svc.update_po(
+            m.service.update_po(
                 po.id, po.company_id, PurchaseOrderUpdate(notes="no"), uuid4()
             )
 
     def test_update_closed_raises_po_immutable_error(self):
         from modules.purchase.schemas.purchase_order import PurchaseOrderUpdate
 
-        svc = _make_po_service()
+        m = _make_po_service()
         po = _make_po(status="CLOSED")
-        svc.po_repo.get_by_id_or_none.return_value = po
+        m.po_repo.get_by_id_or_none.return_value = po
 
         with pytest.raises(POImmutableError):
-            svc.update_po(
+            m.service.update_po(
                 po.id, po.company_id, PurchaseOrderUpdate(notes="no"), uuid4()
             )
 
     def test_update_draft_is_allowed(self):
         from modules.purchase.schemas.purchase_order import PurchaseOrderUpdate
 
-        svc = _make_po_service()
+        m = _make_po_service()
         po = _make_po(status="DRAFT")
-        svc.po_repo.get_by_id_or_none.return_value = po
-        svc.line_repo.list_for_po.return_value = []
-        svc.charge_repo.list_for_po.return_value = []
-        svc.amendment_repo.list_for_po.return_value = []
+        m.po_repo.get_by_id_or_none.return_value = po
+        m.line_repo.list_for_po.return_value = []
+        m.charge_repo.list_for_po.return_value = []
+        m.amendment_repo.list_for_po.return_value = []
 
         # Should not raise
-        svc.update_po(po.id, po.company_id, PurchaseOrderUpdate(notes="ok"), uuid4())
+        m.service.update_po(
+            po.id, po.company_id, PurchaseOrderUpdate(notes="ok"), uuid4()
+        )
 
 
 # ===========================================================================

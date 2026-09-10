@@ -22,7 +22,9 @@ from __future__ import annotations
 
 import threading
 import uuid
+from collections.abc import Generator
 from decimal import Decimal
+from typing import Any, cast
 
 import pytest
 from sqlalchemy.orm import Session, sessionmaker
@@ -63,7 +65,7 @@ def pg_engine(request: pytest.FixtureRequest):
 
 
 @pytest.fixture
-def db_session(pg_engine) -> Session:
+def db_session(pg_engine) -> Generator[Session, None, None]:
     session_factory = sessionmaker(bind=pg_engine)
     session = session_factory()
     try:
@@ -137,7 +139,9 @@ class TestConcurrentCollectionVsLateChargeAtScale:
             late_charge_outcome, late_charge_payload = results["late_charge"]
 
             assert collection_outcome == "success", f"repetition {rep}: {results}"
-            contract_status_seen = collection_payload["contract_status"]
+            contract_status_seen = cast(dict[str, Any], collection_payload)[
+                "contract_status"
+            ]
 
             if late_charge_outcome == "success":
                 assert contract_status_seen == "ACTIVE", f"repetition {rep}: {results}"
@@ -152,6 +156,7 @@ class TestConcurrentCollectionVsLateChargeAtScale:
             verify_session = session_factory()
             try:
                 contract = verify_session.get(InstallmentContract, contract_id)
+                assert contract is not None
                 if contract.status == "COMPLETED":
                     open_charges = [
                         charge

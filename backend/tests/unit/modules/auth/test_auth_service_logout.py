@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -40,18 +40,10 @@ class TestLogout:
         svc._session_repo.revoke_session = MagicMock()
         svc._audit_svc.emit = MagicMock()
 
-        with MagicMock() as mock_repo_cls:
-            mock_repo_instance = MagicMock()
-            mock_repo_cls.return_value = mock_repo_instance
-
-            import modules.auth.repositories.refresh_token_repository as rtr_module
-
-            original = rtr_module.RefreshTokenRepository
-            rtr_module.RefreshTokenRepository = mock_repo_cls
-
+        with patch(
+            "modules.auth.repositories.refresh_token_repository.RefreshTokenRepository"
+        ):
             svc.logout(user_id=user_id, session_id=session_id, request=_make_request())
-
-            rtr_module.RefreshTokenRepository = original
 
         svc._session_repo.revoke_session.assert_called_once_with(session_id)
 
@@ -62,18 +54,10 @@ class TestLogout:
         svc._session_repo.revoke_session = MagicMock()
         svc._audit_svc.emit = MagicMock()
 
-        with MagicMock() as mock_repo_cls:
-            mock_instance = MagicMock()
-            mock_repo_cls.return_value = mock_instance
-
-            import modules.auth.repositories.refresh_token_repository as rtr_module
-
-            original = rtr_module.RefreshTokenRepository
-            rtr_module.RefreshTokenRepository = mock_repo_cls
-
+        with patch(
+            "modules.auth.repositories.refresh_token_repository.RefreshTokenRepository"
+        ):
             svc.logout(user_id=user_id, session_id=session_id, request=_make_request())
-
-            rtr_module.RefreshTokenRepository = original
 
         event_types = [c.args[0] for c in svc._audit_svc.emit.call_args_list]
         assert AuditEventType.LOGOUT in event_types
@@ -86,12 +70,8 @@ class TestLogout:
         svc._session_repo.revoke_session = MagicMock()
         svc._audit_svc.emit = MagicMock()
 
-        import modules.auth.repositories.refresh_token_repository as rtr_module
-
-        original = rtr_module.RefreshTokenRepository
-        rtr_module.RefreshTokenRepository = MagicMock(return_value=MagicMock())
-
-        svc.logout(user_id=user_id, session_id=session_id, request=_make_request())
-        svc.logout(user_id=user_id, session_id=session_id, request=_make_request())
-
-        rtr_module.RefreshTokenRepository = original
+        with patch(
+            "modules.auth.repositories.refresh_token_repository.RefreshTokenRepository"
+        ):
+            svc.logout(user_id=user_id, session_id=session_id, request=_make_request())
+            svc.logout(user_id=user_id, session_id=session_id, request=_make_request())

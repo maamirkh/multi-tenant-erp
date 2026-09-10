@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -43,7 +44,7 @@ from modules.accounting.services.payment_service import PaymentService
 
 
 @pytest.fixture
-def setup(db_session: Session) -> dict:
+def setup(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -106,7 +107,7 @@ def ar_service(db_session: Session) -> AccountsReceivableService:
 
 class TestCreateCustomerPaymentBackwardCompat:
     def test_immediate_post_branch_returns_posted_payment_and_result(
-        self, payment_service: PaymentService, setup: dict
+        self, payment_service: PaymentService, setup: dict[str, Any]
     ) -> None:
         payment, result = payment_service.create_customer_payment(
             company_id=setup["company_id"],
@@ -129,7 +130,7 @@ class TestCreateCustomerPaymentBackwardCompat:
         self,
         payment_service: PaymentService,
         ar_service: AccountsReceivableService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         customer_id = uuid4()
         payment, _ = payment_service.create_customer_payment(
@@ -149,7 +150,10 @@ class TestCreateCustomerPaymentBackwardCompat:
         assert payment.status == "POSTED"
 
     def test_above_threshold_draft_branch_unchanged(
-        self, payment_service: PaymentService, db_session: Session, setup: dict
+        self,
+        payment_service: PaymentService,
+        db_session: Session,
+        setup: dict[str, Any],
     ) -> None:
         """The pre-existing above-``payment_approval_threshold`` DRAFT
         branch keeps its own early commit unchanged — no GL/AR truth is
@@ -157,6 +161,7 @@ class TestCreateCustomerPaymentBackwardCompat:
         exactly as before this refactor (plan.md §12.3.1)."""
         config_repo = AccountingConfigurationRepository(db_session)
         config = config_repo.get_for_company(company_id=setup["company_id"])
+        assert config is not None
         config.payment_approval_threshold = Decimal("100.00")
         db_session.add(config)
         db_session.commit()

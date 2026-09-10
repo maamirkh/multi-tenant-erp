@@ -11,6 +11,7 @@ Spec ref: specs/008-accounting-finance/tasks.md T064
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -43,7 +44,7 @@ def coa_service(db_session: Session) -> ChartOfAccountsService:
     )
 
 
-def _find_node(nodes: list[dict], account_code: str) -> dict | None:
+def _find_node(nodes: list[dict[str, Any]], account_code: str) -> dict[str, Any] | None:
     for node in nodes:
         if node["account_code"] == account_code:
             return node

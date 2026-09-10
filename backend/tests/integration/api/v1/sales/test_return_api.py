@@ -20,6 +20,7 @@ Spec ref: specs/007-sales-management/spec.md §19 Sales Returns
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -44,10 +45,10 @@ def _login(client: TestClient, email: str, password: str = _TEST_PASSWORD) -> st
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -74,7 +75,7 @@ def _create_company(client: TestClient, token: str):
 
 def _create_return_payload(
     customer_id: str | None = None, reason_code_id: str | None = None
-) -> dict:
+) -> dict[str, Any]:
     return {
         "customer_id": customer_id or str(uuid4()),
         "return_date": "2026-08-04",
@@ -234,7 +235,7 @@ def _create_and_get_id(
         headers=_auth(token),
     )
     assert resp.status_code == 201
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 class TestReturnTransitionsAPI:

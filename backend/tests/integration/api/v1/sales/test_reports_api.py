@@ -13,6 +13,7 @@ Spec ref: specs/007-sales-management/spec.md §35-§36
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -37,10 +38,10 @@ def _login(client: TestClient, email: str, password: str = _TEST_PASSWORD) -> st
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 

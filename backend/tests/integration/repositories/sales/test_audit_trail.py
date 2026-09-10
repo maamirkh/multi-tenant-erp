@@ -20,6 +20,7 @@ Spec ref: specs/007-sales-management/spec.md §Audit Logging
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -46,10 +47,10 @@ def _login(client: TestClient, email: str) -> str:
         json={"email": email, "password": _TEST_PASSWORD},
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -71,7 +72,7 @@ def _create_company(client: TestClient, token: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 @pytest.fixture()
@@ -108,7 +109,7 @@ def audit_ctx(test_client: TestClient, db_session: Session):
 class TestCustomerAuditTrail:
     """Customer creation and status changes are tracked."""
 
-    def test_customer_has_created_at_and_id(self, audit_ctx: tuple) -> None:
+    def test_customer_has_created_at_and_id(self, audit_ctx: tuple[Any, ...]) -> None:
         client, token, cid, customer_id = audit_ctx
 
         resp = client.get(
@@ -120,7 +121,9 @@ class TestCustomerAuditTrail:
         assert data["id"] is not None
         assert data["created_at"] is not None, "Customer must have created_at"
 
-    def test_customer_status_transitions_recorded(self, audit_ctx: tuple) -> None:
+    def test_customer_status_transitions_recorded(
+        self, audit_ctx: tuple[Any, ...]
+    ) -> None:
         client, token, cid, customer_id = audit_ctx
 
         # Activation requires: contact + billing address + payment_term_id (set at creation)
@@ -157,7 +160,9 @@ class TestCustomerAuditTrail:
         # updated_at must change on status transition
         assert data["updated_at"] is not None
 
-    def test_customer_has_sequential_customer_number(self, audit_ctx: tuple) -> None:
+    def test_customer_has_sequential_customer_number(
+        self, audit_ctx: tuple[Any, ...]
+    ) -> None:
         client, token, cid, customer_id = audit_ctx
 
         resp = client.get(
@@ -177,7 +182,9 @@ class TestCustomerAuditTrail:
 class TestQuotationAuditTrail:
     """Quotation state changes produce correct audit fields."""
 
-    def test_quotation_has_auto_number_on_creation(self, audit_ctx: tuple) -> None:
+    def test_quotation_has_auto_number_on_creation(
+        self, audit_ctx: tuple[Any, ...]
+    ) -> None:
         client, token, cid, customer_id = audit_ctx
 
         resp = client.post(
@@ -198,7 +205,9 @@ class TestQuotationAuditTrail:
         )
         assert data["status"] == "DRAFT"
 
-    def test_quotation_status_fields_updated_on_send(self, audit_ctx: tuple) -> None:
+    def test_quotation_status_fields_updated_on_send(
+        self, audit_ctx: tuple[Any, ...]
+    ) -> None:
         client, token, cid, customer_id = audit_ctx
 
         quot = client.post(
@@ -233,7 +242,9 @@ class TestQuotationAuditTrail:
 class TestSalesOrderAuditTrail:
     """Sales Order state changes are recorded in status + approval records."""
 
-    def test_order_has_auto_number_on_creation(self, audit_ctx: tuple) -> None:
+    def test_order_has_auto_number_on_creation(
+        self, audit_ctx: tuple[Any, ...]
+    ) -> None:
         client, token, cid, customer_id = audit_ctx
 
         resp = client.post(
@@ -255,7 +266,7 @@ class TestSalesOrderAuditTrail:
         assert data["id"] is not None
         assert data["status"] == "DRAFT"
 
-    def test_order_status_changes_on_submit(self, audit_ctx: tuple) -> None:
+    def test_order_status_changes_on_submit(self, audit_ctx: tuple[Any, ...]) -> None:
         client, token, cid, customer_id = audit_ctx
 
         order = client.post(
@@ -281,7 +292,9 @@ class TestSalesOrderAuditTrail:
         assert data["status"] in ("PENDING_APPROVAL", "APPROVED")
         assert data["id"] is not None
 
-    def test_order_cancellation_records_reason(self, audit_ctx: tuple) -> None:
+    def test_order_cancellation_records_reason(
+        self, audit_ctx: tuple[Any, ...]
+    ) -> None:
         client, token, cid, customer_id = audit_ctx
 
         order = client.post(
@@ -320,7 +333,7 @@ class TestSalesOrderAuditTrail:
 class TestInvoiceAuditTrail:
     """Invoice state changes produce gap-free sequences and audit fields."""
 
-    def test_invoice_has_auto_number_on_issue(self, audit_ctx: tuple) -> None:
+    def test_invoice_has_auto_number_on_issue(self, audit_ctx: tuple[Any, ...]) -> None:
         client, token, cid, customer_id = audit_ctx
 
         inv = client.post(
@@ -361,7 +374,9 @@ class TestInvoiceAuditTrail:
         )
         assert data["updated_at"] is not None
 
-    def test_two_invoices_have_sequential_numbers(self, audit_ctx: tuple) -> None:
+    def test_two_invoices_have_sequential_numbers(
+        self, audit_ctx: tuple[Any, ...]
+    ) -> None:
         client, token, cid, customer_id = audit_ctx
 
         def _create_and_issue_invoice() -> str:
@@ -391,7 +406,7 @@ class TestInvoiceAuditTrail:
                 headers=_auth(token),
             )
             assert issue.status_code == 200
-            return issue.json()["data"]["invoice_number"]
+            return str(issue.json()["data"]["invoice_number"])
 
         num1 = _create_and_issue_invoice()
         num2 = _create_and_issue_invoice()
@@ -411,7 +426,9 @@ class TestInvoiceAuditTrail:
 class TestReturnAuditTrail:
     """Sales Return state changes produce correct sequence numbers and status."""
 
-    def test_return_has_auto_number_on_creation(self, audit_ctx: tuple) -> None:
+    def test_return_has_auto_number_on_creation(
+        self, audit_ctx: tuple[Any, ...]
+    ) -> None:
         client, token, cid, customer_id = audit_ctx
 
         resp = client.post(
@@ -440,7 +457,7 @@ class TestReturnAuditTrail:
         assert data["created_at"] is not None
         assert data["status"] == "DRAFT"
 
-    def test_return_status_changes_on_submit(self, audit_ctx: tuple) -> None:
+    def test_return_status_changes_on_submit(self, audit_ctx: tuple[Any, ...]) -> None:
         client, token, cid, customer_id = audit_ctx
 
         ret = client.post(
@@ -482,7 +499,7 @@ class TestReturnAuditTrail:
 class TestDeliveryNoteAuditTrail:
     """Delivery Note state changes produce correct audit records."""
 
-    def test_delivery_note_has_auto_number(self, audit_ctx: tuple) -> None:
+    def test_delivery_note_has_auto_number(self, audit_ctx: tuple[Any, ...]) -> None:
         client, token, cid, customer_id = audit_ctx
 
         # Create and approve order first

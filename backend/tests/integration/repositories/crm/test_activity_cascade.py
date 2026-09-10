@@ -180,6 +180,7 @@ class TestLastContactDateRaceSafety:
             id=lead.id, company_id=company_id
         )
         assert fresh_lead is not None
+        assert result.completed_at is not None
         assert fresh_lead.last_contact_date == result.completed_at.date()
 
 

@@ -74,14 +74,18 @@ class TestForgotPassword:
         svc._email_svc.send_password_reset_email = MagicMock()
         svc._audit_svc.emit = MagicMock()
 
-        result = svc.forgot_password("test@example.com", _make_request())
+        result = svc.forgot_password(  # type: ignore[func-returns-value]
+            "test@example.com", _make_request()
+        )
         assert result is None
 
     def test_returns_none_for_unknown_email(self, svc: AuthService) -> None:
         svc._user_repo.find_by_email = MagicMock(return_value=None)
         svc._audit_svc.emit = MagicMock()
 
-        result = svc.forgot_password("unknown@example.com", _make_request())
+        result = svc.forgot_password(  # type: ignore[func-returns-value]
+            "unknown@example.com", _make_request()
+        )
         assert result is None
 
     def test_never_raises_for_either_case(self, svc: AuthService) -> None:

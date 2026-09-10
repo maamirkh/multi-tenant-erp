@@ -122,6 +122,7 @@ class TestAdjustmentBypassWorkflow:
         )
         assert result.status == "APPROVED"
         assert result.reference_movement_id is not None
+        assert result.new_quantity is not None
         assert float(result.new_quantity) == pytest.approx(150.0)
 
     def test_adjustment_out_reduces_stock(self, db_session: Session):
@@ -156,6 +157,7 @@ class TestAdjustmentBypassWorkflow:
             adjustment_id=adj.id,
         )
         assert result.status == "APPROVED"
+        assert result.new_quantity is not None
         assert float(result.new_quantity) == pytest.approx(50.0)
 
     def test_bypass_does_not_go_through_pending(self, db_session: Session):
@@ -242,6 +244,7 @@ class TestAdjustmentApprovalWorkflow:
         )
         assert approved.status == "APPROVED"
         assert approved.reference_movement_id is not None
+        assert approved.new_quantity is not None
         assert float(approved.new_quantity) == pytest.approx(75.0)
 
     def test_reject_does_not_modify_stock(self, db_session: Session):

@@ -147,7 +147,7 @@ class TestRefreshRotationAtomicity:
                 "/api/v1/auth/refresh",
                 json={"refresh_token": shared_rt},
             )
-            return resp.status_code
+            return int(resp.status_code)
 
         with ThreadPoolExecutor(max_workers=_CONCURRENT_REQUESTS) as executor:
             futures = [executor.submit(do_refresh) for _ in range(_CONCURRENT_REQUESTS)]

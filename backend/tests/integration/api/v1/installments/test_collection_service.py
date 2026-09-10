@@ -197,6 +197,7 @@ class TestRecordCollectionScenarios:
         )
         config_repo = AccountingConfigurationRepository(db_session)
         config = config_repo.get_for_company(company_id=ctx["company_id"])
+        assert config is not None
         config.payment_approval_threshold = Decimal("100.00")
         db_session.add(config)
         db_session.commit()

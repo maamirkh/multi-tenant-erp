@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from typing import cast
 
 import pytest
 
@@ -22,6 +23,9 @@ from modules.installments.exceptions import InstallmentsNotEntitledError
 from modules.installments.services.access_policy import (
     InstallmentAccessPolicy,
     InstallmentOperationClass,
+)
+from modules.platform_admin.services.entitlement_service import (
+    PlatformEntitlementService,
 )
 
 
@@ -63,14 +67,18 @@ class TestInstallmentAccessPolicyMatrix:
         self, operation: InstallmentOperationClass
     ) -> None:
         entitlement_service = _FakeEntitlementService(available=True)
-        policy = InstallmentAccessPolicy(entitlement_service=entitlement_service)
+        policy = InstallmentAccessPolicy(
+            entitlement_service=cast(PlatformEntitlementService, entitlement_service)
+        )
 
         policy.authorize(company_id=uuid.uuid4(), operation=operation)
         # No exception raised — success.
 
     def test_disabled_tenant_blocks_origination(self) -> None:
         entitlement_service = _FakeEntitlementService(available=False)
-        policy = InstallmentAccessPolicy(entitlement_service=entitlement_service)
+        policy = InstallmentAccessPolicy(
+            entitlement_service=cast(PlatformEntitlementService, entitlement_service)
+        )
 
         with pytest.raises(InstallmentsNotEntitledError) as exc_info:
             policy.authorize(
@@ -81,7 +89,9 @@ class TestInstallmentAccessPolicyMatrix:
 
     def test_disabled_tenant_permits_servicing(self) -> None:
         entitlement_service = _FakeEntitlementService(available=False)
-        policy = InstallmentAccessPolicy(entitlement_service=entitlement_service)
+        policy = InstallmentAccessPolicy(
+            entitlement_service=cast(PlatformEntitlementService, entitlement_service)
+        )
 
         policy.authorize(
             company_id=uuid.uuid4(), operation=InstallmentOperationClass.SERVICING
@@ -90,7 +100,9 @@ class TestInstallmentAccessPolicyMatrix:
 
     def test_disabled_tenant_permits_read(self) -> None:
         entitlement_service = _FakeEntitlementService(available=False)
-        policy = InstallmentAccessPolicy(entitlement_service=entitlement_service)
+        policy = InstallmentAccessPolicy(
+            entitlement_service=cast(PlatformEntitlementService, entitlement_service)
+        )
 
         policy.authorize(
             company_id=uuid.uuid4(), operation=InstallmentOperationClass.READ
@@ -104,7 +116,9 @@ class TestInstallmentAccessPolicyMatrix:
         disabled, chicken-and-egg" — the resolver call itself would be
         wasted work on the module-toggle path)."""
         entitlement_service = _FakeEntitlementService(available=False)
-        policy = InstallmentAccessPolicy(entitlement_service=entitlement_service)
+        policy = InstallmentAccessPolicy(
+            entitlement_service=cast(PlatformEntitlementService, entitlement_service)
+        )
 
         policy.authorize(
             company_id=uuid.uuid4(), operation=InstallmentOperationClass.ADMIN
@@ -113,7 +127,9 @@ class TestInstallmentAccessPolicyMatrix:
 
     def test_resolution_uses_the_installments_capability_key(self) -> None:
         entitlement_service = _FakeEntitlementService(available=True)
-        policy = InstallmentAccessPolicy(entitlement_service=entitlement_service)
+        policy = InstallmentAccessPolicy(
+            entitlement_service=cast(PlatformEntitlementService, entitlement_service)
+        )
         company_id = uuid.uuid4()
 
         policy.authorize(
@@ -126,7 +142,9 @@ class TestInstallmentAccessPolicyMatrix:
         second call after the fake's ``available`` flips must observe
         the new value, never a stale cached result."""
         entitlement_service = _FakeEntitlementService(available=True)
-        policy = InstallmentAccessPolicy(entitlement_service=entitlement_service)
+        policy = InstallmentAccessPolicy(
+            entitlement_service=cast(PlatformEntitlementService, entitlement_service)
+        )
         company_id = uuid.uuid4()
 
         policy.authorize(

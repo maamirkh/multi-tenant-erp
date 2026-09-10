@@ -12,6 +12,7 @@ Task: T048 (tasks.md Phase 5).
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -73,7 +74,7 @@ def _setup_pipeline_and_stage(
 def _current_user_id(client: TestClient, token: str) -> str:
     resp = client.get("/api/v1/profile", headers=auth_header(token))
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _create_opportunity_payload(
@@ -82,8 +83,8 @@ def _create_opportunity_payload(
     pipeline_id: str,
     stage_id: str,
     **overrides: object,
-) -> dict:
-    payload = {
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "name": "Acme Deal",
         "customer_id": customer_id,
         "owner_id": owner_id,

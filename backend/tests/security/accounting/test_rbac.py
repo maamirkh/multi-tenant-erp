@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -68,7 +69,7 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -103,7 +104,7 @@ def _create_company(client: TestClient, token: str) -> uuid.UUID:
     return uuid.UUID(resp.json()["data"]["id"])
 
 
-def _setup_gl(db_session: Session, company_id: uuid.UUID) -> dict:
+def _setup_gl(db_session: Session, company_id: uuid.UUID) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -143,7 +144,7 @@ def _setup_gl(db_session: Session, company_id: uuid.UUID) -> dict:
 
 def _posting_body(
     ar_id: str, revenue_id: str, posting_date: str, amount: str = "500.00"
-) -> dict:
+) -> dict[str, Any]:
     return {
         "journal_type": "STANDARD",
         "posting_source": "MANUAL",
@@ -157,7 +158,7 @@ def _posting_body(
 
 
 def _create_and_submit_journal(
-    test_client: TestClient, token: str, cid: str, gl: dict
+    test_client: TestClient, token: str, cid: str, gl: dict[str, Any]
 ) -> str:
     resp = test_client.post(
         _url(cid, "/journals"),
@@ -170,7 +171,7 @@ def _create_and_submit_journal(
         _url(cid, f"/journals/{journal_id}/submit"), headers=_auth(token)
     )
     assert resp.status_code == 200, resp.text
-    return journal_id
+    return str(journal_id)
 
 
 def _setup_payment_approval(
@@ -179,7 +180,7 @@ def _setup_payment_approval(
     db_session: Session,
     cid: uuid.UUID,
     threshold: str = "100.00",
-) -> dict:
+) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     ar = account_repo.create(
         Account(
@@ -256,7 +257,11 @@ def _setup_payment_approval(
 
 
 def _create_draft_customer_payment(
-    test_client: TestClient, token: str, cid: str, gl: dict, amount: str = "500.00"
+    test_client: TestClient,
+    token: str,
+    cid: str,
+    gl: dict[str, Any],
+    amount: str = "500.00",
 ) -> str:
     resp = test_client.post(
         _url(cid, "/payments/customer"),
@@ -273,11 +278,15 @@ def _create_draft_customer_payment(
     assert resp.status_code == 201, resp.text
     payment = resp.json()["data"]
     assert payment["status"] == "DRAFT"
-    return payment["id"]
+    return str(payment["id"])
 
 
 def _create_draft_supplier_payment(
-    test_client: TestClient, token: str, cid: str, gl: dict, amount: str = "500.00"
+    test_client: TestClient,
+    token: str,
+    cid: str,
+    gl: dict[str, Any],
+    amount: str = "500.00",
 ) -> str:
     resp = test_client.post(
         _url(cid, "/payments/supplier"),
@@ -294,7 +303,7 @@ def _create_draft_supplier_payment(
     assert resp.status_code == 201, resp.text
     payment = resp.json()["data"]
     assert payment["status"] == "DRAFT"
-    return payment["id"]
+    return str(payment["id"])
 
 
 # ---------------------------------------------------------------------------
@@ -1241,7 +1250,7 @@ class TestPeriodLockPermission:
 # No accounting endpoint is accessible without authentication (401)
 # ---------------------------------------------------------------------------
 
-UNAUTHENTICATED_ENDPOINTS: list[tuple[str, str, dict | None]] = [
+UNAUTHENTICATED_ENDPOINTS: list[tuple[str, str, dict[str, Any] | None]] = [
     ("POST", "/journals/{jid}/approve", None),
     ("POST", "/payments/{pid}/approve", None),
     ("GET", "/audit-log", None),
@@ -1264,7 +1273,7 @@ class TestNoEndpointAccessibleWithoutAuth:
         test_client: TestClient,
         method: str,
         path_template: str,
-        body: dict | None,
+        body: dict[str, Any] | None,
     ) -> None:
         cid = str(uuid.uuid4())
         path = path_template.format(jid=uuid.uuid4(), pid=uuid.uuid4())

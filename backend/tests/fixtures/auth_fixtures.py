@@ -6,6 +6,7 @@ Used by integration test suites that require seeded data in the test database.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -17,7 +18,7 @@ from modules.auth.services.password_service import PasswordService
 _TEST_PASSWORD = "TestPassword@1234"
 _TEST_EMAIL = "testuser@example.com"
 
-_MINIMAL_SETTINGS_KWARGS = {
+_MINIMAL_SETTINGS_KWARGS: dict[str, Any] = {
     "DATABASE_URL": "sqlite:///:memory:",
     "SECRET_KEY": "test-secret-key-minimum-32-chars-ok",
     "JWT_SECRET_KEY": "test-jwt-secret-key-min-32-chars-ok!",

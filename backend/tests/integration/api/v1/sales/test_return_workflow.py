@@ -24,6 +24,7 @@ Spec ref: specs/007-sales-management/spec.md §19 Sales Returns, §23.4
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -48,7 +49,7 @@ def _login(client: TestClient, email: str) -> str:
         json={"email": email, "password": _TEST_PASSWORD},
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -73,7 +74,7 @@ def _create_company(client: TestClient, token: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _create_return(
@@ -82,7 +83,7 @@ def _create_return(
     token: str,
     customer_id: str | None = None,
     resolution_type: str = "CREDIT_NOTE",
-) -> dict:
+) -> dict[str, Any]:
     """Create a DRAFT sales return."""
     resp = client.post(
         _sales_url(company_id, "/returns"),
@@ -104,7 +105,7 @@ def _create_return(
         headers=_auth(token),
     )
     assert resp.status_code == 201, f"Return creation failed: {resp.text}"
-    return resp.json()["data"]
+    return dict(resp.json()["data"])
 
 
 # ---------------------------------------------------------------------------

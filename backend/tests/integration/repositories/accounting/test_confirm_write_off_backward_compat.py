@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -39,7 +40,7 @@ from modules.accounting.services.fiscal_service import FiscalCalendarService
 
 
 @pytest.fixture
-def setup(db_session: Session) -> dict:
+def setup(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -101,7 +102,7 @@ def ar_service(db_session: Session) -> AccountsReceivableService:
 
 class TestConfirmWriteOffBackwardCompat:
     def test_returns_written_off_transaction_committed(
-        self, ar_service: AccountsReceivableService, setup: dict
+        self, ar_service: AccountsReceivableService, setup: dict[str, Any]
     ) -> None:
         customer_id = uuid4()
         transaction, _ = ar_service.record_sales_invoice(
@@ -128,7 +129,7 @@ class TestConfirmWriteOffBackwardCompat:
         assert written_off.outstanding_amount == Decimal("0")
 
     def test_reconciliation_and_ledger_still_hold(
-        self, ar_service: AccountsReceivableService, setup: dict
+        self, ar_service: AccountsReceivableService, setup: dict[str, Any]
     ) -> None:
         customer_id = uuid4()
         transaction, _ = ar_service.record_sales_invoice(

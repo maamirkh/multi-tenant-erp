@@ -350,8 +350,12 @@ class TestMovedToPlanLackingPreviouslyEntitledModuleTogglePreserved:
 
         # Move the tenant to a plan that no longer grants crm — no toggle
         # table is touched by this step.
+        active_sub = SubscriptionRepository(db_session).get_active_for_company(
+            company.id
+        )
+        assert active_sub is not None
         SubscriptionRepository(db_session).end(
-            SubscriptionRepository(db_session).get_active_for_company(company.id),
+            active_sub,
             ended_at=datetime.now(UTC),
         )
         _subscribe(db_session, company=company, plan=denying_plan, actor=actor)
@@ -372,8 +376,12 @@ class TestMovedToPlanLackingPreviouslyEntitledModuleTogglePreserved:
 
         # And re-upgrading resumes access automatically, at the preserved
         # preference, with no toggle mutation at any point.
+        active_sub = SubscriptionRepository(db_session).get_active_for_company(
+            company.id
+        )
+        assert active_sub is not None
         SubscriptionRepository(db_session).end(
-            SubscriptionRepository(db_session).get_active_for_company(company.id),
+            active_sub,
             ended_at=datetime.now(UTC),
         )
         _subscribe(db_session, company=company, plan=allowing_plan, actor=actor)

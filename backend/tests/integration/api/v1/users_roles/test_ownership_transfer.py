@@ -16,6 +16,7 @@ Spec reference: Epic 4, Phase 15 (T133).
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -37,23 +38,23 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
 def _create_company(
     client: TestClient, token: str, legal_name: str = "Transfer Test Co"
-) -> dict:
+) -> dict[str, Any]:
     resp = client.post(
         "/api/v1/companies",
         json={"legal_name": legal_name, "email": f"info@{uuid.uuid4().hex[:8]}.com"},
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]
+    return dict(resp.json()["data"])
 
 
 def _get_owner_member(
@@ -189,6 +190,8 @@ class TestOwnershipTransferEndpoint:
         role_repo = RoleRepository(db_session)
         admin_role = role_repo.get_by_slug(company_id, "admin")
         viewer_role = role_repo.get_by_slug(company_id, "viewer")
+        assert admin_role is not None
+        assert viewer_role is not None
 
         # Add admin_user as Admin member
         admin_member = create_test_member(

@@ -169,6 +169,7 @@ class TestDispatchWorkflow:
         src_pos = pos_repo.get_by_product_warehouse(
             company_id=cid, product_id=pid, warehouse_id=src.id
         )
+        assert src_pos is not None
         assert Decimal(str(src_pos.qty_on_hand)) == pytest.approx(Decimal("70"))
 
     def test_dispatch_insufficient_stock_raises(self, db_session: Session):
@@ -241,11 +242,13 @@ class TestReceiveWorkflow:
         dst_pos = pos_repo.get_by_product_warehouse(
             company_id=cid, product_id=pid, warehouse_id=dst.id
         )
+        assert dst_pos is not None
         assert Decimal(str(dst_pos.qty_on_hand)) == pytest.approx(Decimal("40"))
         # source is now 60
         src_pos = pos_repo.get_by_product_warehouse(
             company_id=cid, product_id=pid, warehouse_id=src.id
         )
+        assert src_pos is not None
         assert Decimal(str(src_pos.qty_on_hand)) == pytest.approx(Decimal("60"))
 
     def test_receive_draft_raises(self, db_session: Session):
@@ -298,6 +301,7 @@ class TestCancelWorkflow:
         pos = pos_repo.get_by_product_warehouse(
             company_id=cid, product_id=pid, warehouse_id=src.id
         )
+        assert pos is not None
         assert Decimal(str(pos.qty_on_hand)) == pytest.approx(Decimal("100"))
 
     def test_cancel_in_transit_creates_reversal_and_restores_stock(
@@ -324,6 +328,7 @@ class TestCancelWorkflow:
         src_pos = pos_repo.get_by_product_warehouse(
             company_id=cid, product_id=pid, warehouse_id=src.id
         )
+        assert src_pos is not None
         assert Decimal(str(src_pos.qty_on_hand)) == pytest.approx(Decimal("70"))
 
         # Cancel from IN_TRANSIT
@@ -339,6 +344,7 @@ class TestCancelWorkflow:
         src_pos = pos_repo.get_by_product_warehouse(
             company_id=cid, product_id=pid, warehouse_id=src.id
         )
+        assert src_pos is not None
         assert Decimal(str(src_pos.qty_on_hand)) == pytest.approx(Decimal("100"))
 
         # Destination unchanged

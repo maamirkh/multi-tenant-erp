@@ -84,7 +84,7 @@ class TestEventBusSingleton:
     def test_wildcard_subscription_receives_all_event_types(self) -> None:
         """Wildcard '*' subscriber receives every published event."""
         bus = InProcessEventBus()
-        received = []
+        received: list[SalesDomainEvent] = []
         bus.subscribe("*", received.append)
 
         for event_type in ["a.b", "c.d", "e.f"]:
@@ -101,8 +101,8 @@ class TestEventBusSingleton:
     def test_specific_subscription_filters_by_type(self) -> None:
         """Subscribing to a specific type only receives that type."""
         bus = InProcessEventBus()
-        target = []
-        other = []
+        target: list[SalesDomainEvent] = []
+        other: list[SalesDomainEvent] = []
         bus.subscribe("target.event", target.append)
         bus.subscribe("other.event", other.append)
 
@@ -120,7 +120,7 @@ class TestEventBusSingleton:
     def test_handler_exception_does_not_block_other_handlers(self) -> None:
         """A faulty handler does not prevent other handlers from running."""
         bus = InProcessEventBus()
-        succeeded = []
+        succeeded: list[SalesDomainEvent] = []
 
         def bad_handler(e: SalesDomainEvent) -> None:
             raise RuntimeError("boom")
@@ -160,7 +160,7 @@ class TestEventBusSingleton:
     def test_clear_handlers_removes_all_subscriptions(self) -> None:
         """clear_handlers() results in zero published events being received."""
         bus = InProcessEventBus()
-        received = []
+        received: list[SalesDomainEvent] = []
         bus.subscribe("*", received.append)
         bus.clear_handlers()
 
@@ -313,7 +313,7 @@ class TestEventBusSerialisation:
     def test_published_events_serialise_to_dict(self) -> None:
         """Events captured from the bus all produce valid to_dict() output."""
         bus = InProcessEventBus()
-        captured = []
+        captured: list[SalesDomainEvent] = []
         bus.subscribe("*", captured.append)
 
         from modules.sales.events.invoice_events import InvoiceCreated
@@ -339,7 +339,7 @@ class TestEventBusSerialisation:
     def test_event_version_preserved_through_bus(self) -> None:
         """event_version on the event is preserved after publish/receive."""
         bus = InProcessEventBus()
-        received = []
+        received: list[SalesDomainEvent] = []
         bus.subscribe("*", received.append)
 
         event = SalesDomainEvent(

@@ -18,6 +18,7 @@ Spec reference: tasks T074.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -39,14 +40,14 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, f"Login failed: {resp.text}"
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _create_company(client: TestClient, token: str) -> dict:
+def _create_company(client: TestClient, token: str) -> dict[str, Any]:
     resp = client.post(
         "/api/v1/companies",
         json={
@@ -56,7 +57,7 @@ def _create_company(client: TestClient, token: str) -> dict:
         headers=_auth(token),
     )
     assert resp.status_code == 201, f"Company creation failed: {resp.text}"
-    return resp.json()["data"]
+    return dict(resp.json()["data"])
 
 
 def _url(company_id: str, member_id: str, action: str) -> str:

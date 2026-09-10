@@ -361,6 +361,7 @@ class TestImportJobRepository:
         )
 
         assert job.status == "FAILED_WITH_ERRORS"
+        assert job.error_rows is not None
         assert len(job.error_rows) == 1
 
     def test_list_for_company_returns_all(self, db_session: Session) -> None:

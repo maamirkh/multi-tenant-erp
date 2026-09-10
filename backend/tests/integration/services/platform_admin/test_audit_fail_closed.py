@@ -281,6 +281,7 @@ class TestGateCAuditFailClosedOnTenantSuspension:
         )
 
         reloaded = db_session.get(Company, company.id)
+        assert reloaded is not None
         assert reloaded.status == CompanyStatus.suspended.value
         assert reloaded.pre_suspension_status == CompanyStatus.active.value
         assert reloaded.access_invalidated_at is not None

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -58,7 +59,7 @@ from modules.accounting.services.posting_engine import PostingEngine
 
 
 @pytest.fixture
-def setup(db_session: Session) -> dict:
+def setup(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -187,7 +188,7 @@ class TestBalanceSheet:
         self,
         posting_engine: PostingEngine,
         service: FinancialStatementService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         posting_engine.post_direct(
             company_id=setup["company_id"],
@@ -222,7 +223,7 @@ class TestBalanceSheet:
         posting_engine: PostingEngine,
         service: FinancialStatementService,
         currency_service: CurrencyService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         posting_engine.post_direct(
             company_id=setup["company_id"],
@@ -267,7 +268,7 @@ class TestProfitAndLoss:
         posting_engine: PostingEngine,
         service: FinancialStatementService,
         currency_service: CurrencyService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         posting_engine.post_direct(
             company_id=setup["company_id"],
@@ -337,7 +338,7 @@ class TestKnownDataset:
         self,
         posting_engine: PostingEngine,
         service: FinancialStatementService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         # Opening capital.
         posting_engine.post_direct(
@@ -445,7 +446,7 @@ class TestTrialBalance:
         self,
         posting_engine: PostingEngine,
         service: FinancialStatementService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         posting_engine.post_direct(
             company_id=setup["company_id"],
@@ -477,7 +478,7 @@ class TestTrialBalance:
         self,
         posting_engine: PostingEngine,
         service: FinancialStatementService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         posting_engine.post_direct(
             company_id=setup["company_id"],
@@ -522,7 +523,7 @@ class TestNetIncomeMatchesRetainedEarningsMovement:
         self,
         posting_engine: PostingEngine,
         service: FinancialStatementService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         posting_engine.post_direct(
             company_id=setup["company_id"],
@@ -610,7 +611,7 @@ class TestCashFlow:
         self,
         posting_engine: PostingEngine,
         service: FinancialStatementService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         posting_engine.post_direct(
             company_id=setup["company_id"],

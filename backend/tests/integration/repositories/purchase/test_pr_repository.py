@@ -135,6 +135,7 @@ class TestPurchaseRequestRepository:
         repo.update_status(pr.id, company_id, "SUBMITTED")
         db_session.expire(pr)
         updated = repo.get_by_id_or_none(pr.id, company_id)
+        assert updated is not None
         assert updated.status == "SUBMITTED"
 
     def test_update_total_cost(self, db_session: Session):
@@ -144,6 +145,7 @@ class TestPurchaseRequestRepository:
         repo.update_total_cost(pr.id, company_id, Decimal("250.00"))
         db_session.expire(pr)
         updated = repo.get_by_id_or_none(pr.id, company_id)
+        assert updated is not None
         assert Decimal(str(updated.total_estimated_cost)) == Decimal("250.00")
 
     def test_set_converted_to_po(self, db_session: Session):
@@ -154,6 +156,7 @@ class TestPurchaseRequestRepository:
         repo.set_converted_to_po(pr.id, company_id, po_id)
         db_session.expire(pr)
         updated = repo.get_by_id_or_none(pr.id, company_id)
+        assert updated is not None
         assert updated.converted_to_po_id == str(po_id)
 
     def test_soft_delete(self, db_session: Session):

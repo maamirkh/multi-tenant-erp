@@ -13,6 +13,7 @@ Accounting — NOT parallel-safe with T180 (same file).
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -48,7 +49,7 @@ def _persist_configuration(db_session, company_id, *, cure_enabled: bool) -> Non
     db_session.commit()
 
 
-def _default_contract(db_session, **kwargs) -> dict:
+def _default_contract(db_session, **kwargs) -> dict[str, Any]:
     ctx = build_active_contract_with_schedule(db_session, **kwargs)
     contract = (
         db_session.query(InstallmentContract).filter_by(id=ctx["contract"].id).one()

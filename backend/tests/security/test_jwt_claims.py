@@ -8,10 +8,13 @@ Spec ref: spec.md §13.2, NFR-008.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import jwt
 
-_SETTINGS_KWARGS = {
+from core.config.settings import Settings
+
+_SETTINGS_KWARGS: dict[str, Any] = {
     "DATABASE_URL": "sqlite:///:memory:",
     "SECRET_KEY": "test-secret-key-minimum-32-chars-ok",
     "JWT_SECRET_KEY": "test-jwt-secret-key-min-32-chars-ok!",
@@ -20,9 +23,8 @@ _SETTINGS_KWARGS = {
 _REQUIRED_CLAIMS = ("sub", "iat", "exp", "nbf", "jti", "iss", "aud", "typ", "sid")
 
 
-def _make_token() -> tuple[str, object]:
+def _make_token() -> tuple[str, Settings]:
     """Create a fresh access token and return (raw_token, settings)."""
-    from core.config.settings import Settings
     from modules.auth.services.jwt_service import JWTService
 
     settings = Settings(**_SETTINGS_KWARGS)

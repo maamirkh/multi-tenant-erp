@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import uuid
 from datetime import timedelta
+from typing import Any
 
 import jwt
 from fastapi.testclient import TestClient
@@ -20,16 +21,18 @@ _ISSUER = "devsphere-erp"
 _AUDIENCE = "devsphere-erp-api"
 
 
-def _encode(payload: dict, key: str = _VALID_KEY, alg: str = _VALID_ALG) -> str:
+def _encode(
+    payload: dict[str, Any], key: str = _VALID_KEY, alg: str = _VALID_ALG
+) -> str:
     return jwt.encode(payload, key, algorithm=alg)
 
 
 def _me(client: TestClient, token: str) -> int:
     resp = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
-    return resp.status_code
+    return int(resp.status_code)
 
 
-def _base_payload() -> dict:
+def _base_payload() -> dict[str, Any]:
     from core.utils.datetime import utcnow
 
     now = utcnow()

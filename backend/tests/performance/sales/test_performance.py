@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -45,10 +46,10 @@ def _login(client: TestClient, email: str) -> str:
         json={"email": email, "password": _TEST_PASSWORD},
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -76,7 +77,7 @@ def _create_company(client: TestClient, token: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _create_customer(
@@ -97,7 +98,7 @@ def _create_customer(
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _create_order(
@@ -118,7 +119,7 @@ def _create_order(
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 # ---------------------------------------------------------------------------

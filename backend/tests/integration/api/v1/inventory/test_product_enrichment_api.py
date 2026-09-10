@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import uuid
+from typing import Any
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -29,7 +30,7 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -505,7 +506,7 @@ class TestProductImagesApi:
 
 
 class TestBulkImportExportApi:
-    def _make_csv(self, rows: list[dict]) -> bytes:
+    def _make_csv(self, rows: list[dict[str, Any]]) -> bytes:
         import csv
         import io as iomod
 

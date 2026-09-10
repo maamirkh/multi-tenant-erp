@@ -12,6 +12,7 @@ that infrastructure.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -46,7 +47,7 @@ def db_session(request: pytest.FixtureRequest):
         engine.dispose()
 
 
-def _minimal_config_fields() -> dict:
+def _minimal_config_fields() -> dict[str, Any]:
     return {
         "allowed_frequencies": ["MONTHLY"],
         "min_term": 3,
@@ -137,14 +138,18 @@ class TestInstallmentConfigurationRepositoryUniqueness:
 
         # Branch override wins when queried with that branch_id.
         effective = repo.get_effective_config(company_id, branch_id)
+        assert effective is not None
         assert effective.id == branch_override.id
 
         # A branch with no override falls back to the company default.
         effective_other_branch = repo.get_effective_config(company_id, uuid.uuid4())
+        assert effective_other_branch is not None
         assert effective_other_branch.id == company_default.id
 
         # No branch_id -> company default directly.
-        assert repo.get_effective_config(company_id, None).id == company_default.id
+        no_branch = repo.get_effective_config(company_id, None)
+        assert no_branch is not None
+        assert no_branch.id == company_default.id
 
 
 class TestInstallmentConfigurationRepositoryTenantIsolation:

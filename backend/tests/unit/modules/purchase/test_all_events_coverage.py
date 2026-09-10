@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 from decimal import Decimal
+from typing import Any
 from uuid import UUID, uuid4
 
 from modules.purchase.events.cost_events import (
@@ -90,14 +91,14 @@ def _sid() -> str:
     return str(uuid4())
 
 
-def _assert_base_fields(d: dict) -> None:
+def _assert_base_fields(d: dict[str, Any]) -> None:
     """Assert all required base fields are present and non-empty."""
     for field in _BASE_FIELDS:
         assert field in d, f"Missing base field: {field}"
         assert d[field] is not None, f"Base field {field!r} is None"
 
 
-def _assert_json_serialisable(evt) -> dict:
+def _assert_json_serialisable(evt) -> dict[str, Any]:
     """Call to_dict() and confirm JSON round-trip."""
     d = evt.to_dict()
     assert isinstance(d, dict)

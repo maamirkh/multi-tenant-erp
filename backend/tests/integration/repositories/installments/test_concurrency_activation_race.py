@@ -25,12 +25,15 @@ from __future__ import annotations
 
 import threading
 import uuid
+from collections.abc import Generator
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from typing import Any, cast
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.events.outbox import EventOutboxRepository
@@ -64,7 +67,13 @@ from modules.installments.services.accounting_gateway import (
     AccountingIntegrationGateway,
 )
 from modules.installments.services.audit_service import InstallmentAuditService
+from modules.installments.services.configuration_service import (
+    InstallmentConfigurationService,
+)
 from modules.installments.services.contract_service import InstallmentContractService
+from modules.installments.services.eligibility_service import (
+    InstallmentEligibilityService,
+)
 from modules.installments.services.idempotency_service import (
     InstallmentIdempotencyService,
 )
@@ -78,7 +87,7 @@ _REPETITIONS = 5
 
 
 @pytest.fixture
-def pg_engine(request: pytest.FixtureRequest):
+def pg_engine(request: pytest.FixtureRequest) -> Generator[Engine, None, None]:
     pg_url = request.getfixturevalue("pg_test_db")
     alembic_upgrade(pg_url, "072")
     engine = db_engine(pg_url)
@@ -89,7 +98,7 @@ def pg_engine(request: pytest.FixtureRequest):
 
 
 @pytest.fixture
-def db_session(pg_engine) -> Session:
+def db_session(pg_engine: Engine) -> Generator[Session, None, None]:
     session_factory = sessionmaker(bind=pg_engine)
     session = session_factory()
     try:
@@ -113,7 +122,9 @@ class _FakeConfigurationService:
         return _FakeConfig()
 
 
-def _build_approved_contract(db_session, *, installment_count: int = 2) -> dict:
+def _build_approved_contract(
+    db_session, *, installment_count: int = 2
+) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -228,9 +239,13 @@ def _build_contract_service(session) -> InstallmentContractService:
     return InstallmentContractService(
         repo=InstallmentContractRepository(session),
         sequence_repo=InstallmentSequenceRepository(session),
-        eligibility_service=_NoOpEligibilityService(),
+        eligibility_service=cast(
+            InstallmentEligibilityService, _NoOpEligibilityService()
+        ),
         accounting_gateway=gateway,
-        configuration_service=_FakeConfigurationService(),
+        configuration_service=cast(
+            InstallmentConfigurationService, _FakeConfigurationService()
+        ),
         audit_service=InstallmentAuditService(
             db=session, audit_repo=InstallmentAuditLogRepository(session)
         ),
@@ -253,7 +268,7 @@ class TestDuplicateActivationRaceAtScale:
 
             session_a = session_factory()
             session_b = session_factory()
-            results: dict[str, object] = {}
+            results: dict[str, tuple[str, object]] = {}
 
             def _activate(label: str, session) -> None:
                 try:
@@ -290,6 +305,7 @@ class TestDuplicateActivationRaceAtScale:
             verify_session = session_factory()
             try:
                 refreshed = verify_session.get(InstallmentContract, contract_id)
+                assert refreshed is not None
                 assert refreshed.status == "ACTIVE", f"repetition {rep}"
 
                 versions = (

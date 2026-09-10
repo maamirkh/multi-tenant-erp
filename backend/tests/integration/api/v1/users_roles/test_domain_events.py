@@ -14,6 +14,7 @@ Spec reference: Epic 4, Phase 15 (T131).
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi.testclient import TestClient
 from sqlalchemy import text
@@ -32,10 +33,10 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -46,7 +47,7 @@ def _create_company(client: TestClient, token: str, name: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _has_event(db: Session, company_id: str, event_type: str) -> bool:
@@ -73,14 +74,14 @@ def _get_role_id(db: Session, company_id: str, slug: str) -> str:
 
 def _add_member(
     client: TestClient, token: str, company_id: str, email: str, role_id: str
-) -> dict:
+) -> dict[str, Any]:
     resp = client.post(
         f"/api/v1/companies/{company_id}/members",
         json={"email": email, "role_id": role_id},
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]
+    return dict(resp.json()["data"])
 
 
 # ---------------------------------------------------------------------------

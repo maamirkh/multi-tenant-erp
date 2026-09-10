@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -42,7 +43,7 @@ from modules.accounting.services.payment_service import PaymentService
 
 
 @pytest.fixture
-def setup(db_session: Session) -> dict:
+def setup(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -126,7 +127,7 @@ class TestAllocateBackwardCompat:
         ar_service: AccountsReceivableService,
         payment_service: PaymentService,
         allocation_engine: AllocationEngine,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         customer_id = uuid4()
         invoice, _ = ar_service.record_sales_invoice(
@@ -168,6 +169,7 @@ class TestAllocateBackwardCompat:
         refreshed_invoice = ar_repo.get_by_id_or_none(
             id=invoice.id, company_id=setup["company_id"]
         )
+        assert refreshed_invoice is not None
         assert refreshed_invoice.outstanding_amount == Decimal("0")
         assert refreshed_invoice.status == "PAID"
 
@@ -175,7 +177,7 @@ class TestAllocateBackwardCompat:
         self,
         ar_service: AccountsReceivableService,
         payment_service: PaymentService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         """PaymentService.allocate_payment() delegates to
         AllocationEngine.allocate() unchanged — proves the rewrite is

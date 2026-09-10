@@ -132,6 +132,7 @@ class TestVendorReturnRepository:
         repo.update_status(rma.id, cid, "SUBMITTED")
 
         fetched = repo.get_by_id_or_none(rma.id, cid)
+        assert fetched is not None
         assert fetched.status == "SUBMITTED"
 
     def test_soft_deleted_rma_not_returned(self, db_session: Session):

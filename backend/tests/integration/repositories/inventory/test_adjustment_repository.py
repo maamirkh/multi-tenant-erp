@@ -274,5 +274,6 @@ class TestAdjustmentRepositoryUpdateStatus:
             reference_movement_id=ref_id,
         )
         assert updated.approved_by == approver
+        assert updated.new_quantity is not None
         assert float(updated.new_quantity) == pytest.approx(85.0)
         assert updated.reference_movement_id == ref_id

@@ -194,7 +194,6 @@ class TestQuotaStateReflectsDeclaredLimitHonestly:
             current_usage=None,
         )
         assert resolution.state == QuotaState.unavailable
-        assert resolution.state != QuotaState.ok
 
 
 class TestOverrideResolutionOrderCannotBeBypassed:

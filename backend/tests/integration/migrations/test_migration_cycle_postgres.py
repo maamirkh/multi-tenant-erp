@@ -71,7 +71,11 @@ def _subscriptions_partial_index_exists(engine: sa.engine.Engine) -> bool:
 
 def _alembic_version(engine: sa.engine.Engine) -> str:
     with engine.connect() as conn:
-        return conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar()
+        version = conn.execute(
+            sa.text("SELECT version_num FROM alembic_version")
+        ).scalar()
+        assert version is not None
+        return str(version)
 
 
 class TestGateAMigrationCyclePostgres:

@@ -19,6 +19,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from typing import Any, cast
 
 from core.events.outbox import EventOutboxRepository
 from modules.accounting.dependencies import (
@@ -49,7 +50,13 @@ from modules.installments.services.accounting_gateway import (
     AccountingIntegrationGateway,
 )
 from modules.installments.services.audit_service import InstallmentAuditService
+from modules.installments.services.configuration_service import (
+    InstallmentConfigurationService,
+)
 from modules.installments.services.contract_service import InstallmentContractService
+from modules.installments.services.eligibility_service import (
+    InstallmentEligibilityService,
+)
 from modules.installments.services.idempotency_service import (
     InstallmentIdempotencyService,
 )
@@ -75,7 +82,7 @@ def _build_approved_contract(
     *,
     installment_count: int = 2,
     down_payment_amount: Decimal = Decimal("0"),
-) -> dict:
+) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -200,9 +207,13 @@ def _build_contract_service(db_session) -> InstallmentContractService:
     return InstallmentContractService(
         repo=InstallmentContractRepository(db_session),
         sequence_repo=InstallmentSequenceRepository(db_session),
-        eligibility_service=_NoOpEligibilityService(),
+        eligibility_service=cast(
+            InstallmentEligibilityService, _NoOpEligibilityService()
+        ),
         accounting_gateway=gateway,
-        configuration_service=_FakeConfigurationService(),
+        configuration_service=cast(
+            InstallmentConfigurationService, _FakeConfigurationService()
+        ),
         audit_service=audit_service,
         schedule_repo=InstallmentScheduleRepository(db_session),
         idempotency_service=InstallmentIdempotencyService(db_session),
@@ -261,6 +272,7 @@ class TestActivateContract:
         invoice = ar_service.find_transaction_by_source_document(
             ctx["company_id"], "SalesInvoice", ctx["contract"].sales_invoice_id
         )
+        assert invoice is not None
         # invoice_total (250) - down payment (50) = 200 remaining,
         # matching the contract's own contractual_total (2 x 100).
         assert invoice.outstanding_amount == Decimal("200.00")
@@ -287,6 +299,7 @@ class TestActivateContract:
         version = schedule_repo.get_active_version(
             ctx["company_id"], ctx["contract"].id
         )
+        assert version is not None
         lines = schedule_repo.get_lines(ctx["company_id"], version.id)
         # Replay must not generate a second schedule version/duplicate lines.
         assert len(lines) == 1

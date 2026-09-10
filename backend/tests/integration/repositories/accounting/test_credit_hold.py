@@ -27,6 +27,7 @@ from modules.accounting.events import (
     InProcessEventBus,
     set_event_bus,
 )
+from modules.accounting.events.ar_events import CreditHoldPlacedEvent
 from modules.accounting.repositories.ar import (
     ARPaymentAllocationRepository,
     ARTransactionRepository,
@@ -131,8 +132,10 @@ class TestCreditHoldCrossModuleSync:
         )
 
         assert len(received) == 1
-        assert received[0].customer_id == customer.id
-        assert received[0].reason == "Repeated late payment"
+        event = received[0]
+        assert isinstance(event, CreditHoldPlacedEvent)
+        assert event.customer_id == customer.id
+        assert event.reason == "Repeated late payment"
 
     def test_place_hold_syncs_to_sales_customer(
         self,

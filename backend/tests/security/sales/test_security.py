@@ -15,6 +15,7 @@ Spec ref: specs/007-sales-management/spec.md §Security
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -36,10 +37,10 @@ def _login(client: TestClient, email: str) -> str:
         json={"email": email, "password": _TEST_PASSWORD},
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -61,7 +62,7 @@ def _create_company(client: TestClient, token: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +173,9 @@ class TestSQLInjectionResistance:
         return test_client, token, cid
 
     @pytest.mark.parametrize("payload", SQL_INJECTION_PAYLOADS)
-    def test_customer_search_injection(self, auth_token: tuple, payload: str) -> None:
+    def test_customer_search_injection(
+        self, auth_token: tuple[Any, ...], payload: str
+    ) -> None:
         client, token, cid = auth_token
         resp = client.get(
             _sales_url(cid, "/customers"),
@@ -184,7 +187,9 @@ class TestSQLInjectionResistance:
         )
 
     @pytest.mark.parametrize("payload", SQL_INJECTION_PAYLOADS)
-    def test_order_filter_injection(self, auth_token: tuple, payload: str) -> None:
+    def test_order_filter_injection(
+        self, auth_token: tuple[Any, ...], payload: str
+    ) -> None:
         client, token, cid = auth_token
         resp = client.get(
             _sales_url(cid, "/sales-orders"),
@@ -196,7 +201,9 @@ class TestSQLInjectionResistance:
         )
 
     @pytest.mark.parametrize("payload", SQL_INJECTION_PAYLOADS)
-    def test_quotation_search_injection(self, auth_token: tuple, payload: str) -> None:
+    def test_quotation_search_injection(
+        self, auth_token: tuple[Any, ...], payload: str
+    ) -> None:
         client, token, cid = auth_token
         resp = client.get(
             _sales_url(cid, "/quotations"),
@@ -234,7 +241,9 @@ class TestXSSResistance:
         return test_client, token, cid
 
     @pytest.mark.parametrize("payload", XSS_PAYLOADS)
-    def test_customer_legal_name_xss(self, auth_creds: tuple, payload: str) -> None:
+    def test_customer_legal_name_xss(
+        self, auth_creds: tuple[Any, ...], payload: str
+    ) -> None:
         client, token, cid = auth_creds
         resp = client.post(
             _sales_url(cid, "/customers"),
@@ -253,7 +262,7 @@ class TestXSSResistance:
         )
 
     @pytest.mark.parametrize("payload", XSS_PAYLOADS)
-    def test_order_notes_xss(self, auth_creds: tuple, payload: str) -> None:
+    def test_order_notes_xss(self, auth_creds: tuple[Any, ...], payload: str) -> None:
         client, token, cid = auth_creds
         resp = client.post(
             _sales_url(cid, "/sales-orders"),
@@ -293,7 +302,9 @@ class TestBOLATenantIsolation:
         cid_b = _create_company(test_client, token_b)
         return test_client, token_a, cid_a, token_b, cid_b
 
-    def test_cross_tenant_customer_returns_404(self, two_tenants: tuple) -> None:
+    def test_cross_tenant_customer_returns_404(
+        self, two_tenants: tuple[Any, ...]
+    ) -> None:
         client, token_a, cid_a, token_b, cid_b = two_tenants
         # Create customer in company A
         resp = client.post(
@@ -319,7 +330,7 @@ class TestBOLATenantIsolation:
             f"Cross-tenant customer access returned {cross_resp.status_code}, expected 404"
         )
 
-    def test_cross_tenant_order_returns_404(self, two_tenants: tuple) -> None:
+    def test_cross_tenant_order_returns_404(self, two_tenants: tuple[Any, ...]) -> None:
         client, token_a, cid_a, token_b, cid_b = two_tenants
         # Create order in company A
         resp = client.post(
@@ -345,7 +356,9 @@ class TestBOLATenantIsolation:
             f"Cross-tenant order access returned {cross_resp.status_code}, expected 404"
         )
 
-    def test_cross_tenant_invoice_returns_404(self, two_tenants: tuple) -> None:
+    def test_cross_tenant_invoice_returns_404(
+        self, two_tenants: tuple[Any, ...]
+    ) -> None:
         client, token_a, cid_a, token_b, cid_b = two_tenants
         resp = client.post(
             _sales_url(cid_a, "/invoices"),
@@ -376,7 +389,9 @@ class TestBOLATenantIsolation:
             f"Cross-tenant invoice access returned {cross_resp.status_code}, expected 404"
         )
 
-    def test_cross_tenant_quotation_returns_404(self, two_tenants: tuple) -> None:
+    def test_cross_tenant_quotation_returns_404(
+        self, two_tenants: tuple[Any, ...]
+    ) -> None:
         client, token_a, cid_a, token_b, cid_b = two_tenants
         resp = client.post(
             _sales_url(cid_a, "/quotations"),
@@ -400,7 +415,9 @@ class TestBOLATenantIsolation:
             f"Cross-tenant quotation access returned {cross_resp.status_code}, expected 404"
         )
 
-    def test_cross_tenant_return_returns_404(self, two_tenants: tuple) -> None:
+    def test_cross_tenant_return_returns_404(
+        self, two_tenants: tuple[Any, ...]
+    ) -> None:
         client, token_a, cid_a, token_b, cid_b = two_tenants
         resp = client.post(
             _sales_url(cid_a, "/returns"),
@@ -450,7 +467,9 @@ class TestOversizedPayloadRejection:
         cid = _create_company(test_client, token)
         return test_client, token, cid
 
-    def test_oversized_customer_code_rejected(self, auth_creds: tuple) -> None:
+    def test_oversized_customer_code_rejected(
+        self, auth_creds: tuple[Any, ...]
+    ) -> None:
         client, token, cid = auth_creds
         resp = client.post(
             _sales_url(cid, "/customers"),
@@ -471,7 +490,7 @@ class TestOversizedPayloadRejection:
             422,
         ), f"Expected validation error for oversized payload, got {resp.status_code}"
 
-    def test_oversized_notes_handled_safely(self, auth_creds: tuple) -> None:
+    def test_oversized_notes_handled_safely(self, auth_creds: tuple[Any, ...]) -> None:
         client, token, cid = auth_creds
         resp = client.post(
             _sales_url(cid, "/sales-orders"),

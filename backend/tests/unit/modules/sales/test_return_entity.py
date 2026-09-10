@@ -167,7 +167,7 @@ class TestReturnLineCreateSchema:
                 description="Item",
                 quantity_returned=Decimal("1"),
                 unit_price=Decimal("1"),
-                condition=cond,  # type: ignore[arg-type]
+                condition=cond,
             )
             assert line.condition == cond
 
@@ -206,7 +206,7 @@ class TestSalesReturnCreateSchema:
                 customer_id=uuid4(),
                 return_date="2026-08-04",
                 reason_code_id=uuid4(),
-                resolution_type=rt,  # type: ignore[arg-type]
+                resolution_type=rt,
                 lines=[self._make_line()],
             )
             assert ret.resolution_type == rt

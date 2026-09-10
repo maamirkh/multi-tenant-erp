@@ -17,6 +17,7 @@ Spec ref: specs/007-sales-management/spec.md §18
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -37,8 +38,8 @@ from modules.sales.services.invoice_service import InvoiceService
 
 def _invoice_payload(
     customer_id: UUID | None = None,
-    lines: list[dict] | None = None,
-    charges: list[dict] | None = None,
+    lines: list[dict[str, Any]] | None = None,
+    charges: list[dict[str, Any]] | None = None,
 ) -> InvoiceCreate:
     _lines = lines or [
         {
@@ -66,7 +67,7 @@ class TestManualInvoiceCreation:
     def test_creates_invoice_in_draft(self, db_session: Session) -> None:
         company_id = uuid4()
         svc = InvoiceService(db=db_session)
-        inv = svc.create_invoice(company_id, _invoice_payload(), created_by=None)
+        inv = svc.create_invoice(company_id, _invoice_payload(), created_by=uuid4())
         assert inv.status == "DRAFT"
         assert inv.company_id == company_id
 
@@ -74,7 +75,7 @@ class TestManualInvoiceCreation:
         """2 × $50 = $100 subtotal."""
         company_id = uuid4()
         svc = InvoiceService(db=db_session)
-        inv = svc.create_invoice(company_id, _invoice_payload(), created_by=None)
+        inv = svc.create_invoice(company_id, _invoice_payload(), created_by=uuid4())
         assert inv.subtotal == Decimal("100.00")
         assert inv.total_amount == Decimal("100.00")
 
@@ -97,7 +98,7 @@ class TestManualInvoiceCreation:
                 },
             ]
         )
-        inv = svc.create_invoice(company_id, payload, created_by=None)
+        inv = svc.create_invoice(company_id, payload, created_by=uuid4())
         assert inv.subtotal == Decimal("90.00")
 
     def test_charges_added_to_total(self, db_session: Session) -> None:
@@ -112,14 +113,14 @@ class TestManualInvoiceCreation:
                 },
             ]
         )
-        inv = svc.create_invoice(company_id, payload, created_by=None)
+        inv = svc.create_invoice(company_id, payload, created_by=uuid4())
         assert inv.charges_amount == Decimal("15.00")
         assert inv.total_amount == Decimal("115.00")
 
     def test_lines_stored(self, db_session: Session) -> None:
         company_id = uuid4()
         svc = InvoiceService(db=db_session)
-        inv = svc.create_invoice(company_id, _invoice_payload(), created_by=None)
+        inv = svc.create_invoice(company_id, _invoice_payload(), created_by=uuid4())
         lines = svc.get_invoice_lines(company_id, inv.id)
         assert len(lines) == 1
         assert lines[0].description == "Widget A"
@@ -127,14 +128,14 @@ class TestManualInvoiceCreation:
     def test_invoice_number_assigned(self, db_session: Session) -> None:
         company_id = uuid4()
         svc = InvoiceService(db=db_session)
-        inv = svc.create_invoice(company_id, _invoice_payload(), created_by=None)
+        inv = svc.create_invoice(company_id, _invoice_payload(), created_by=uuid4())
         assert inv.invoice_number
 
     def test_due_date_equals_invoice_date_no_term(self, db_session: Session) -> None:
         """Without a payment term, due_date == invoice_date (net 0)."""
         company_id = uuid4()
         svc = InvoiceService(db=db_session)
-        inv = svc.create_invoice(company_id, _invoice_payload(), created_by=None)
+        inv = svc.create_invoice(company_id, _invoice_payload(), created_by=uuid4())
         assert inv.due_date == "2026-08-03"
 
     def test_discount_on_line(self, db_session: Session) -> None:
@@ -152,7 +153,7 @@ class TestManualInvoiceCreation:
                 }
             ]
         )
-        inv = svc.create_invoice(company_id, payload, created_by=None)
+        inv = svc.create_invoice(company_id, payload, created_by=uuid4())
         assert inv.discount_amount == Decimal("10.00")
         assert inv.subtotal == Decimal("90.00")
 
@@ -161,52 +162,54 @@ class TestInvoiceTransitions:
     def test_issue_draft(self, db_session: Session) -> None:
         company_id = uuid4()
         svc = InvoiceService(db=db_session)
-        inv = svc.create_invoice(company_id, _invoice_payload(), created_by=None)
+        inv = svc.create_invoice(company_id, _invoice_payload(), created_by=uuid4())
         issued = svc.issue_invoice(
-            company_id, inv.id, InvoiceIssueRequest(), issued_by=None
+            company_id, inv.id, InvoiceIssueRequest(), issued_by=uuid4()
         )
         assert issued.status == "ISSUED"
 
     def test_cancel_draft(self, db_session: Session) -> None:
         company_id = uuid4()
         svc = InvoiceService(db=db_session)
-        inv = svc.create_invoice(company_id, _invoice_payload(), created_by=None)
-        cancelled = svc.cancel_invoice(company_id, inv.id, cancelled_by=None)
+        inv = svc.create_invoice(company_id, _invoice_payload(), created_by=uuid4())
+        cancelled = svc.cancel_invoice(company_id, inv.id, cancelled_by=uuid4())
         assert cancelled.status == "CANCELLED"
 
     def test_credit_note_on_issued(self, db_session: Session) -> None:
         company_id = uuid4()
         svc = InvoiceService(db=db_session)
-        inv = svc.create_invoice(company_id, _invoice_payload(), created_by=None)
-        svc.issue_invoice(company_id, inv.id, InvoiceIssueRequest(), issued_by=None)
+        inv = svc.create_invoice(company_id, _invoice_payload(), created_by=uuid4())
+        svc.issue_invoice(company_id, inv.id, InvoiceIssueRequest(), issued_by=uuid4())
         cn_req = InvoiceCreditNoteRequest(credit_note_amount=Decimal("50.00"))
-        updated = svc.issue_credit_note(company_id, inv.id, cn_req, issued_by=None)
+        updated = svc.issue_credit_note(company_id, inv.id, cn_req, issued_by=uuid4())
         assert updated.status == "CREDIT_NOTE_ISSUED"
         assert updated.credit_note_amount == Decimal("50.00")
 
     def test_cannot_cancel_issued(self, db_session: Session) -> None:
         company_id = uuid4()
         svc = InvoiceService(db=db_session)
-        inv = svc.create_invoice(company_id, _invoice_payload(), created_by=None)
-        svc.issue_invoice(company_id, inv.id, InvoiceIssueRequest(), issued_by=None)
+        inv = svc.create_invoice(company_id, _invoice_payload(), created_by=uuid4())
+        svc.issue_invoice(company_id, inv.id, InvoiceIssueRequest(), issued_by=uuid4())
         with pytest.raises(ConflictException):
-            svc.cancel_invoice(company_id, inv.id, cancelled_by=None)
+            svc.cancel_invoice(company_id, inv.id, cancelled_by=uuid4())
 
     def test_cannot_issue_cancelled(self, db_session: Session) -> None:
         company_id = uuid4()
         svc = InvoiceService(db=db_session)
-        inv = svc.create_invoice(company_id, _invoice_payload(), created_by=None)
-        svc.cancel_invoice(company_id, inv.id, cancelled_by=None)
+        inv = svc.create_invoice(company_id, _invoice_payload(), created_by=uuid4())
+        svc.cancel_invoice(company_id, inv.id, cancelled_by=uuid4())
         with pytest.raises(ConflictException):
-            svc.issue_invoice(company_id, inv.id, InvoiceIssueRequest(), issued_by=None)
+            svc.issue_invoice(
+                company_id, inv.id, InvoiceIssueRequest(), issued_by=uuid4()
+            )
 
     def test_credit_note_on_draft_raises(self, db_session: Session) -> None:
         company_id = uuid4()
         svc = InvoiceService(db=db_session)
-        inv = svc.create_invoice(company_id, _invoice_payload(), created_by=None)
+        inv = svc.create_invoice(company_id, _invoice_payload(), created_by=uuid4())
         cn_req = InvoiceCreditNoteRequest(credit_note_amount=Decimal("10.00"))
         with pytest.raises(ConflictException):
-            svc.issue_credit_note(company_id, inv.id, cn_req, issued_by=None)
+            svc.issue_credit_note(company_id, inv.id, cn_req, issued_by=uuid4())
 
 
 class TestInvoiceListing:
@@ -214,9 +217,9 @@ class TestInvoiceListing:
         company_id = uuid4()
         other_company = uuid4()
         svc = InvoiceService(db=db_session)
-        svc.create_invoice(company_id, _invoice_payload(), created_by=None)
-        svc.create_invoice(company_id, _invoice_payload(), created_by=None)
-        svc.create_invoice(other_company, _invoice_payload(), created_by=None)
+        svc.create_invoice(company_id, _invoice_payload(), created_by=uuid4())
+        svc.create_invoice(company_id, _invoice_payload(), created_by=uuid4())
+        svc.create_invoice(other_company, _invoice_payload(), created_by=uuid4())
         items, total = svc.list_invoices(company_id)
         assert total == 2
         assert len(items) == 2
@@ -224,9 +227,9 @@ class TestInvoiceListing:
     def test_filter_by_status(self, db_session: Session) -> None:
         company_id = uuid4()
         svc = InvoiceService(db=db_session)
-        inv1 = svc.create_invoice(company_id, _invoice_payload(), created_by=None)
-        inv2 = svc.create_invoice(company_id, _invoice_payload(), created_by=None)
-        svc.issue_invoice(company_id, inv1.id, InvoiceIssueRequest(), issued_by=None)
+        inv1 = svc.create_invoice(company_id, _invoice_payload(), created_by=uuid4())
+        inv2 = svc.create_invoice(company_id, _invoice_payload(), created_by=uuid4())
+        svc.issue_invoice(company_id, inv1.id, InvoiceIssueRequest(), issued_by=uuid4())
         # Filter DRAFT — only inv2
         items, total = svc.list_invoices(company_id, status="DRAFT")
         assert total == 1
@@ -238,10 +241,10 @@ class TestInvoiceListing:
         customer_b = uuid4()
         svc = InvoiceService(db=db_session)
         svc.create_invoice(
-            company_id, _invoice_payload(customer_id=customer_a), created_by=None
+            company_id, _invoice_payload(customer_id=customer_a), created_by=uuid4()
         )
         svc.create_invoice(
-            company_id, _invoice_payload(customer_id=customer_b), created_by=None
+            company_id, _invoice_payload(customer_id=customer_b), created_by=uuid4()
         )
         items, total = svc.list_invoices(company_id, customer_id=str(customer_a))
         assert total == 1
@@ -252,7 +255,7 @@ class TestInvoiceListing:
         company_a = uuid4()
         company_b = uuid4()
         svc = InvoiceService(db=db_session)
-        svc.create_invoice(company_a, _invoice_payload(), created_by=None)
+        svc.create_invoice(company_a, _invoice_payload(), created_by=uuid4())
         items, total = svc.list_invoices(company_b)
         assert total == 0
 
@@ -260,6 +263,6 @@ class TestInvoiceListing:
         company_a = uuid4()
         company_b = uuid4()
         svc = InvoiceService(db=db_session)
-        inv = svc.create_invoice(company_a, _invoice_payload(), created_by=None)
+        inv = svc.create_invoice(company_a, _invoice_payload(), created_by=uuid4())
         with pytest.raises(NotFoundException):
             svc.get_invoice(company_b, inv.id)

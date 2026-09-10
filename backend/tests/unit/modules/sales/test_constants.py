@@ -77,8 +77,12 @@ class TestSalesFeatureFlags:
         for f in SALES_FEATURE_FLAGS:
             assert f.key in SALES_FLAG_BY_KEY
 
-    def test_14_feature_flags_defined(self) -> None:
-        assert len(SALES_FEATURE_FLAGS) == 14
+    def test_15_feature_flags_defined(self) -> None:
+        """15 since ``sales.invoice_pdf_export`` was added to the catalogue
+        — previously undeclared, which masked a real ``is_enabled()``
+        argument-order bug that always raised (see
+        test_invoice_api.py::TestExportInvoicePdfAPI)."""
+        assert len(SALES_FEATURE_FLAGS) == 15
 
     def test_default_enabled_flags_subset(self) -> None:
         all_keys = {f.key for f in SALES_FEATURE_FLAGS}

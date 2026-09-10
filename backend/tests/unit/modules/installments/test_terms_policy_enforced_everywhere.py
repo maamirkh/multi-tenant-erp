@@ -12,6 +12,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
+from typing import Any, cast
 
 import pytest
 from sqlalchemy.orm import Session
@@ -20,11 +21,21 @@ from modules.installments.exceptions import InstallmentTermsPolicyViolationError
 from modules.installments.repositories.contract import InstallmentContractRepository
 from modules.installments.repositories.sequence import InstallmentSequenceRepository
 from modules.installments.services import contract_service as contract_service_module
+from modules.installments.services.accounting_gateway import (
+    AccountingIntegrationGateway,
+)
+from modules.installments.services.configuration_service import (
+    InstallmentConfigurationService,
+)
 from modules.installments.services.contract_service import InstallmentContractService
 from modules.installments.services.eligibility_service import (
     InstallmentEligibilityService,
 )
 from modules.installments.services.quote_service import InstallmentQuoteService
+from modules.installments.services.sales_read_gateway import (
+    SalesCustomerReadGateway,
+    SalesInvoiceReadGateway,
+)
 
 
 @dataclass
@@ -85,7 +96,7 @@ class _FakeConfigurationService:
         return self._config
 
 
-_DISALLOWED_FREQUENCY_TERMS = dict(
+_DISALLOWED_FREQUENCY_TERMS: dict[str, Any] = dict(
     down_payment_amount=Decimal("100"),
     installment_count=12,
     frequency="WEEKLY",  # not in _FakeConfig's allowed_frequencies=["MONTHLY"]
@@ -105,9 +116,9 @@ def _build_invoice_and_gateways(outstanding_amount: Decimal):
     customer_gateway = _FakeCustomerGateway(customer)
     accounting_gateway = _FakeAccountingGateway(outstanding_amount)
     eligibility_service = InstallmentEligibilityService(
-        invoice_gateway=invoice_gateway,
-        customer_gateway=customer_gateway,
-        ar_gateway=accounting_gateway,
+        invoice_gateway=cast(SalesInvoiceReadGateway, invoice_gateway),
+        customer_gateway=cast(SalesCustomerReadGateway, customer_gateway),
+        ar_gateway=cast(AccountingIntegrationGateway, accounting_gateway),
     )
     return invoice, invoice_gateway, eligibility_service, accounting_gateway
 
@@ -120,7 +131,9 @@ class TestSingleValidatorReuse:
         invoice, invoice_gateway, eligibility_service, accounting_gateway = (
             _build_invoice_and_gateways(outstanding_amount)
         )
-        config_service = _FakeConfigurationService(_FakeConfig())
+        config_service = cast(
+            InstallmentConfigurationService, _FakeConfigurationService(_FakeConfig())
+        )
 
         quote_service = InstallmentQuoteService(
             eligibility_service=eligibility_service,
@@ -133,7 +146,7 @@ class TestSingleValidatorReuse:
             eligibility_service=eligibility_service,
             accounting_gateway=accounting_gateway,
             configuration_service=config_service,
-            audit_service=None,  # not exercised — validation raises first
+            audit_service=None,  # type: ignore[arg-type]  # not exercised
         )
 
         with pytest.raises(InstallmentTermsPolicyViolationError) as quote_exc:
@@ -172,8 +185,11 @@ class TestSingleValidatorReuse:
             sequence_repo=InstallmentSequenceRepository(db_session),
             eligibility_service=eligibility_service,
             accounting_gateway=accounting_gateway,
-            configuration_service=_FakeConfigurationService(_FakeConfig()),
-            audit_service=None,  # not exercised — validation raises first
+            configuration_service=cast(
+                InstallmentConfigurationService,
+                _FakeConfigurationService(_FakeConfig()),
+            ),
+            audit_service=None,  # type: ignore[arg-type]  # not exercised
         )
 
         with pytest.raises(InstallmentTermsPolicyViolationError):

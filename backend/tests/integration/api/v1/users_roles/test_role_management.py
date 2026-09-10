@@ -12,6 +12,7 @@ Spec reference: tasks T047.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -28,16 +29,16 @@ def _login(client: TestClient, email: str, password: str) -> str:
     resp = client.post(
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
 def _create_company(
     client: TestClient, token: str, legal_name: str | None = None
-) -> dict:
+) -> dict[str, Any]:
     if legal_name is None:
         legal_name = f"RoleMgmt-{uuid.uuid4().hex[:8]}"
     resp = client.post(
@@ -46,13 +47,13 @@ def _create_company(
         headers=_auth(token),
     )
     assert resp.status_code == 201
-    return resp.json()["data"]
+    return dict(resp.json()["data"])
 
 
 def _setup_company_with_members(
     client: TestClient,
     db: Session,
-) -> tuple[dict, str, str, dict]:
+) -> tuple[dict[str, str], str, str, dict[str, str]]:
     """Create a company with owner and a viewer member.
 
     Returns: (company_data, owner_token, member_token, role_ids_by_slug)
@@ -172,6 +173,7 @@ class TestRoleChangeEndpoint:
             user_id=uuid.UUID(info["owner_id"]),
             company_id=uuid.UUID(info["id"]),
         )
+        assert owner_member is not None
 
         resp = test_client.patch(
             f"/api/v1/companies/{info['id']}/members/{owner_member.id}",

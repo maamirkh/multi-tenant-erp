@@ -76,7 +76,7 @@ class TestInvoiceSequencing:
         company_id = uuid4()
         svc = InvoiceService(db=db_session)
         payload = _make_invoice_payload()
-        invoice = svc.create_invoice(company_id, payload, created_by=None)
+        invoice = svc.create_invoice(company_id, payload, created_by=uuid4())
         assert invoice.invoice_number  # non-empty, format is SI-YYYY-NNNNNN
 
     def test_sequential_numbers_increment(self, db_session: Session) -> None:
@@ -85,8 +85,8 @@ class TestInvoiceSequencing:
         svc = InvoiceService(db=db_session)
         p1 = _make_invoice_payload()
         p2 = _make_invoice_payload()
-        inv1 = svc.create_invoice(company_id, p1, created_by=None)
-        inv2 = svc.create_invoice(company_id, p2, created_by=None)
+        inv1 = svc.create_invoice(company_id, p1, created_by=uuid4())
+        inv2 = svc.create_invoice(company_id, p2, created_by=uuid4())
         # Extract numeric suffix
         num1 = int(inv1.invoice_number.split("-")[-1])
         num2 = int(inv2.invoice_number.split("-")[-1])
@@ -99,8 +99,12 @@ class TestInvoiceSequencing:
         company_a = uuid4()
         company_b = uuid4()
         svc = InvoiceService(db=db_session)
-        inv_a = svc.create_invoice(company_a, _make_invoice_payload(), created_by=None)
-        inv_b = svc.create_invoice(company_b, _make_invoice_payload(), created_by=None)
+        inv_a = svc.create_invoice(
+            company_a, _make_invoice_payload(), created_by=uuid4()
+        )
+        inv_b = svc.create_invoice(
+            company_b, _make_invoice_payload(), created_by=uuid4()
+        )
         # Both should start at the same suffix (e.g. 1) — independent counters
         suffix_a = int(inv_a.invoice_number.split("-")[-1])
         suffix_b = int(inv_b.invoice_number.split("-")[-1])
@@ -110,12 +114,16 @@ class TestInvoiceSequencing:
         """Cancelling an invoice does not free its number for reuse."""
         company_id = uuid4()
         svc = InvoiceService(db=db_session)
-        inv1 = svc.create_invoice(company_id, _make_invoice_payload(), created_by=None)
+        inv1 = svc.create_invoice(
+            company_id, _make_invoice_payload(), created_by=uuid4()
+        )
         cancelled_number = inv1.invoice_number
         # Cancel it
-        svc.cancel_invoice(company_id, inv1.id, cancelled_by=None)
+        svc.cancel_invoice(company_id, inv1.id, cancelled_by=uuid4())
         # Create another invoice — should get a NEW number, not the cancelled one
-        inv2 = svc.create_invoice(company_id, _make_invoice_payload(), created_by=None)
+        inv2 = svc.create_invoice(
+            company_id, _make_invoice_payload(), created_by=uuid4()
+        )
         assert inv2.invoice_number != cancelled_number
         suffix1 = int(cancelled_number.split("-")[-1])
         suffix2 = int(inv2.invoice_number.split("-")[-1])
@@ -129,7 +137,7 @@ class TestInvoiceSequencing:
         numbers = []
         for _ in range(3):
             inv = svc.create_invoice(
-                company_id, _make_invoice_payload(), created_by=None
+                company_id, _make_invoice_payload(), created_by=uuid4()
             )
             numbers.append(int(inv.invoice_number.split("-")[-1]))
         assert numbers == sorted(numbers)

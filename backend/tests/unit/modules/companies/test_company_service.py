@@ -18,6 +18,7 @@ Test coverage targets:
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import cast
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -346,8 +347,9 @@ class TestActivateCompany:
         with pytest.raises(CompanyIncompleteError) as exc_info:
             service.activate_company(company_id=company.id, actor_id=uuid4())
 
-        assert "country" in exc_info.value.details["missing_fields"]
-        assert "default_currency" in exc_info.value.details["missing_fields"]
+        missing_fields = cast(list[str], exc_info.value.details["missing_fields"])
+        assert "country" in missing_fields
+        assert "default_currency" in missing_fields
 
     def test_invalid_transition_from_deleted_raises_error(self) -> None:
         company = _make_company(status=CompanyStatus.deleted.value)

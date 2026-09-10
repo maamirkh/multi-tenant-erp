@@ -20,6 +20,7 @@ Task: T248
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -37,10 +38,10 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -62,7 +63,7 @@ def _create_company(client: TestClient, token: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 @pytest.fixture()
@@ -90,7 +91,7 @@ def _create_supplier(client: TestClient, token: str, cid: str, code: str) -> str
     assert resp.status_code in (200, 201), resp.text
     sid = resp.json()["data"]["id"]
     client.post(f"{_base(cid)}/suppliers/{sid}/activate", headers=_auth(token))
-    return sid
+    return str(sid)
 
 
 def _create_po(client: TestClient, token: str, cid: str, supplier_id: str) -> str:
@@ -100,7 +101,7 @@ def _create_po(client: TestClient, token: str, cid: str, supplier_id: str) -> st
         json={"supplier_id": supplier_id, "currency_code": "USD"},
     )
     assert resp.status_code in (200, 201), resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +171,7 @@ CREATE_ENDPOINTS = [
 class TestCreateEndpointsRequireAuth:
     @pytest.mark.parametrize("path_suffix,payload", CREATE_ENDPOINTS)
     def test_unauthenticated_create_returns_401(
-        self, test_client: TestClient, path_suffix: str, payload: dict
+        self, test_client: TestClient, path_suffix: str, payload: dict[str, Any]
     ):
         cid = str(uuid.uuid4())
         resp = test_client.post(f"{_base(cid)}{path_suffix}", json=payload)

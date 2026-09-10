@@ -21,6 +21,7 @@ Spec ref: specs/007-sales-management/spec.md §Multi-Tenant Isolation
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -42,10 +43,10 @@ def _login(client: TestClient, email: str) -> str:
         json={"email": email, "password": _TEST_PASSWORD},
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -53,10 +54,10 @@ def _sales_url(company_id: str, path: str) -> str:
     return f"/api/v1/companies/{company_id}/sales{path}"
 
 
-def _list_items(data) -> list:
+def _list_items(data) -> list[Any]:
     """Extract items from either paginated or plain list response."""
     if isinstance(data, dict) and "items" in data:
-        return data["items"]
+        return list(data["items"])
     return data if isinstance(data, list) else []
 
 
@@ -78,7 +79,7 @@ def _create_company(client: TestClient, token: str, suffix: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 @pytest.fixture()
@@ -106,7 +107,7 @@ def two_companies(
 class TestCustomerTenantIsolation:
     """Company B cannot see Company A's customers."""
 
-    def test_customer_list_isolation(self, two_companies: tuple) -> None:
+    def test_customer_list_isolation(self, two_companies: tuple[Any, ...]) -> None:
         client, tok_a, cid_a, tok_b, cid_b = two_companies
         # Seed customer in A
         client.post(
@@ -127,7 +128,7 @@ class TestCustomerTenantIsolation:
         items = _list_items(resp.json()["data"])
         assert items == [], f"Company B saw Company A's customers: {items}"
 
-    def test_customer_detail_isolation(self, two_companies: tuple) -> None:
+    def test_customer_detail_isolation(self, two_companies: tuple[Any, ...]) -> None:
         client, tok_a, cid_a, tok_b, cid_b = two_companies
         r = client.post(
             _sales_url(cid_a, "/customers"),
@@ -161,7 +162,7 @@ class TestCustomerTenantIsolation:
 class TestQuotationTenantIsolation:
     """Company B cannot see Company A's quotations."""
 
-    def test_quotation_list_isolation(self, two_companies: tuple) -> None:
+    def test_quotation_list_isolation(self, two_companies: tuple[Any, ...]) -> None:
         client, tok_a, cid_a, tok_b, cid_b = two_companies
         client.post(
             _sales_url(cid_a, "/quotations"),
@@ -180,7 +181,7 @@ class TestQuotationTenantIsolation:
         items = _list_items(resp.json()["data"])
         assert items == [], f"Company B saw Company A's quotations: {items}"
 
-    def test_quotation_detail_isolation(self, two_companies: tuple) -> None:
+    def test_quotation_detail_isolation(self, two_companies: tuple[Any, ...]) -> None:
         client, tok_a, cid_a, tok_b, cid_b = two_companies
         r = client.post(
             _sales_url(cid_a, "/quotations"),
@@ -211,7 +212,7 @@ class TestQuotationTenantIsolation:
 class TestSalesOrderTenantIsolation:
     """Company B cannot see Company A's sales orders."""
 
-    def test_order_list_isolation(self, two_companies: tuple) -> None:
+    def test_order_list_isolation(self, two_companies: tuple[Any, ...]) -> None:
         client, tok_a, cid_a, tok_b, cid_b = two_companies
         client.post(
             _sales_url(cid_a, "/sales-orders"),
@@ -230,7 +231,7 @@ class TestSalesOrderTenantIsolation:
         items = _list_items(resp.json()["data"])
         assert items == [], f"Company B saw Company A's orders: {items}"
 
-    def test_order_detail_isolation(self, two_companies: tuple) -> None:
+    def test_order_detail_isolation(self, two_companies: tuple[Any, ...]) -> None:
         client, tok_a, cid_a, tok_b, cid_b = two_companies
         r = client.post(
             _sales_url(cid_a, "/sales-orders"),
@@ -261,7 +262,7 @@ class TestSalesOrderTenantIsolation:
 class TestDeliveryNoteTenantIsolation:
     """Company B cannot see Company A's delivery notes."""
 
-    def test_dn_list_isolation(self, two_companies: tuple) -> None:
+    def test_dn_list_isolation(self, two_companies: tuple[Any, ...]) -> None:
         client, tok_a, cid_a, tok_b, cid_b = two_companies
         # DN list in B should be empty (no DNs seeded in B)
         resp = client.get(_sales_url(cid_b, "/delivery-notes"), headers=_auth(tok_b))
@@ -278,7 +279,7 @@ class TestDeliveryNoteTenantIsolation:
 class TestInvoiceTenantIsolation:
     """Company B cannot see Company A's invoices."""
 
-    def test_invoice_list_isolation(self, two_companies: tuple) -> None:
+    def test_invoice_list_isolation(self, two_companies: tuple[Any, ...]) -> None:
         client, tok_a, cid_a, tok_b, cid_b = two_companies
         client.post(
             _sales_url(cid_a, "/invoices"),
@@ -304,7 +305,7 @@ class TestInvoiceTenantIsolation:
         items = _list_items(resp.json()["data"])
         assert items == [], f"Company B saw Company A's invoices: {items}"
 
-    def test_invoice_detail_isolation(self, two_companies: tuple) -> None:
+    def test_invoice_detail_isolation(self, two_companies: tuple[Any, ...]) -> None:
         client, tok_a, cid_a, tok_b, cid_b = two_companies
         r = client.post(
             _sales_url(cid_a, "/invoices"),
@@ -342,7 +343,7 @@ class TestInvoiceTenantIsolation:
 class TestReturnTenantIsolation:
     """Company B cannot see Company A's sales returns."""
 
-    def test_return_list_isolation(self, two_companies: tuple) -> None:
+    def test_return_list_isolation(self, two_companies: tuple[Any, ...]) -> None:
         client, tok_a, cid_a, tok_b, cid_b = two_companies
         client.post(
             _sales_url(cid_a, "/returns"),
@@ -368,7 +369,7 @@ class TestReturnTenantIsolation:
         items = _list_items(resp.json()["data"])
         assert items == [], f"Company B saw Company A's returns: {items}"
 
-    def test_return_detail_isolation(self, two_companies: tuple) -> None:
+    def test_return_detail_isolation(self, two_companies: tuple[Any, ...]) -> None:
         client, tok_a, cid_a, tok_b, cid_b = two_companies
         r = client.post(
             _sales_url(cid_a, "/returns"),
@@ -406,7 +407,7 @@ class TestReturnTenantIsolation:
 class TestPricingTenantIsolation:
     """Company B cannot see Company A's price lists."""
 
-    def test_price_list_isolation(self, two_companies: tuple) -> None:
+    def test_price_list_isolation(self, two_companies: tuple[Any, ...]) -> None:
         client, tok_a, cid_a, tok_b, cid_b = two_companies
         # Create price list in A
         client.post(
@@ -434,7 +435,9 @@ class TestPricingTenantIsolation:
 class TestMasterDataTenantIsolation:
     """Master data (categories, payment terms, reason codes) is company-scoped."""
 
-    def test_customer_categories_isolation(self, two_companies: tuple) -> None:
+    def test_customer_categories_isolation(
+        self, two_companies: tuple[Any, ...]
+    ) -> None:
         client, tok_a, cid_a, tok_b, cid_b = two_companies
         client.post(
             _sales_url(cid_a, "/customer-categories"),
@@ -449,7 +452,7 @@ class TestMasterDataTenantIsolation:
         items = _list_items(resp.json()["data"])
         assert items == [], f"Company B saw Company A's categories: {items}"
 
-    def test_payment_terms_isolation(self, two_companies: tuple) -> None:
+    def test_payment_terms_isolation(self, two_companies: tuple[Any, ...]) -> None:
         client, tok_a, cid_a, tok_b, cid_b = two_companies
         client.post(
             _sales_url(cid_a, "/payment-terms"),
@@ -462,7 +465,7 @@ class TestMasterDataTenantIsolation:
         items = _list_items(resp.json()["data"])
         assert items == [], f"Company B saw Company A's payment terms: {items}"
 
-    def test_reason_codes_isolation(self, two_companies: tuple) -> None:
+    def test_reason_codes_isolation(self, two_companies: tuple[Any, ...]) -> None:
         client, tok_a, cid_a, tok_b, cid_b = two_companies
         client.post(
             _sales_url(cid_a, "/reason-codes"),

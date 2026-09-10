@@ -117,7 +117,7 @@ class TestCreateParentValidation:
             company_id=uuid.uuid4(),
             code="CHILD",
             name="Child",
-            parent_id=uuid.UUID(parent.id),
+            parent_id=uuid.UUID(str(parent.id)),
         )
         assert result is expected
 

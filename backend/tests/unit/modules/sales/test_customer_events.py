@@ -10,6 +10,7 @@ Task: T056
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
 from modules.sales.events import InProcessEventBus
@@ -28,7 +29,7 @@ from modules.sales.events.customer_events import (
 )
 
 
-def _cid() -> dict:
+def _cid() -> dict[str, Any]:
     return {"aggregate_id": uuid4(), "company_id": uuid4()}
 
 
@@ -135,7 +136,9 @@ class TestEventBusWithCustomerEvents:
         )
         bus.publish(event)
         assert len(received) == 1
-        assert received[0].customer_code == "CUST-001"
+        received_event = received[0]
+        assert isinstance(received_event, CustomerCreated)
+        assert received_event.customer_code == "CUST-001"
 
     def test_publish_multiple_events(self) -> None:
         bus = InProcessEventBus()

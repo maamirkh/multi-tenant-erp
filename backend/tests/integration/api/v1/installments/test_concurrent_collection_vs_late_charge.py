@@ -31,6 +31,7 @@ from __future__ import annotations
 import threading
 import uuid
 from decimal import Decimal
+from typing import Any, cast
 
 from sqlalchemy.orm import sessionmaker
 
@@ -111,7 +112,9 @@ class TestConcurrentCollectionVsLateCharge:
         late_charge_outcome, late_charge_payload = results["late_charge"]
 
         assert collection_outcome == "success", results
-        contract_status_seen = collection_payload["contract_status"]
+        contract_status_seen = cast(dict[str, Any], collection_payload)[
+            "contract_status"
+        ]
 
         if late_charge_outcome == "success":
             # The late charge won the lock first: the collection only
@@ -136,6 +139,7 @@ class TestConcurrentCollectionVsLateCharge:
         verify_session = session_factory()
         try:
             contract = verify_session.get(InstallmentContract, contract_id)
+            assert contract is not None
             if contract.status == "COMPLETED":
                 open_charges = [
                     charge

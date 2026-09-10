@@ -113,13 +113,19 @@ class TestActiveSuspendedActiveRoundTrip:
             db_session, company_id=company.id, action="tenant_lifecycle.reactivate"
         )
         assert len(suspend_events) == 1
-        assert suspend_events[0].before_state["status"] == CompanyStatus.active.value
-        assert suspend_events[0].after_state["status"] == CompanyStatus.suspended.value
+        suspend_before = suspend_events[0].before_state
+        suspend_after = suspend_events[0].after_state
+        assert suspend_before is not None
+        assert suspend_after is not None
+        assert suspend_before["status"] == CompanyStatus.active.value
+        assert suspend_after["status"] == CompanyStatus.suspended.value
         assert len(reactivate_events) == 1
-        assert (
-            reactivate_events[0].before_state["status"] == CompanyStatus.suspended.value
-        )
-        assert reactivate_events[0].after_state["status"] == CompanyStatus.active.value
+        reactivate_before = reactivate_events[0].before_state
+        reactivate_after = reactivate_events[0].after_state
+        assert reactivate_before is not None
+        assert reactivate_after is not None
+        assert reactivate_before["status"] == CompanyStatus.suspended.value
+        assert reactivate_after["status"] == CompanyStatus.active.value
 
         outbox_events = list(
             db_session.execute(

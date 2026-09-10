@@ -19,6 +19,7 @@ from __future__ import annotations
 import threading
 import uuid
 from decimal import Decimal
+from typing import cast
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -86,7 +87,7 @@ class TestOneNonTerminalContractPerObligationRace:
         # ever reaching the barrier, while the first waits at the barrier
         # for the second) — so each thread does INSERT+COMMIT as a single
         # uninterrupted step, with both threads simply started back-to-back.
-        results: dict[str, object] = {}
+        results: dict[str, tuple[str, object]] = {}
 
         def _attempt(session, suffix: str, key: str) -> None:
             contract = _draft_contract(company_id, sales_invoice_id, suffix)
@@ -117,7 +118,7 @@ class TestOneNonTerminalContractPerObligationRace:
         )
 
         loser_key = "a" if results["a"][0] == "integrity_error" else "b"
-        loser_exc: IntegrityError = results[loser_key][1]
+        loser_exc = cast(IntegrityError, results[loser_key][1])
 
         # The loser's error must carry exactly the constraint-name
         # signature InstallmentContractService.create_draft() detects

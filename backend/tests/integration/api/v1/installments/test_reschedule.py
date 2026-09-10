@@ -21,6 +21,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import cast
 from unittest.mock import patch
 
 import pytest
@@ -123,6 +124,7 @@ class TestRescheduleCreatesNewVersion:
         new_version = schedule_repo.get_active_version(
             ctx["company_id"], ctx["contract"].id
         )
+        assert new_version is not None
         assert new_version.id == updated.active_schedule_version_id
         assert new_version.version_number == prior_version.version_number + 1
         new_lines = schedule_repo.get_lines(ctx["company_id"], new_version.id)
@@ -156,6 +158,7 @@ class TestRescheduleCreatesNewVersion:
         active_version = schedule_repo.get_active_version(
             ctx["company_id"], ctx["contract"].id
         )
+        assert active_version is not None
         assert active_version.id == refreshed.active_schedule_version_id
         lines = schedule_repo.get_lines(ctx["company_id"], active_version.id)
         assert lines[0].due_date == new_first_due
@@ -226,7 +229,9 @@ class TestRescheduleRejectsRestructuring:
                 actor_id=uuid.uuid4(),
                 requested_by=uuid.uuid4(),
             )
-        assert "principal_amount" in exc.value.details["violations"]
+        assert "principal_amount" in cast(
+            dict[str, str], exc.value.details["violations"]
+        )
 
     def test_reschedule_rejects_markup_change(self, db_session) -> None:
         ctx = build_active_contract_with_schedule(
@@ -247,7 +252,7 @@ class TestRescheduleRejectsRestructuring:
                 actor_id=uuid.uuid4(),
                 requested_by=uuid.uuid4(),
             )
-        assert "markup_amount" in exc.value.details["violations"]
+        assert "markup_amount" in cast(dict[str, str], exc.value.details["violations"])
 
     def test_reschedule_rejects_installment_count_change(self, db_session) -> None:
         ctx = build_active_contract_with_schedule(
@@ -268,7 +273,9 @@ class TestRescheduleRejectsRestructuring:
                 actor_id=uuid.uuid4(),
                 requested_by=uuid.uuid4(),
             )
-        assert "installment_count" in exc.value.details["violations"]
+        assert "installment_count" in cast(
+            dict[str, str], exc.value.details["violations"]
+        )
 
     def test_reschedule_accepts_due_date_only_change(self, db_session) -> None:
         """Positive control: a due-date-only change (matching contract-

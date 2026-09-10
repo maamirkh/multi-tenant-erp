@@ -17,6 +17,7 @@ Spec ref: specs/007-sales-management/spec.md §Approval Workflow
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -140,8 +141,10 @@ class TestProcessApprovalDecision:
     def setup_method(self) -> None:
         self.svc = _make_service()
         # Replace repos with full MagicMocks so we can set return_value
-        self.svc._order_repo = MagicMock()
-        self.svc._record_repo = MagicMock()
+        self.order_repo = MagicMock()
+        self.record_repo = MagicMock()
+        self.svc._order_repo = self.order_repo
+        self.svc._record_repo = self.record_repo
         self.company_id = uuid4()
         self.doc_id = uuid4()
         self.approver_id = uuid4()
@@ -150,14 +153,14 @@ class TestProcessApprovalDecision:
     def _mock_order(self, approval_version: int = 1) -> MagicMock:
         order = MagicMock()
         order.approval_version = approval_version
-        self.svc._order_repo.get_by_id_or_none.return_value = order
+        self.order_repo.get_by_id_or_none.return_value = order
         return order
 
-    def _mock_pending_records(self, records: list) -> None:
-        self.svc._record_repo.get_pending_for_document.return_value = records
+    def _mock_pending_records(self, records: list[Any]) -> None:
+        self.record_repo.get_pending_for_document.return_value = records
 
     def test_raises_not_found_when_order_missing(self) -> None:
-        self.svc._order_repo.get_by_id_or_none.return_value = None
+        self.order_repo.get_by_id_or_none.return_value = None
         with pytest.raises(NotFoundException):
             self.svc.process_approval_decision(
                 company_id=self.company_id,
@@ -304,7 +307,8 @@ class TestEvaluateForOrderCreditCheck:
 
     def setup_method(self) -> None:
         self.svc = _make_service()
-        self.svc._order_repo = MagicMock()
+        self.order_repo = MagicMock()
+        self.svc._order_repo = self.order_repo
         self.svc._credit_service = MagicMock()
         self.company_id = uuid4()
         self.order_id = uuid4()
@@ -316,7 +320,7 @@ class TestEvaluateForOrderCreditCheck:
         order.total_amount = Decimal(total)
         order.order_number = "SO-2026-000001"
         order.approval_version = 1
-        self.svc._order_repo.get_by_id_or_none.return_value = order
+        self.order_repo.get_by_id_or_none.return_value = order
         return order
 
     def test_credit_block_raises_conflict(self) -> None:
@@ -342,7 +346,7 @@ class TestEvaluateForOrderCreditCheck:
             )
 
     def test_order_not_found_raises(self) -> None:
-        self.svc._order_repo.get_by_id_or_none.return_value = None
+        self.order_repo.get_by_id_or_none.return_value = None
 
         with pytest.raises(NotFoundException):
             self.svc.evaluate_for_order(

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -48,6 +49,7 @@ from modules.accounting.repositories.foundation import AccountingConfigurationRe
 from modules.accounting.repositories.gl import AccountingAuditLogRepository
 from modules.accounting.services.audit_service import AuditLogService
 from modules.accounting.services.fiscal_service import FiscalCalendarService
+from modules.accounting.services.payment_service import DraftPaymentResult
 from modules.installments.models.audit import InstallmentAuditLog
 from modules.installments.repositories.audit import InstallmentAuditLogRepository
 from modules.installments.services.accounting_gateway import (
@@ -56,7 +58,7 @@ from modules.installments.services.accounting_gateway import (
 
 
 @pytest.fixture
-def setup(db_session: Session) -> dict:
+def setup(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -166,7 +168,7 @@ class TestRecordDownPaymentAndCollection:
         gateway: AccountingIntegrationGateway,
         ar_service,
         installment_audit_repo: InstallmentAuditLogRepository,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         customer_id = uuid4()
         invoice, _ = ar_service.record_sales_invoice(
@@ -196,7 +198,7 @@ class TestRecordDownPaymentAndCollection:
                 )
             )
 
-        payment, allocation_lines = gateway.record_down_payment(
+        _result = gateway.record_down_payment(
             company_id=setup["company_id"],
             customer_id=customer_id,
             payment_method="BANK_TRANSFER",
@@ -210,6 +212,8 @@ class TestRecordDownPaymentAndCollection:
             actor_id=None,
             stage_installments_rows=stage_installments_rows,
         )
+        assert not isinstance(_result, DraftPaymentResult)
+        payment, allocation_lines = _result
 
         assert payment.status == "ALLOCATED"
         assert len(allocation_lines) == 1
@@ -231,7 +235,7 @@ class TestRecordDownPaymentAndCollection:
         self,
         gateway: AccountingIntegrationGateway,
         ar_service,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         customer_id = uuid4()
         invoice, _ = ar_service.record_sales_invoice(
@@ -246,7 +250,7 @@ class TestRecordDownPaymentAndCollection:
             actor_id=None,
         )
 
-        payment, allocation_lines = gateway.record_collection(
+        _result = gateway.record_collection(
             company_id=setup["company_id"],
             customer_id=customer_id,
             payment_method="BANK_TRANSFER",
@@ -260,6 +264,8 @@ class TestRecordDownPaymentAndCollection:
             actor_id=None,
             stage_installments_rows=lambda staged_payment, staged_allocation: None,
         )
+        assert not isinstance(_result, DraftPaymentResult)
+        payment, allocation_lines = _result
 
         assert payment.status == "ALLOCATED"
         assert len(allocation_lines) == 1
@@ -269,7 +275,7 @@ class TestRecordDownPaymentAndCollection:
         gateway: AccountingIntegrationGateway,
         ar_service,
         db_session: Session,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         customer_id = uuid4()
         invoice, _ = ar_service.record_sales_invoice(
@@ -319,7 +325,7 @@ class TestReversePayment:
         self,
         gateway: AccountingIntegrationGateway,
         ar_service,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         customer_id = uuid4()
         invoice, _ = ar_service.record_sales_invoice(
@@ -333,7 +339,7 @@ class TestReversePayment:
             due_date=setup["today"],
             actor_id=None,
         )
-        payment, _ = gateway.record_collection(
+        _result = gateway.record_collection(
             company_id=setup["company_id"],
             customer_id=customer_id,
             payment_method="BANK_TRANSFER",
@@ -347,6 +353,8 @@ class TestReversePayment:
             actor_id=None,
             stage_installments_rows=lambda *_: None,
         )
+        assert not isinstance(_result, DraftPaymentResult)
+        payment, _ = _result
 
         staged_calls = []
         gateway.reverse_payment(
@@ -368,7 +376,7 @@ class TestReversePayment:
         self,
         gateway: AccountingIntegrationGateway,
         ar_service,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         """The gateway does not bypass or weaken Accounting's own
         ``cancel_payment()`` authorization check (a real, pre-existing
@@ -394,7 +402,7 @@ class TestReversePayment:
             due_date=setup["today"],
             actor_id=None,
         )
-        payment, _ = gateway.record_collection(
+        _result = gateway.record_collection(
             company_id=setup["company_id"],
             customer_id=customer_id,
             payment_method="BANK_TRANSFER",
@@ -408,6 +416,8 @@ class TestReversePayment:
             actor_id=None,
             stage_installments_rows=lambda *_: None,
         )
+        assert not isinstance(_result, DraftPaymentResult)
+        payment, _ = _result
 
         with pytest.raises(ApprovalPermissionDeniedError):
             gateway.reverse_payment(
@@ -430,7 +440,7 @@ class TestPostLateChargeAndReverse:
         self,
         gateway: AccountingIntegrationGateway,
         ar_service,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         customer_id = uuid4()
         late_charge_id = uuid4()
@@ -462,7 +472,7 @@ class TestPostLateChargeAndReverse:
         self,
         gateway: AccountingIntegrationGateway,
         ar_service,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         customer_id = uuid4()
         ar_transaction = gateway.post_late_charge(
@@ -495,7 +505,7 @@ class TestPostLateChargeAndReverse:
         gateway: AccountingIntegrationGateway,
         ar_service,
         db_session: Session,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         class _InjectedFailure(Exception):
             pass
@@ -526,7 +536,7 @@ class TestWriteoff:
         self,
         gateway: AccountingIntegrationGateway,
         ar_service,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         customer_id = uuid4()
         invoice, _ = ar_service.record_sales_invoice(
@@ -563,7 +573,7 @@ class TestWriteoff:
         gateway: AccountingIntegrationGateway,
         ar_service,
         db_session: Session,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         customer_id = uuid4()
         invoice, _ = ar_service.record_sales_invoice(
@@ -615,7 +625,7 @@ class TestTenantIsolation:
     """
 
     def test_writeoff_cannot_reach_another_companys_ar_transaction(
-        self, gateway: AccountingIntegrationGateway, ar_service, setup: dict
+        self, gateway: AccountingIntegrationGateway, ar_service, setup: dict[str, Any]
     ) -> None:
         from modules.accounting.exceptions import ARTransactionNotFoundError
 
@@ -649,7 +659,7 @@ class TestTenantIsolation:
         assert refreshed_invoice.outstanding_amount == Decimal("900.00")
 
     def test_reverse_late_charge_cannot_reach_another_companys_ar_transaction(
-        self, gateway: AccountingIntegrationGateway, ar_service, setup: dict
+        self, gateway: AccountingIntegrationGateway, ar_service, setup: dict[str, Any]
     ) -> None:
         from modules.accounting.exceptions import ARTransactionNotFoundError
 
@@ -682,7 +692,7 @@ class TestTenantIsolation:
         assert refreshed_transaction.outstanding_amount == Decimal("30.00")
 
     def test_reverse_payment_cannot_reach_another_companys_payment(
-        self, gateway: AccountingIntegrationGateway, ar_service, setup: dict
+        self, gateway: AccountingIntegrationGateway, ar_service, setup: dict[str, Any]
     ) -> None:
         from modules.accounting.exceptions import PaymentNotFoundError
 
@@ -698,7 +708,7 @@ class TestTenantIsolation:
             due_date=setup["today"],
             actor_id=None,
         )
-        payment, _ = gateway.record_collection(
+        _result = gateway.record_collection(
             company_id=setup["company_id"],
             customer_id=customer_id,
             payment_method="BANK_TRANSFER",
@@ -712,6 +722,8 @@ class TestTenantIsolation:
             actor_id=None,
             stage_installments_rows=lambda *_: None,
         )
+        assert not isinstance(_result, DraftPaymentResult)
+        payment, _ = _result
 
         other_company_id = uuid4()
         with pytest.raises(PaymentNotFoundError):

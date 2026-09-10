@@ -130,9 +130,10 @@ class TestNoMatchingContractIsAGracefulNoOp:
 
 class TestRegistration:
     def test_registers_exactly_two_subscriptions_on_sales_bus(self) -> None:
-        from modules.sales.events import get_event_bus
+        from modules.sales.events import InProcessEventBus, get_event_bus
 
         bus = get_event_bus()
+        assert isinstance(bus, InProcessEventBus)
         before_credit_note = len(
             bus._handlers.get("sales.invoice.credit_note_issued", [])
         )

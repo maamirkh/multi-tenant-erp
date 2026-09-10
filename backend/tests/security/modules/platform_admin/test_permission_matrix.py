@@ -257,7 +257,7 @@ class OpFixture:
     """A fully-resolved request for one operation, built fresh per test."""
 
     path: str
-    body: dict | None
+    body: dict[str, Any] | None
 
 
 Builder = Callable[[Session, PlatformAdministrator], OpFixture]

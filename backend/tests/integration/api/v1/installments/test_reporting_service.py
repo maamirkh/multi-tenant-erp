@@ -371,7 +371,7 @@ class TestDefaultWriteoffReport:
             db_session.query(InstallmentContract).filter_by(id=ctx["contract"].id).one()
         )
         contract.status = "DEFAULTED"
-        contract.defaulted_at = contract.contract_date
+        contract.defaulted_at = contract.contract_date  # type: ignore[assignment]
         db_session.add(contract)
         db_session.commit()
 
@@ -479,7 +479,7 @@ class TestDashboardSourcing:
             db_session.query(InstallmentContract).filter_by(id=ctx["contract"].id).one()
         )
         contract.status = "DEFAULTED"
-        contract.defaulted_at = contract.contract_date
+        contract.defaulted_at = contract.contract_date  # type: ignore[assignment]
         db_session.add(contract)
         db_session.commit()
 

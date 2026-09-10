@@ -108,7 +108,7 @@ class TestCreateServiceValidation:
 
     def test_create_rejects_assignee_with_no_membership(self) -> None:
         service = _service()
-        service._member_repo.get_by_user_id = MagicMock(return_value=None)  # type: ignore[method-assign]
+        service._member_repo.get_by_user_id = MagicMock(return_value=None)
 
         with pytest.raises(ValidationException):
             service.create(uuid4(), self._data())
@@ -116,8 +116,8 @@ class TestCreateServiceValidation:
     def test_create_rejects_cross_tenant_customer(self) -> None:
         service = _service()
         active_member = MagicMock(status="active")
-        service._member_repo.get_by_user_id = MagicMock(return_value=active_member)  # type: ignore[method-assign]
-        service._customer_repo.get_by_id_or_none = MagicMock(return_value=None)  # type: ignore[method-assign]
+        service._member_repo.get_by_user_id = MagicMock(return_value=active_member)
+        service._customer_repo.get_by_id_or_none = MagicMock(return_value=None)
 
         with pytest.raises(ValidationException):
             service.create(uuid4(), self._data())
@@ -125,9 +125,9 @@ class TestCreateServiceValidation:
     def test_create_succeeds_with_valid_data(self) -> None:
         service = _service()
         active_member = MagicMock(status="active")
-        service._member_repo.get_by_user_id = MagicMock(return_value=active_member)  # type: ignore[method-assign]
-        service._customer_repo.get_by_id_or_none = MagicMock(return_value=MagicMock())  # type: ignore[method-assign]
-        service._repo.create = MagicMock(side_effect=lambda entity: entity)  # type: ignore[method-assign]
+        service._member_repo.get_by_user_id = MagicMock(return_value=active_member)
+        service._customer_repo.get_by_id_or_none = MagicMock(return_value=MagicMock())
+        service._repo.create = MagicMock(side_effect=lambda entity: entity)
 
         result = service.create(uuid4(), self._data())
 
@@ -138,7 +138,7 @@ class TestComplete:
     def test_complete_already_completed_is_idempotent_noop(self) -> None:
         service = _service()
         activity = _activity("COMPLETED")
-        service._get_or_raise = MagicMock(return_value=activity)  # type: ignore[method-assign]
+        service._get_or_raise = MagicMock(return_value=activity)
 
         result = service.complete(uuid4(), uuid4())
 
@@ -148,7 +148,7 @@ class TestComplete:
     def test_complete_without_lead_skips_cascade_but_commits(self) -> None:
         service = _service()
         activity = _activity("PLANNED", lead_id=None)
-        service._get_or_raise = MagicMock(return_value=activity)  # type: ignore[method-assign]
+        service._get_or_raise = MagicMock(return_value=activity)
 
         result = service.complete(uuid4(), uuid4())
 
@@ -160,7 +160,7 @@ class TestComplete:
     def test_complete_with_lead_triggers_cascade_update(self) -> None:
         service = _service()
         activity = _activity("PLANNED", lead_id=uuid4(), customer_id=None)
-        service._get_or_raise = MagicMock(return_value=activity)  # type: ignore[method-assign]
+        service._get_or_raise = MagicMock(return_value=activity)
 
         result = service.complete(uuid4(), uuid4())
 

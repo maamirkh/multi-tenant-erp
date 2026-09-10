@@ -20,10 +20,12 @@ from __future__ import annotations
 
 import threading
 import uuid
+from collections.abc import Generator
+from typing import cast
 
 import pytest
 import sqlalchemy as sa
-from sqlalchemy import select
+from sqlalchemy import Table, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from modules.installments.models.idempotency import InstallmentIdempotencyKey
@@ -59,7 +61,7 @@ def pg_engine(request: pytest.FixtureRequest):
 
 
 @pytest.fixture
-def db_session(pg_engine) -> Session:
+def db_session(pg_engine) -> Generator[Session, None, None]:
     session_factory = sessionmaker(bind=pg_engine)
     session = session_factory()
     try:
@@ -97,7 +99,8 @@ class TestConcurrentSameKeySamePayloadAtScale:
                 # reservation/completion (T089's own documented
                 # precedent for this exact substitution).
                 session.execute(
-                    InstallmentIdempotencyKey.__table__.update()
+                    cast(Table, InstallmentIdempotencyKey.__table__)
+                    .update()
                     .where(InstallmentIdempotencyKey.id == reservation.reservation_id)
                     .values(contract_id=uuid.uuid4())
                 )

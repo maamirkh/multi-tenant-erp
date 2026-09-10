@@ -11,6 +11,7 @@ Task: T041 (tasks.md Phase 4).
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -27,7 +28,7 @@ from tests.integration.api.v1.crm.conftest import (
 def _create_lead(
     client: TestClient, company_id: str, token: str, **overrides: object
 ) -> str:
-    payload = {
+    payload: dict[str, Any] = {
         "first_name": "Jane",
         "last_name": "Prospect",
         "email": f"jane-{uuid4().hex[:8]}@example.com",
@@ -37,7 +38,7 @@ def _create_lead(
         crm_url(company_id, "/leads"), json=payload, headers=auth_header(token)
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _qualify(client: TestClient, company_id: str, lead_id: str, token: str) -> None:

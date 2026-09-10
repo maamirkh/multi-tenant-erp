@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json as _json
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -24,18 +25,18 @@ def _login(client: TestClient, email: str, password: str) -> str:
     resp = client.post(
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _auth_json(token: str) -> dict:
+def _auth_json(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 
-def _delete(client: TestClient, url: str, token: str, body: dict):
+def _delete(client: TestClient, url: str, token: str, body: dict[str, Any]):
     """Send DELETE with a JSON body (TestClient.delete lacks json kwarg)."""
     return client.request(
         "DELETE",
@@ -52,7 +53,7 @@ def _create_company(client: TestClient, token: str, name: str, email: str) -> st
         headers=_auth(token),
     )
     assert resp.status_code == 201
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _activate_company(client: TestClient, token: str, company_id: str) -> None:

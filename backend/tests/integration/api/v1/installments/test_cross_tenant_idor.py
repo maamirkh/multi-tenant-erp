@@ -86,6 +86,7 @@ class TestCrossTenantIDOR:
         untouched = InstallmentContractRepository(db_session).get_by_id_or_none(
             company_a_ctx["contract"].id, company_a_ctx["company_id"]
         )
+        assert untouched is not None
         assert untouched.status == "APPROVED"
         assert untouched.activated_at is None
 
@@ -230,6 +231,7 @@ class TestCrossTenantIDOR:
         untouched = InstallmentContractRepository(db_session).get_by_id_or_none(
             company_a_ctx["contract"].id, company_a_ctx["company_id"]
         )
+        assert untouched is not None
         assert untouched.status == "ACTIVE"
         assert untouched.closed_at is None
 
@@ -256,6 +258,7 @@ class TestCrossTenantIDOR:
         untouched = InstallmentContractRepository(db_session).get_by_id_or_none(
             company_a_ctx["contract"].id, company_a_ctx["company_id"]
         )
+        assert untouched is not None
         assert (
             untouched.active_schedule_version_id == company_a_ctx["schedule_version"].id
         )
@@ -279,6 +282,7 @@ class TestCrossTenantIDOR:
         untouched = InstallmentContractRepository(db_session).get_by_id_or_none(
             company_a_ctx["contract"].id, company_a_ctx["company_id"]
         )
+        assert untouched is not None
         assert untouched.status == "ACTIVE"
 
     def test_default_command_cannot_reach_another_companys_contract(
@@ -302,6 +306,7 @@ class TestCrossTenantIDOR:
         untouched = InstallmentContractRepository(db_session).get_by_id_or_none(
             company_a_ctx["contract"].id, company_a_ctx["company_id"]
         )
+        assert untouched is not None
         assert untouched.status == "ACTIVE"
         assert untouched.defaulted_at is None
 
@@ -313,6 +318,7 @@ class TestCrossTenantIDOR:
         contract = contract_repo.get_by_id_or_none(
             company_a_ctx["contract"].id, company_a_ctx["company_id"]
         )
+        assert contract is not None
         contract.status = "DEFAULTED"
         db_session.add(contract)
         db_session.commit()
@@ -339,6 +345,7 @@ class TestCrossTenantIDOR:
         untouched = contract_repo.get_by_id_or_none(
             company_a_ctx["contract"].id, company_a_ctx["company_id"]
         )
+        assert untouched is not None
         assert untouched.status == "DEFAULTED"
 
     def test_writeoff_cannot_reach_another_companys_contract(self, db_session) -> None:
@@ -349,6 +356,7 @@ class TestCrossTenantIDOR:
         contract = contract_repo.get_by_id_or_none(
             company_a_ctx["contract"].id, company_a_ctx["company_id"]
         )
+        assert contract is not None
         contract.status = "DEFAULTED"
         db_session.add(contract)
         db_session.commit()
@@ -368,5 +376,6 @@ class TestCrossTenantIDOR:
         untouched = contract_repo.get_by_id_or_none(
             company_a_ctx["contract"].id, company_a_ctx["company_id"]
         )
+        assert untouched is not None
         assert untouched.status == "DEFAULTED"
         assert untouched.written_off_at is None

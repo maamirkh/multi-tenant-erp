@@ -17,6 +17,8 @@ The 8 auth endpoints:
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi.testclient import TestClient
 
 _REQUIRED_HEADERS = {
@@ -45,7 +47,7 @@ _ENDPOINTS = [
 ]
 
 
-def _assert_all_security_headers(headers: dict, endpoint: str) -> None:
+def _assert_all_security_headers(headers: dict[str, Any], endpoint: str) -> None:
     """Assert that all 7 required security headers are present and correct."""
     for name, expected_value in _REQUIRED_HEADERS.items():
         actual = headers.get(name)

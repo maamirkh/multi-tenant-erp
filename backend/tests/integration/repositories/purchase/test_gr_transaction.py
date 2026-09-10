@@ -123,11 +123,12 @@ class TestGoodsReceiptRepository:
         repo.update_status(gr.id, cid, "CONFIRMED")
 
         fetched = repo.get_by_id_or_none(gr.id, cid)
+        assert fetched is not None
         assert fetched.status == "CONFIRMED"
 
     def test_has_confirmed_gr_for_po_false_when_none(self, db_session: Session):
         cid = uuid4()
-        po_id = str(uuid4())
+        po_id = uuid4()
         repo = GoodsReceiptRepository(db_session)
 
         result = repo.has_confirmed_gr_for_po(po_id, cid)
@@ -135,8 +136,8 @@ class TestGoodsReceiptRepository:
 
     def test_has_confirmed_gr_for_po_true_when_exists(self, db_session: Session):
         cid = uuid4()
-        po_id = str(uuid4())
-        _make_gr(db_session, cid, po_id=po_id, status="CONFIRMED")
+        po_id = uuid4()
+        _make_gr(db_session, cid, po_id=str(po_id), status="CONFIRMED")
         repo = GoodsReceiptRepository(db_session)
 
         result = repo.has_confirmed_gr_for_po(po_id, cid)
@@ -144,9 +145,9 @@ class TestGoodsReceiptRepository:
 
     def test_list_confirmed_for_po(self, db_session: Session):
         cid = uuid4()
-        po_id = str(uuid4())
-        _make_gr(db_session, cid, po_id=po_id, status="CONFIRMED")
-        _make_gr(db_session, cid, po_id=po_id, status="DRAFT")
+        po_id = uuid4()
+        _make_gr(db_session, cid, po_id=str(po_id), status="CONFIRMED")
+        _make_gr(db_session, cid, po_id=str(po_id), status="DRAFT")
         repo = GoodsReceiptRepository(db_session)
 
         items = repo.list_confirmed_for_po(po_id, cid)
@@ -196,17 +197,22 @@ class TestGRLineRepository:
 
     def test_get_received_qty_for_po_line_sums_confirmed(self, db_session: Session):
         cid = uuid4()
-        po_line_id = str(uuid4())
+        po_line_id = uuid4()
 
         # CONFIRMED GR → should be included
         gr_confirmed = _make_gr(db_session, cid, status="CONFIRMED")
         _make_gr_line(
-            db_session, gr_confirmed, po_line_id=po_line_id, qty_received="6.000"
+            db_session,
+            gr_confirmed,
+            po_line_id=str(po_line_id),
+            qty_received="6.000",
         )
 
         # DRAFT GR → should NOT be included
         gr_draft = _make_gr(db_session, cid, status="DRAFT")
-        _make_gr_line(db_session, gr_draft, po_line_id=po_line_id, qty_received="4.000")
+        _make_gr_line(
+            db_session, gr_draft, po_line_id=str(po_line_id), qty_received="4.000"
+        )
 
         repo = GRLineRepository(db_session)
         total = repo.get_received_qty_for_po_line(po_line_id, cid)
@@ -214,7 +220,7 @@ class TestGRLineRepository:
 
     def test_get_received_qty_zero_when_no_confirmed(self, db_session: Session):
         cid = uuid4()
-        po_line_id = str(uuid4())
+        po_line_id = uuid4()
         repo = GRLineRepository(db_session)
 
         total = repo.get_received_qty_for_po_line(po_line_id, cid)

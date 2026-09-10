@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -46,7 +47,7 @@ from modules.accounting.services.fiscal_service import FiscalCalendarService
 
 
 @pytest.fixture
-def setup(db_session: Session) -> dict:
+def setup(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -113,7 +114,7 @@ def ap_service(db_session: Session) -> AccountsPayableService:
 
 class TestSupplierBillRecording:
     def test_record_bill_creates_transaction_and_updates_ledger(
-        self, ap_service: AccountsPayableService, setup: dict
+        self, ap_service: AccountsPayableService, setup: dict[str, Any]
     ) -> None:
         supplier_id = uuid4()
         transaction, result = ap_service.record_supplier_bill(
@@ -136,7 +137,7 @@ class TestSupplierBillRecording:
         assert ledger.total_outstanding_base == Decimal("1000.00")
 
     def test_reconciliation_holds_after_bill_posting(
-        self, ap_service: AccountsPayableService, setup: dict
+        self, ap_service: AccountsPayableService, setup: dict[str, Any]
     ) -> None:
         ap_service.record_supplier_bill(
             company_id=setup["company_id"],
@@ -153,7 +154,7 @@ class TestSupplierBillRecording:
         assert balance == Decimal("500.00")
 
     def test_reconciliation_holds_after_credit_note(
-        self, ap_service: AccountsPayableService, setup: dict
+        self, ap_service: AccountsPayableService, setup: dict[str, Any]
     ) -> None:
         supplier_id = uuid4()
         bill_id = uuid4()
@@ -185,7 +186,7 @@ class TestSupplierBillRecording:
         assert balance == Decimal("500.00")
 
     def test_reconciliation_holds_after_adjustment(
-        self, ap_service: AccountsPayableService, setup: dict
+        self, ap_service: AccountsPayableService, setup: dict[str, Any]
     ) -> None:
         supplier_id = uuid4()
         ap_service.record_supplier_bill(
@@ -215,7 +216,7 @@ class TestSupplierBillRecording:
 
 class TestSupplierStatementReconciliation:
     def test_matches_exact_amount_line_to_open_bill(
-        self, ap_service: AccountsPayableService, setup: dict
+        self, ap_service: AccountsPayableService, setup: dict[str, Any]
     ) -> None:
         supplier_id = uuid4()
         ap_service.record_supplier_bill(
@@ -247,7 +248,7 @@ class TestSupplierStatementReconciliation:
         assert items[0].match_status == "MATCHED"
 
     def test_unmatched_statement_line_and_unmatched_gl_bill_both_recorded(
-        self, ap_service: AccountsPayableService, setup: dict
+        self, ap_service: AccountsPayableService, setup: dict[str, Any]
     ) -> None:
         supplier_id = uuid4()
         ap_service.record_supplier_bill(
@@ -281,7 +282,7 @@ class TestSupplierStatementReconciliation:
 
 class TestAPAging:
     def test_bill_due_today_buckets_as_current(
-        self, ap_service: AccountsPayableService, setup: dict
+        self, ap_service: AccountsPayableService, setup: dict[str, Any]
     ) -> None:
         supplier_id = uuid4()
         ap_service.record_supplier_bill(
@@ -302,7 +303,7 @@ class TestAPAging:
         assert row.current == Decimal("300.00")
 
     def test_bill_31_days_overdue_buckets_as_31_60(
-        self, ap_service: AccountsPayableService, setup: dict
+        self, ap_service: AccountsPayableService, setup: dict[str, Any]
     ) -> None:
         supplier_id = uuid4()
         due_date = setup["today"] - timedelta(days=31)

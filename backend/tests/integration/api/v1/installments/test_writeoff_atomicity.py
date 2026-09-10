@@ -26,7 +26,11 @@ from sqlalchemy.orm import sessionmaker
 
 from core.events.outbox import EventOutboxRepository, OutboxRecord
 from core.utils.datetime import utcnow
-from modules.accounting.dependencies import build_ar_service
+from modules.accounting.dependencies import (
+    build_allocation_engine,
+    build_ar_service,
+    build_payment_service,
+)
 from modules.accounting.models.ar import ARTransaction, CustomerLedger
 from modules.accounting.models.gl import JournalEntry
 from modules.installments.models.audit import InstallmentAuditLog
@@ -76,7 +80,9 @@ class TestWriteoffAtomicityLayerB:
 
         ar_service = build_ar_service(db_session, with_sales_sync=False)
         gateway = AccountingIntegrationGateway(
-            ar_service=ar_service, payment_service=None, allocation_engine=None
+            ar_service=ar_service,
+            payment_service=build_payment_service(db_session),
+            allocation_engine=build_allocation_engine(db_session),
         )
         contract_repo = InstallmentContractRepository(db_session)
         audit_service = InstallmentAuditService(
@@ -94,9 +100,11 @@ class TestWriteoffAtomicityLayerB:
         outstanding_before = ledger_before.total_outstanding_base
 
         contract = contract_repo.get_by_id_locked(ctx["contract"].id, ctx["company_id"])
+        assert contract is not None
         ar_transaction_id = gateway.get_invoice_ar_transaction_id(
             ctx["company_id"], contract.sales_invoice_id
         )
+        assert ar_transaction_id is not None
 
         idempotency_key = str(uuid.uuid4())
         reservation = idempotency_service.reserve(
@@ -169,6 +177,7 @@ class TestWriteoffAtomicityLayerB:
             assert refreshed_ar.outstanding_amount > 0
 
             refreshed_contract = verify_session.get(InstallmentContract, contract.id)
+            assert refreshed_contract is not None
             assert refreshed_contract.status == "DEFAULTED"
             assert refreshed_contract.written_off_at is None
 
@@ -203,7 +212,9 @@ class TestWriteoffAtomicityLayerB:
 
         ar_service = build_ar_service(db_session, with_sales_sync=False)
         gateway = AccountingIntegrationGateway(
-            ar_service=ar_service, payment_service=None, allocation_engine=None
+            ar_service=ar_service,
+            payment_service=build_payment_service(db_session),
+            allocation_engine=build_allocation_engine(db_session),
         )
         svc = InstallmentContractService(
             repo=InstallmentContractRepository(db_session),
@@ -239,6 +250,7 @@ class TestWriteoffAtomicityLayerB:
                 ctx["company_id"], ctx["contract"].sales_invoice_id
             )
             refreshed_ar = verify_session.get(ARTransaction, ar_transaction_id)
+            assert refreshed_ar is not None
             assert refreshed_ar.status == "WRITTEN_OFF"
             assert refreshed_ar.outstanding_amount == Decimal("0")
 

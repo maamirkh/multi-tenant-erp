@@ -91,9 +91,13 @@ def _capability_row_exists(engine: sa.engine.Engine) -> bool:
 
 def _installments_permission_count(engine: sa.engine.Engine) -> int:
     with engine.connect() as conn:
-        return conn.execute(
-            sa.text("SELECT count(*) FROM permissions WHERE id LIKE 'installments.%'")
-        ).scalar_one()
+        return int(
+            conn.execute(
+                sa.text(
+                    "SELECT count(*) FROM permissions WHERE id LIKE 'installments.%'"
+                )
+            ).scalar_one()
+        )
 
 
 def _column_exists(engine: sa.engine.Engine, table: str, column: str) -> bool:
@@ -110,7 +114,11 @@ def _column_exists(engine: sa.engine.Engine, table: str, column: str) -> bool:
 
 def _alembic_version(engine: sa.engine.Engine) -> str:
     with engine.connect() as conn:
-        return conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar()
+        version = conn.execute(
+            sa.text("SELECT version_num FROM alembic_version")
+        ).scalar()
+        assert version is not None
+        return str(version)
 
 
 def _assert_head_state(engine: sa.engine.Engine) -> None:

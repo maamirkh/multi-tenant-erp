@@ -18,6 +18,7 @@ Tasks: T249, T250, T251, T252
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -35,10 +36,10 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -46,12 +47,12 @@ def _base(cid: str) -> str:
     return f"/api/v1/companies/{cid}/purchase"
 
 
-def _ok(resp, context: str = "") -> dict:
+def _ok(resp, context: str = "") -> dict[str, Any]:
     assert resp.status_code in (
         200,
         201,
     ), f"{context}: expected 200/201, got {resp.status_code}: {resp.text[:300]}"
-    return resp.json()["data"]
+    return dict(resp.json()["data"])
 
 
 def _create_supplier(client: TestClient, token: str, cid: str, code: str) -> str:
@@ -69,7 +70,7 @@ def _create_supplier(client: TestClient, token: str, cid: str, code: str) -> str
         ),
         "create supplier",
     )
-    return data["id"]
+    return str(data["id"])
 
 
 def _activate_supplier(client: TestClient, token: str, cid: str, sid: str) -> None:
@@ -90,7 +91,7 @@ def _create_po(
         ),
         "create PO",
     )
-    return data["id"]
+    return str(data["id"])
 
 
 def _create_company(client: TestClient, token: str) -> str:
@@ -107,7 +108,7 @@ def _create_company(client: TestClient, token: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _add_po_line(
@@ -131,7 +132,7 @@ def _add_po_line(
         ),
         "add PO line",
     )
-    return data["lines"][-1]["id"]
+    return str(data["lines"][-1]["id"])
 
 
 # ---------------------------------------------------------------------------
@@ -410,8 +411,8 @@ class TestPRtoPOtoGRWorkflow:
 class TestVendorReturnWorkflow:
     """T251: GR confirmed → RMA lifecycle → completed."""
 
-    def _setup_confirmed_gr(self, client, token, cid) -> tuple[str, str, str]:
-        """Return (po_id, po_line_id, gr_id) for a confirmed GR."""
+    def _setup_confirmed_gr(self, client, token, cid) -> tuple[str, str | None]:
+        """Return (gr_id, gr_line_id) for a confirmed GR."""
         sid = _create_supplier(client, token, cid, "E2E-RMA-SUP-001")
         _activate_supplier(client, token, cid, sid)
 

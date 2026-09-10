@@ -12,12 +12,15 @@ from __future__ import annotations
 import time
 import uuid
 from datetime import timedelta
+from uuid import UUID
 
 from fastapi.testclient import TestClient
+from httpx import Response
 from sqlalchemy.orm import Session
 
 from core.config.settings import get_settings
 from core.utils.datetime import utcnow
+from modules.auth.models.user import User
 from modules.companies.models.company import Company
 from modules.platform_admin.models.platform_administrator import PlatformAdministrator
 from modules.platform_admin.models.platform_session import PlatformSession
@@ -36,8 +39,6 @@ from tests.fixtures.users_roles_fixtures import (
 
 
 def _make_platform_token_with_permissions(db: Session, codes: set[str]) -> str:
-    from modules.auth.models.user import User
-
     user = User(
         email=f"freshness-platform-{uuid.uuid4().hex[:12]}@example.test",
         display_name="Freshness Platform Admin",
@@ -76,7 +77,7 @@ def _make_platform_token_with_permissions(db: Session, codes: set[str]) -> str:
 
 def _make_tenant_company_and_member(
     db: Session, *, email: str, password: str
-) -> tuple[object, Company]:
+) -> tuple[User, Company]:
     user, _ = create_test_user(db, email=email, password=password)
     suffix = uuid.uuid4().hex[:10]
     company = Company(
@@ -96,35 +97,42 @@ def _make_tenant_company_and_member(
     return user, company
 
 
-def _suspend(test_client: TestClient, platform_token: str, company_id) -> object:
-    return test_client.post(
+def _suspend(
+    test_client: TestClient, platform_token: str, company_id: UUID
+) -> Response:
+    resp: Response = test_client.post(
         f"/api/v1/platform/tenants/{company_id}/suspend",
         json={"reason": "Gate C freshness test suspend"},
         headers={"Authorization": f"Bearer {platform_token}"},
     )
+    return resp
 
 
-def _reactivate(test_client: TestClient, platform_token: str, company_id) -> object:
-    return test_client.post(
+def _reactivate(
+    test_client: TestClient, platform_token: str, company_id: UUID
+) -> Response:
+    resp: Response = test_client.post(
         f"/api/v1/platform/tenants/{company_id}/reactivate",
         json={"reason": "Gate C freshness test reactivate"},
         headers={"Authorization": f"Bearer {platform_token}"},
     )
+    return resp
 
 
 def _probe(
     test_client: TestClient,
     token: str,
-    company_id,
+    company_id: UUID,
     *,
     extra_headers: dict[str, str] | None = None,
-) -> object:
+) -> Response:
     headers = {"Authorization": f"Bearer {token}"}
     if extra_headers:
         headers.update(extra_headers)
-    return test_client.get(
+    resp: Response = test_client.get(
         f"/api/v1/companies/{company_id}/inventory/health", headers=headers
     )
+    return resp
 
 
 class TestOldAccessTokenDeniedAfterSuspendReactivate:

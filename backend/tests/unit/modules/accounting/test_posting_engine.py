@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -92,7 +93,7 @@ def posting_engine(
 @pytest.fixture
 def gl_setup(
     account_repo: AccountRepository, fiscal_service: FiscalCalendarService
-) -> dict:
+) -> dict[str, Any]:
     """Company with an AR (asset) account, a Revenue account, and an OPEN fiscal year."""
     company_id = uuid4()
     ar = account_repo.create(
@@ -130,7 +131,7 @@ def _lines(ar_id, revenue_id, amount: Decimal = Decimal("1000")):
 
 class TestT107aBalancedJournalPasses:
     def test_balanced_journal_posts_successfully(
-        self, posting_engine: PostingEngine, gl_setup: dict
+        self, posting_engine: PostingEngine, gl_setup: dict[str, Any]
     ) -> None:
         result = posting_engine.post_direct(
             company_id=gl_setup["company_id"],
@@ -152,7 +153,7 @@ class TestT107aBalancedJournalPasses:
 
 class TestT107bUnbalancedRejected:
     def test_unbalanced_journal_raises(
-        self, posting_engine: PostingEngine, gl_setup: dict
+        self, posting_engine: PostingEngine, gl_setup: dict[str, Any]
     ) -> None:
         with pytest.raises(PostingValidationError, match="Journal must balance"):
             posting_engine.post_direct(
@@ -180,7 +181,7 @@ class TestT107cInactiveAccountRejected:
     def test_inactive_account_raises(
         self,
         posting_engine: PostingEngine,
-        gl_setup: dict,
+        gl_setup: dict[str, Any],
         account_repo: AccountRepository,
     ) -> None:
         inactive = account_repo.create(
@@ -207,7 +208,7 @@ class TestT107dNonLeafAccountRejected:
     def test_non_leaf_account_raises(
         self,
         posting_engine: PostingEngine,
-        gl_setup: dict,
+        gl_setup: dict[str, Any],
         account_repo: AccountRepository,
     ) -> None:
         parent = account_repo.create(
@@ -234,7 +235,7 @@ class TestT107eLockedPeriodRejected:
     def test_locked_period_raises(
         self,
         posting_engine: PostingEngine,
-        gl_setup: dict,
+        gl_setup: dict[str, Any],
         fiscal_service: FiscalCalendarService,
     ) -> None:
         periods = fiscal_service.list_periods(
@@ -256,7 +257,7 @@ class TestT107eLockedPeriodRejected:
             )
 
     def test_no_period_defined_raises(
-        self, posting_engine: PostingEngine, gl_setup: dict
+        self, posting_engine: PostingEngine, gl_setup: dict[str, Any]
     ) -> None:
         with pytest.raises(PostingValidationError, match="Period is locked"):
             posting_engine.post_direct(
@@ -273,7 +274,7 @@ class TestT107fMissingCostCenterRejected:
     def test_missing_cost_center_raises_when_required(
         self,
         posting_engine: PostingEngine,
-        gl_setup: dict,
+        gl_setup: dict[str, Any],
         account_repo: AccountRepository,
     ) -> None:
         cc_account = account_repo.create(
@@ -298,7 +299,7 @@ class TestT107fMissingCostCenterRejected:
     def test_cost_center_present_passes(
         self,
         posting_engine: PostingEngine,
-        gl_setup: dict,
+        gl_setup: dict[str, Any],
         account_repo: AccountRepository,
     ) -> None:
         cc_account = account_repo.create(
@@ -338,7 +339,7 @@ class TestT107gApprovalRequiredAboveThreshold:
     def test_unapproved_above_threshold_raises(
         self,
         posting_engine: PostingEngine,
-        gl_setup: dict,
+        gl_setup: dict[str, Any],
         db_session: Session,
     ) -> None:
         flag_service = AccountingFeatureFlagService(
@@ -372,7 +373,7 @@ class TestT107gApprovalRequiredAboveThreshold:
     def test_approved_above_threshold_posts(
         self,
         posting_engine: PostingEngine,
-        gl_setup: dict,
+        gl_setup: dict[str, Any],
         db_session: Session,
     ) -> None:
         flag_service = AccountingFeatureFlagService(
@@ -417,7 +418,7 @@ class TestT107gApprovalRequiredAboveThreshold:
     def test_below_threshold_posts_without_approval(
         self,
         posting_engine: PostingEngine,
-        gl_setup: dict,
+        gl_setup: dict[str, Any],
         db_session: Session,
     ) -> None:
         flag_service = AccountingFeatureFlagService(

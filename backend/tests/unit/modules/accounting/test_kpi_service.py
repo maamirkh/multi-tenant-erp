@@ -47,6 +47,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -87,7 +88,7 @@ AS_OF = date(2026, 6, 15)
 
 
 @pytest.fixture
-def base_setup(db_session: Session) -> dict:
+def base_setup(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     group_repo = AccountGroupRepository(db_session)
     company_id = uuid4()
@@ -247,7 +248,7 @@ def base_setup(db_session: Session) -> dict:
 
 
 @pytest.fixture
-def setup(db_session: Session, base_setup: dict) -> dict:
+def setup(db_session: Session, base_setup: dict[str, Any]) -> dict[str, Any]:
     """``base_setup`` plus the AR/AP subsidiary-ledger records the known-
     dataset test needs. Kept separate so ``TestZeroDenominatorSafety`` can
     depend on ``base_setup`` alone and get a genuinely empty ledger.
@@ -342,7 +343,7 @@ def service(db_session: Session) -> FinancialKPIService:
     return build_kpi_service(db_session)
 
 
-def _post_dataset(posting_engine: PostingEngine, setup: dict) -> None:
+def _post_dataset(posting_engine: PostingEngine, setup: dict[str, Any]) -> None:
     company_id = setup["company_id"]
 
     posting_engine.post_direct(
@@ -470,7 +471,7 @@ class TestKnownDataset:
         self,
         posting_engine: PostingEngine,
         service: FinancialKPIService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         _post_dataset(posting_engine, setup)
 
@@ -524,7 +525,7 @@ class TestKnownDataset:
         self,
         posting_engine: PostingEngine,
         service: FinancialKPIService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         _post_dataset(posting_engine, setup)
 
@@ -541,7 +542,7 @@ class TestKnownDataset:
 
 class TestZeroDenominatorSafety:
     def test_kpis_do_not_raise_with_no_postings(
-        self, service: FinancialKPIService, base_setup: dict
+        self, service: FinancialKPIService, base_setup: dict[str, Any]
     ) -> None:
         """No journals, no AR/AP records at all: every ratio/percentage
         must resolve to a safe zero rather than raising

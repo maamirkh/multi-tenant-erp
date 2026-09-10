@@ -30,6 +30,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from typing import cast
 
 import pytest
 from sqlalchemy.orm import Session
@@ -39,6 +40,9 @@ from modules.installments.models.contract import InstallmentContract
 from modules.installments.repositories.audit import InstallmentAuditLogRepository
 from modules.installments.repositories.contract import InstallmentContractRepository
 from modules.installments.services.audit_service import InstallmentAuditService
+from modules.installments.services.configuration_service import (
+    InstallmentConfigurationService,
+)
 from modules.installments.services.contract_service import InstallmentContractService
 
 
@@ -60,10 +64,12 @@ def _make_service(
 ) -> InstallmentContractService:
     return InstallmentContractService(
         repo=InstallmentContractRepository(db_session),
-        sequence_repo=None,  # not exercised by lifecycle methods
-        eligibility_service=None,  # not exercised by lifecycle methods
-        accounting_gateway=None,  # not exercised by lifecycle methods
-        configuration_service=_FakeConfigurationService(threshold),
+        sequence_repo=None,  # type: ignore[arg-type]  # not exercised
+        eligibility_service=None,  # type: ignore[arg-type]  # not exercised
+        accounting_gateway=None,  # type: ignore[arg-type]  # not exercised
+        configuration_service=cast(
+            InstallmentConfigurationService, _FakeConfigurationService(threshold)
+        ),
         audit_service=InstallmentAuditService(
             db=db_session, audit_repo=InstallmentAuditLogRepository(db_session)
         ),
@@ -227,6 +233,7 @@ class TestLifecycleMethodsCommitDurably:
         refetched = InstallmentContractRepository(db_session).get_by_id_or_none(
             contract.id, company_id
         )
+        assert refetched is not None
         assert refetched.status == "APPROVED"
 
     def test_approve_commits(self, db_session: Session) -> None:
@@ -241,6 +248,7 @@ class TestLifecycleMethodsCommitDurably:
         refetched = InstallmentContractRepository(db_session).get_by_id_or_none(
             contract.id, company_id
         )
+        assert refetched is not None
         assert refetched.status == "APPROVED"
 
     def test_reject_commits(self, db_session: Session) -> None:
@@ -255,6 +263,7 @@ class TestLifecycleMethodsCommitDurably:
         refetched = InstallmentContractRepository(db_session).get_by_id_or_none(
             contract.id, company_id
         )
+        assert refetched is not None
         assert refetched.status == "DRAFT"
 
     def test_mark_defaulted_does_not_commit_by_itself(
@@ -272,6 +281,7 @@ class TestLifecycleMethodsCommitDurably:
         refetched = InstallmentContractRepository(db_session).get_by_id_or_none(
             contract.id, company_id
         )
+        assert refetched is not None
         assert refetched.status == "ACTIVE"  # rolled back — never committed
 
 

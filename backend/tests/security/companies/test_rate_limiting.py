@@ -22,6 +22,7 @@ Spec ref: spec.md §13.6 NFR-014.
 from __future__ import annotations
 
 import uuid as _uuid
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -37,10 +38,10 @@ def _login(client: TestClient, email: str, password: str) -> str:
     resp = client.post(
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -106,6 +107,7 @@ class TestCompanyCreateRateLimit:
                 headers=_auth(token),
             )
 
+        assert last_resp is not None
         assert last_resp.status_code == 429
         body = last_resp.json()
         assert "error" in body, f"429 body missing 'error' field: {body}"

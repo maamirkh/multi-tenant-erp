@@ -21,8 +21,10 @@ absent/unchanged.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Generator
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from sqlalchemy.orm import Session, sessionmaker
@@ -47,6 +49,7 @@ from modules.accounting.repositories.foundation import AccountingConfigurationRe
 from modules.accounting.repositories.gl import AccountingAuditLogRepository
 from modules.accounting.services.audit_service import AuditLogService
 from modules.accounting.services.fiscal_service import FiscalCalendarService
+from modules.accounting.services.payment_service import StagedCustomerPayment
 from tests.integration.migrations.conftest import (  # noqa: F401
     alembic_upgrade,
     db_engine,
@@ -66,7 +69,7 @@ def pg_engine(request: pytest.FixtureRequest):
 
 
 @pytest.fixture
-def db_session(pg_engine) -> Session:
+def db_session(pg_engine) -> Generator[Session, None, None]:
     session_factory = sessionmaker(bind=pg_engine)
     session = session_factory()
     try:
@@ -76,7 +79,7 @@ def db_session(pg_engine) -> Session:
 
 
 @pytest.fixture
-def setup(pg_engine, db_session: Session) -> dict:
+def setup(pg_engine, db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -147,7 +150,7 @@ def setup(pg_engine, db_session: Session) -> dict:
 
 class TestStageCustomerPaymentAtomicity:
     def test_forced_failure_between_staging_and_finalize_leaves_nothing_committed(
-        self, db_session: Session, setup: dict
+        self, db_session: Session, setup: dict[str, Any]
     ) -> None:
         ar_service = build_ar_service(db_session, with_sales_sync=False)
         payment_service = build_payment_service(db_session)
@@ -226,6 +229,7 @@ class TestStageCustomerPaymentAtomicity:
             refreshed_invoice = ar_service.get_transaction_by_id(
                 setup["company_id"], invoice.id
             )
+            assert refreshed_invoice is not None
             assert refreshed_invoice.outstanding_amount == Decimal("500.00")
 
             placeholder = verify_session.get(Account, placeholder_account_id)
@@ -235,7 +239,7 @@ class TestStageCustomerPaymentAtomicity:
             verify_session.close()
 
     def test_normal_path_commits_payment_and_allocation_together(
-        self, db_session: Session, setup: dict
+        self, db_session: Session, setup: dict[str, Any]
     ) -> None:
         ar_service = build_ar_service(db_session, with_sales_sync=False)
         payment_service = build_payment_service(db_session)
@@ -273,6 +277,7 @@ class TestStageCustomerPaymentAtomicity:
             ],
             actor_id=None,
         )
+        assert isinstance(staged_payment, StagedCustomerPayment)
         payment, _ = payment_service.finalize_customer_payment(
             staged_payment, actor_id=None
         )
@@ -294,6 +299,7 @@ class TestStageCustomerPaymentAtomicity:
             refreshed_invoice = ar_service.get_transaction_by_id(
                 setup["company_id"], invoice.id
             )
+            assert refreshed_invoice is not None
             assert refreshed_invoice.outstanding_amount == Decimal("0")
             assert refreshed_invoice.status == "PAID"
         finally:

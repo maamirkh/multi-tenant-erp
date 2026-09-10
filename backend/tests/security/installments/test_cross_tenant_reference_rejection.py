@@ -29,6 +29,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from typing import Any, cast
 
 import pytest
 from sqlalchemy.orm import Session
@@ -37,10 +38,20 @@ from modules.installments.exceptions import InstallmentNotFoundError
 from modules.installments.repositories.audit import InstallmentAuditLogRepository
 from modules.installments.repositories.contract import InstallmentContractRepository
 from modules.installments.repositories.sequence import InstallmentSequenceRepository
+from modules.installments.services.accounting_gateway import (
+    AccountingIntegrationGateway,
+)
 from modules.installments.services.audit_service import InstallmentAuditService
+from modules.installments.services.configuration_service import (
+    InstallmentConfigurationService,
+)
 from modules.installments.services.contract_service import InstallmentContractService
 from modules.installments.services.eligibility_service import (
     InstallmentEligibilityService,
+)
+from modules.installments.services.sales_read_gateway import (
+    SalesCustomerReadGateway,
+    SalesInvoiceReadGateway,
 )
 
 
@@ -63,7 +74,9 @@ class _FakeInvoiceGateway:
     ``SalesInvoiceRepository.get_by_id_or_none()``'s own tenant
     scoping."""
 
-    def __init__(self, invoices_by_company: dict[uuid.UUID, dict]) -> None:
+    def __init__(
+        self, invoices_by_company: dict[uuid.UUID, dict[uuid.UUID, _FakeInvoice]]
+    ) -> None:
         self._invoices = invoices_by_company
 
     def get_invoice(self, company_id, sales_invoice_id):
@@ -74,7 +87,9 @@ class _FakeCustomerGateway:
     """company_id-keyed, mirroring the real
     ``CustomerRepository.get_by_id_or_none()``'s own tenant scoping."""
 
-    def __init__(self, customers_by_company: dict[uuid.UUID, dict]) -> None:
+    def __init__(
+        self, customers_by_company: dict[uuid.UUID, dict[uuid.UUID, _FakeCustomer]]
+    ) -> None:
         self._customers = customers_by_company
 
     def get_customer(self, company_id, customer_id):
@@ -94,7 +109,7 @@ class _FakeConfigurationService:
         return None
 
 
-def _base_create_kwargs(sales_invoice_id: uuid.UUID) -> dict:
+def _base_create_kwargs(sales_invoice_id: uuid.UUID) -> dict[str, Any]:
     return {
         "sales_invoice_id": sales_invoice_id,
         "down_payment_amount": Decimal("100.00"),
@@ -108,21 +123,31 @@ def _base_create_kwargs(sales_invoice_id: uuid.UUID) -> dict:
 def _build_service(
     db_session: Session,
     *,
-    invoices_by_company: dict[uuid.UUID, dict],
-    customers_by_company: dict[uuid.UUID, dict],
+    invoices_by_company: dict[uuid.UUID, dict[uuid.UUID, _FakeInvoice]],
+    customers_by_company: dict[uuid.UUID, dict[uuid.UUID, _FakeCustomer]],
     outstanding_amount: Decimal = Decimal("1000.00"),
 ) -> InstallmentContractService:
     eligibility_service = InstallmentEligibilityService(
-        invoice_gateway=_FakeInvoiceGateway(invoices_by_company),
-        customer_gateway=_FakeCustomerGateway(customers_by_company),
-        ar_gateway=_FakeAccountingGateway(outstanding_amount),
+        invoice_gateway=cast(
+            SalesInvoiceReadGateway, _FakeInvoiceGateway(invoices_by_company)
+        ),
+        customer_gateway=cast(
+            SalesCustomerReadGateway, _FakeCustomerGateway(customers_by_company)
+        ),
+        ar_gateway=cast(
+            AccountingIntegrationGateway, _FakeAccountingGateway(outstanding_amount)
+        ),
     )
     return InstallmentContractService(
         repo=InstallmentContractRepository(db_session),
         sequence_repo=InstallmentSequenceRepository(db_session),
         eligibility_service=eligibility_service,
-        accounting_gateway=_FakeAccountingGateway(outstanding_amount),
-        configuration_service=_FakeConfigurationService(),
+        accounting_gateway=cast(
+            AccountingIntegrationGateway, _FakeAccountingGateway(outstanding_amount)
+        ),
+        configuration_service=cast(
+            InstallmentConfigurationService, _FakeConfigurationService()
+        ),
         audit_service=InstallmentAuditService(
             db=db_session, audit_repo=InstallmentAuditLogRepository(db_session)
         ),

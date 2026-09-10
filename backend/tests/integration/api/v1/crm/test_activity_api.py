@@ -12,6 +12,7 @@ Task: T053 (tasks.md Phase 6).
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -40,13 +41,13 @@ def _create_lead(client: TestClient, company_id: str, token: str) -> str:
         headers=auth_header(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _create_activity_payload(
     assigned_to: str, lead_id: str, **overrides: object
-) -> dict:
-    payload = {
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "activity_type": "CALL",
         "subject": "Intro call",
         "assigned_to": assigned_to,
@@ -59,7 +60,7 @@ def _create_activity_payload(
 def _current_user_id(client: TestClient, token: str) -> str:
     resp = client.get("/api/v1/profile", headers=auth_header(token))
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _setup(crm_client: TestClient, db_session: Session) -> tuple[str, str, str, str]:

@@ -32,6 +32,7 @@ from modules.accounting.dependencies import (
 )
 from modules.accounting.models.ar import ARTransaction
 from modules.accounting.models.payments import Payment, PaymentAllocationLine
+from modules.accounting.services.payment_service import StagedCustomerPayment
 from modules.installments.models.allocation_reference import (
     InstallmentAllocationReference,
 )
@@ -123,6 +124,7 @@ class TestCollectionAtomicityLayerB:
 
         payment_id = staged_payment.payment.id
         allocation_line_ids = [line.id for line in staged_allocation.results]
+        assert isinstance(staged_payment, StagedCustomerPayment)
         journal_entry_id = staged_payment.journal_entry.id
 
         for instr, alloc_line in zip(
@@ -193,6 +195,7 @@ class TestCollectionAtomicityLayerB:
             assert verify_session.get(InstallmentIdempotencyKey, reservation_id) is None
 
             refreshed_invoice = verify_session.get(ARTransaction, ctx["invoice"].id)
+            assert refreshed_invoice is not None
             assert refreshed_invoice.outstanding_amount == Decimal("300.00")
             assert refreshed_invoice.status == "OPEN"
 

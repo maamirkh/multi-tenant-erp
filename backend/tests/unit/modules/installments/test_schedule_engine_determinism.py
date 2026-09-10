@@ -7,11 +7,12 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 from modules.installments.services.schedule_engine import ScheduleEngine
 
 
-def _kwargs() -> dict:
+def _kwargs() -> dict[str, Any]:
     return dict(
         principal=Decimal("10000"),
         down_payment=Decimal("1000"),

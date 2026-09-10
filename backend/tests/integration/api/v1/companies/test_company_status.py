@@ -5,6 +5,8 @@ Spec ref: spec.md §4 US3, AC-004.
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -15,10 +17,10 @@ def _login(client: TestClient, email: str, password: str) -> str:
     resp = client.post(
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -40,7 +42,7 @@ def _create_and_prepare(
             json={"country": "US"},
             headers=_auth(token),
         )
-    return company_id
+    return str(company_id)
 
 
 class TestActivateCompany:

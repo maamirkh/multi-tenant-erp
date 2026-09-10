@@ -123,6 +123,7 @@ class TestReserveStock:
         pos = pos_repo.get_by_product_warehouse(
             company_id=cid, product_id=pid, warehouse_id=wh.id
         )
+        assert pos is not None
         assert Decimal(str(pos.qty_on_hand)) == pytest.approx(Decimal("100"))
         assert Decimal(str(pos.qty_reserved)) == pytest.approx(Decimal("25"))
         # available = 100 - 25 = 75
@@ -151,6 +152,7 @@ class TestReserveStock:
         pos = pos_repo.get_by_product_warehouse(
             company_id=cid, product_id=pid, warehouse_id=wh.id
         )
+        assert pos is not None
         assert Decimal(str(pos.qty_reserved)) == pytest.approx(Decimal("50"))
 
     def test_reserve_exceeds_available_raises(self, db_session: Session):
@@ -214,6 +216,7 @@ class TestReleaseStock:
         pos = pos_repo.get_by_product_warehouse(
             company_id=cid, product_id=pid, warehouse_id=wh.id
         )
+        assert pos is not None
         assert Decimal(str(pos.qty_reserved)) == pytest.approx(Decimal("25"))
 
     def test_release_more_than_reserved_raises(self, db_session: Session):

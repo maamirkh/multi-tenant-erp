@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -38,7 +39,7 @@ from modules.accounting.services.report_service import ReportService
 
 
 @pytest.fixture
-def setup(db_session: Session) -> dict:
+def setup(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -100,7 +101,10 @@ def service(db_session: Session) -> ReportService:
 
 class TestGLReportCursorPagination:
     def test_walks_every_row_exactly_once_across_pages(
-        self, posting_engine: PostingEngine, service: ReportService, setup: dict
+        self,
+        posting_engine: PostingEngine,
+        service: ReportService,
+        setup: dict[str, Any],
     ) -> None:
         for i in range(25):
             posting_engine.post_direct(
@@ -123,7 +127,7 @@ class TestGLReportCursorPagination:
                 currency_code="USD",
             )
 
-        seen_journal_line_keys: set[tuple] = set()
+        seen_journal_line_keys: set[tuple[Any, Any]] = set()
         cursor = None
         pages = 0
         while True:
@@ -151,7 +155,10 @@ class TestGLReportCursorPagination:
         assert pages == 4  # ceil(25 / 7)
 
     def test_account_filter_excludes_other_accounts_under_cursor_mode(
-        self, posting_engine: PostingEngine, service: ReportService, setup: dict
+        self,
+        posting_engine: PostingEngine,
+        service: ReportService,
+        setup: dict[str, Any],
     ) -> None:
         posting_engine.post_direct(
             company_id=setup["company_id"],
@@ -183,7 +190,10 @@ class TestGLReportCursorPagination:
 
 class TestJournalReport:
     def test_returns_only_posted_entries_for_the_period(
-        self, posting_engine: PostingEngine, service: ReportService, setup: dict
+        self,
+        posting_engine: PostingEngine,
+        service: ReportService,
+        setup: dict[str, Any],
     ) -> None:
         posting_engine.post_direct(
             company_id=setup["company_id"],

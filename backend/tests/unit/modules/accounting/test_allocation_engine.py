@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -52,7 +53,7 @@ from modules.accounting.services.payment_service import PaymentService
 
 
 @pytest.fixture
-def setup(db_session: Session) -> dict:
+def setup(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -168,7 +169,7 @@ def allocation_engine(db_session: Session) -> AllocationEngine:
 
 def _make_invoice(
     db_session: Session,
-    setup: dict,
+    setup: dict[str, Any],
     amount_foreign: Decimal,
     exchange_rate: Decimal = Decimal("1"),
     currency_code: str = "USD",
@@ -199,7 +200,7 @@ def _make_invoice(
 
 class TestOverAllocation:
     def test_allocation_exceeding_invoice_outstanding_raises(
-        self, payment_service: PaymentService, setup: dict
+        self, payment_service: PaymentService, setup: dict[str, Any]
     ) -> None:
         invoice = _make_invoice(payment_service.db, setup, Decimal("100.00"))
         payment, _ = payment_service.create_customer_payment(
@@ -224,7 +225,7 @@ class TestOverAllocation:
             )
 
     def test_allocation_exceeding_payment_balance_raises(
-        self, payment_service: PaymentService, setup: dict
+        self, payment_service: PaymentService, setup: dict[str, Any]
     ) -> None:
         invoice = _make_invoice(payment_service.db, setup, Decimal("1000.00"))
         payment, _ = payment_service.create_customer_payment(
@@ -251,7 +252,7 @@ class TestOverAllocation:
 
 class TestPartialAllocation:
     def test_partial_allocation_updates_outstanding_correctly(
-        self, payment_service: PaymentService, setup: dict
+        self, payment_service: PaymentService, setup: dict[str, Any]
     ) -> None:
         invoice = _make_invoice(payment_service.db, setup, Decimal("1000.00"))
         payment, _ = payment_service.create_customer_payment(
@@ -280,6 +281,7 @@ class TestPartialAllocation:
         refreshed_invoice = ar_repo.get_by_id_or_none(
             id=invoice.id, company_id=setup["company_id"]
         )
+        assert refreshed_invoice is not None
         assert refreshed_invoice.outstanding_amount == Decimal("600.00")
         assert refreshed_invoice.status == "PARTIALLY_PAID"
 
@@ -288,11 +290,12 @@ class TestPartialAllocation:
             source_document_type="Payment",
             source_document_id=payment.id,
         )
+        assert credit_txn is not None
         assert credit_txn.outstanding_amount == Decimal("-600.00")
         assert credit_txn.status == "PARTIALLY_PAID"
 
     def test_full_allocation_closes_invoice_and_payment(
-        self, payment_service: PaymentService, setup: dict
+        self, payment_service: PaymentService, setup: dict[str, Any]
     ) -> None:
         invoice = _make_invoice(payment_service.db, setup, Decimal("700.00"))
         payment, _ = payment_service.create_customer_payment(
@@ -319,6 +322,7 @@ class TestPartialAllocation:
         refreshed_invoice = ar_repo.get_by_id_or_none(
             id=invoice.id, company_id=setup["company_id"]
         )
+        assert refreshed_invoice is not None
         assert refreshed_invoice.outstanding_amount == Decimal("0")
         assert refreshed_invoice.status == "PAID"
 
@@ -327,13 +331,14 @@ class TestPartialAllocation:
             source_document_type="Payment",
             source_document_id=payment.id,
         )
+        assert credit_txn is not None
         assert credit_txn.outstanding_amount == Decimal("0")
         assert credit_txn.status == "PAID"
 
 
 class TestRealizedFXGainLoss:
     def test_eur_invoice_at_1_1_settled_at_1_15_is_a_gain(
-        self, payment_service: PaymentService, setup: dict
+        self, payment_service: PaymentService, setup: dict[str, Any]
     ) -> None:
         invoice = _make_invoice(
             payment_service.db,
@@ -384,6 +389,7 @@ class TestRealizedFXGainLoss:
         refreshed_invoice = ar_repo.get_by_id_or_none(
             id=invoice.id, company_id=setup["company_id"]
         )
+        assert refreshed_invoice is not None
         assert refreshed_invoice.outstanding_amount == Decimal("0")
         assert refreshed_invoice.status == "PAID"
 
@@ -401,7 +407,7 @@ class TestRealizedFXGainLoss:
         )
 
     def test_eur_invoice_at_1_15_settled_at_1_10_is_a_loss(
-        self, payment_service: PaymentService, setup: dict
+        self, payment_service: PaymentService, setup: dict[str, Any]
     ) -> None:
         invoice = _make_invoice(
             payment_service.db,
@@ -445,7 +451,7 @@ class TestRealizedFXGainLoss:
 
 class TestDiscount:
     def test_discount_reduces_invoice_and_posts_to_discount_account(
-        self, payment_service: PaymentService, setup: dict
+        self, payment_service: PaymentService, setup: dict[str, Any]
     ) -> None:
         invoice = _make_invoice(payment_service.db, setup, Decimal("1000.00"))
         payment, _ = payment_service.create_customer_payment(
@@ -478,6 +484,7 @@ class TestDiscount:
         refreshed_invoice = ar_repo.get_by_id_or_none(
             id=invoice.id, company_id=setup["company_id"]
         )
+        assert refreshed_invoice is not None
         assert refreshed_invoice.outstanding_amount == Decimal("0")
         assert refreshed_invoice.status == "PAID"
 
@@ -501,7 +508,7 @@ class TestSequentialAllocationSerializesCorrectly:
     """
 
     def test_two_sequential_allocations_to_same_invoice_do_not_overshoot(
-        self, payment_service: PaymentService, setup: dict
+        self, payment_service: PaymentService, setup: dict[str, Any]
     ) -> None:
         invoice = _make_invoice(payment_service.db, setup, Decimal("1000.00"))
         payment_a, _ = payment_service.create_customer_payment(
@@ -548,4 +555,5 @@ class TestSequentialAllocationSerializesCorrectly:
         refreshed_invoice = ar_repo.get_by_id_or_none(
             id=invoice.id, company_id=setup["company_id"]
         )
+        assert refreshed_invoice is not None
         assert refreshed_invoice.outstanding_amount == Decimal("400.00")

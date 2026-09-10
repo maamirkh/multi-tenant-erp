@@ -7,6 +7,8 @@ Spec ref: spec.md §8 NFR-014, plan.md §3 (SecurityHeadersMiddleware).
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -20,7 +22,7 @@ _REQUIRED_HEADERS = {
 }
 
 
-def _assert_security_headers(response_headers: dict) -> None:
+def _assert_security_headers(response_headers: dict[str, Any]) -> None:
     for name, value in _REQUIRED_HEADERS.items():
         assert response_headers.get(name) == value, (
             f"Missing or wrong security header: {name}={response_headers.get(name)!r}"

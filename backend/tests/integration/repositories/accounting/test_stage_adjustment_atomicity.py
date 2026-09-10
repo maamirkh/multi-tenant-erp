@@ -26,8 +26,10 @@ partial commit is acceptable (plan.md §12.2's required test).
 from __future__ import annotations
 
 import uuid
+from collections.abc import Generator
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -67,7 +69,7 @@ def pg_engine(request: pytest.FixtureRequest):
 
 
 @pytest.fixture
-def db_session(pg_engine) -> Session:
+def db_session(pg_engine) -> Generator[Session, None, None]:
     session_factory = sessionmaker(bind=pg_engine)
     session = session_factory()
     try:
@@ -77,7 +79,7 @@ def db_session(pg_engine) -> Session:
 
 
 @pytest.fixture
-def setup(pg_engine, db_session: Session) -> dict:
+def setup(pg_engine, db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -127,7 +129,7 @@ def setup(pg_engine, db_session: Session) -> dict:
 
 class TestStageAdjustmentAtomicity:
     def test_forced_failure_between_stage_and_finalize_leaves_nothing_committed(
-        self, db_session: Session, setup: dict
+        self, db_session: Session, setup: dict[str, Any]
     ) -> None:
         ar_service = build_ar_service(db_session, with_sales_sync=False)
         customer_id = uuid.uuid4()
@@ -200,7 +202,7 @@ class TestStageAdjustmentAtomicity:
             verify_session.close()
 
     def test_normal_path_commits_everything_together(
-        self, db_session: Session, setup: dict
+        self, db_session: Session, setup: dict[str, Any]
     ) -> None:
         ar_service = build_ar_service(db_session, with_sales_sync=False)
         customer_id = uuid.uuid4()

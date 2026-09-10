@@ -21,7 +21,9 @@ from __future__ import annotations
 import ast
 import inspect
 import uuid
+from typing import cast
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -180,7 +182,7 @@ class TestGrantingInstallmentsOverrideExposesNoBusinessData:
         only the module's separate, tenant-scoped router (mounted at
         ``/companies/{company_id}/installments``) does that, and it is
         governed by ordinary tenant RBAC, not Platform Admin auth."""
-        spec = test_client.app.openapi()
+        spec = cast(FastAPI, test_client.app).openapi()
         platform_installments_paths = {
             p
             for p in spec["paths"]

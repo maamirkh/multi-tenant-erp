@@ -25,8 +25,10 @@ already-correct pattern (never a committing repository call).
 from __future__ import annotations
 
 import uuid
+from collections.abc import Generator
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from sqlalchemy.orm import Session, sessionmaker
@@ -65,7 +67,7 @@ def pg_engine(request: pytest.FixtureRequest):
 
 
 @pytest.fixture
-def db_session(pg_engine) -> Session:
+def db_session(pg_engine) -> Generator[Session, None, None]:
     session_factory = sessionmaker(bind=pg_engine)
     session = session_factory()
     try:
@@ -75,7 +77,7 @@ def db_session(pg_engine) -> Session:
 
 
 @pytest.fixture
-def setup(pg_engine, db_session: Session) -> dict:
+def setup(pg_engine, db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -114,7 +116,7 @@ def setup(pg_engine, db_session: Session) -> dict:
 
 class TestGetOrCreateLedgerNoPrematureCommit:
     def test_missing_config_failure_does_not_strand_a_committed_ledger(
-        self, db_session: Session, setup: dict
+        self, db_session: Session, setup: dict[str, Any]
     ) -> None:
         """No ``AccountingConfiguration`` row exists for this company at
         all, so ``stage_adjustment()`` raises ``PostingValidationError``
@@ -149,7 +151,7 @@ class TestGetOrCreateLedgerNoPrematureCommit:
             verify_session.close()
 
     def test_caller_staged_row_is_not_stranded_by_a_new_ledger_creation(
-        self, db_session: Session, setup: dict
+        self, db_session: Session, setup: dict[str, Any]
     ) -> None:
         """A generic caller-staged row (standing in for an Installments
         row) flushed into the session *before* ``stage_adjustment()`` is
@@ -197,7 +199,7 @@ class TestGetOrCreateLedgerNoPrematureCommit:
             verify_session.close()
 
     def test_first_time_customer_ledger_still_created_and_committed_on_success(
-        self, db_session: Session, setup: dict
+        self, db_session: Session, setup: dict[str, Any]
     ) -> None:
         """Confirms the fix did not break the happy path: a first-time
         customer's ledger is still created, and still ends up committed,

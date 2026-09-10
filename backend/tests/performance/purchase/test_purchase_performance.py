@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -39,10 +40,10 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -65,7 +66,7 @@ def _create_supplier(client: TestClient, token: str, cid: str, code: str) -> str
     assert resp.status_code in (200, 201), resp.text
     sid = resp.json()["data"]["id"]
     client.post(f"{_base(cid)}/suppliers/{sid}/activate", headers=_auth(token))
-    return sid
+    return str(sid)
 
 
 def _create_po(client: TestClient, token: str, cid: str, supplier_id: str) -> str:
@@ -75,7 +76,7 @@ def _create_po(client: TestClient, token: str, cid: str, supplier_id: str) -> st
         json={"supplier_id": supplier_id, "currency_code": "USD", "notes": "Perf test"},
     )
     assert resp.status_code in (200, 201), resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _p95(latencies: list[float]) -> float:
@@ -98,7 +99,7 @@ def _create_company(client: TestClient, token: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 # ---------------------------------------------------------------------------

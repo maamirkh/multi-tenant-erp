@@ -33,7 +33,7 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -51,7 +51,7 @@ def _account_id_by_code(
     assert resp.status_code == 200, resp.text
     accounts = {a["account_code"]: a["id"] for a in resp.json()["data"]}
     assert code in accounts, f"account code {code} not found in COA: {sorted(accounts)}"
-    return accounts[code]
+    return str(accounts[code])
 
 
 class _NoCloseSession:

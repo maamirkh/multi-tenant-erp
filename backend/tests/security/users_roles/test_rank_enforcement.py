@@ -22,6 +22,7 @@ Spec ref: spec.md BR-011, BR-013, tasks T135.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -43,10 +44,10 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, f"Login failed: {resp.text}"
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -60,7 +61,7 @@ def _create_company(client: TestClient, token: str, suffix: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, f"Company creation failed: {resp.text}"
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 # ---------------------------------------------------------------------------
@@ -73,7 +74,7 @@ def ranked_company(test_client: TestClient, db_session: Session):
     """Seed a company with an owner, admin, manager, and viewer.
 
     Returns:
-        dict with keys: company_id, owner_token, admin_token, manager_token,
+        dict[str, Any] with keys: company_id, owner_token, admin_token, manager_token,
         viewer_token, owner_member_id, admin_member_id, manager_member_id,
         viewer_member_id, role_ids (slug → UUID str).
     """
@@ -152,7 +153,7 @@ class TestLowerRankCannotAssignHigherRankRole:
     """Lower-ranked member cannot assign a role above their own rank via PATCH."""
 
     def test_manager_cannot_assign_admin_role_to_viewer(
-        self, test_client: TestClient, ranked_company: dict
+        self, test_client: TestClient, ranked_company: dict[str, Any]
     ) -> None:
         """Manager (rank 60) cannot assign Admin role (rank 80) to Viewer — 403."""
         resp = test_client.patch(
@@ -164,7 +165,7 @@ class TestLowerRankCannotAssignHigherRankRole:
         assert resp.status_code == 403
 
     def test_admin_cannot_assign_owner_role(
-        self, test_client: TestClient, ranked_company: dict
+        self, test_client: TestClient, ranked_company: dict[str, Any]
     ) -> None:
         """Admin (rank 80) cannot assign Owner role (rank 100) to Viewer — 403."""
         resp = test_client.patch(
@@ -176,7 +177,7 @@ class TestLowerRankCannotAssignHigherRankRole:
         assert resp.status_code == 403
 
     def test_viewer_cannot_assign_any_role(
-        self, test_client: TestClient, ranked_company: dict
+        self, test_client: TestClient, ranked_company: dict[str, Any]
     ) -> None:
         """Viewer (rank 20) cannot assign Viewer role to Manager — 403."""
         resp = test_client.patch(
@@ -188,7 +189,7 @@ class TestLowerRankCannotAssignHigherRankRole:
         assert resp.status_code == 403
 
     def test_manager_cannot_manage_admin_lifecycle(
-        self, test_client: TestClient, ranked_company: dict
+        self, test_client: TestClient, ranked_company: dict[str, Any]
     ) -> None:
         """Manager (rank 60) lacks Admin+ rank to access lifecycle endpoints — 403."""
         resp = test_client.post(
@@ -209,7 +210,10 @@ class TestEqualRankCannotChangePeerRole:
     """Equal-ranked members (excluding Owner) cannot change each other's role."""
 
     def test_admin_cannot_change_another_admins_role(
-        self, test_client: TestClient, db_session: Session, ranked_company: dict
+        self,
+        test_client: TestClient,
+        db_session: Session,
+        ranked_company: dict[str, Any],
     ) -> None:
         """Admin A cannot change Admin B's role (equal rank 80) — 403."""
         prefix = uuid.uuid4().hex[:8]
@@ -222,6 +226,7 @@ class TestEqualRankCannotChangePeerRole:
 
         role_repo = RoleRepository(db_session)
         admin_role = role_repo.get_by_slug(company_id, "admin")
+        assert admin_role is not None
 
         second_admin_member = create_test_member(
             db_session,
@@ -240,7 +245,10 @@ class TestEqualRankCannotChangePeerRole:
         assert resp.status_code == 403
 
     def test_manager_cannot_change_another_managers_role(
-        self, test_client: TestClient, db_session: Session, ranked_company: dict
+        self,
+        test_client: TestClient,
+        db_session: Session,
+        ranked_company: dict[str, Any],
     ) -> None:
         """Manager A cannot change Manager B's role (equal rank 60) — 403."""
         prefix = uuid.uuid4().hex[:8]
@@ -253,6 +261,7 @@ class TestEqualRankCannotChangePeerRole:
 
         role_repo = RoleRepository(db_session)
         manager_role = role_repo.get_by_slug(company_id, "manager")
+        assert manager_role is not None
 
         second_manager_member = create_test_member(
             db_session,
@@ -285,7 +294,7 @@ class TestSelfRoleChangePrevented:
     """
 
     def test_admin_cannot_change_own_role(
-        self, test_client: TestClient, ranked_company: dict
+        self, test_client: TestClient, ranked_company: dict[str, Any]
     ) -> None:
         """Admin attempting to change own role returns 409 (BR-013)."""
         resp = test_client.patch(
@@ -297,7 +306,7 @@ class TestSelfRoleChangePrevented:
         assert resp.status_code == 409
 
     def test_owner_cannot_change_own_role(
-        self, test_client: TestClient, ranked_company: dict
+        self, test_client: TestClient, ranked_company: dict[str, Any]
     ) -> None:
         """Owner attempting to change own role returns 409 (BR-013)."""
         resp = test_client.patch(
@@ -309,7 +318,7 @@ class TestSelfRoleChangePrevented:
         assert resp.status_code == 409
 
     def test_viewer_cannot_change_own_role(
-        self, test_client: TestClient, ranked_company: dict
+        self, test_client: TestClient, ranked_company: dict[str, Any]
     ) -> None:
         """Viewer attempting to change own role returns 403 (insufficient rank for PATCH)."""
         resp = test_client.patch(
@@ -335,7 +344,7 @@ class TestCustomRoleRankCannotExceedCreatorRank:
     """
 
     def test_admin_cannot_create_role_with_owner_rank(
-        self, test_client: TestClient, ranked_company: dict
+        self, test_client: TestClient, ranked_company: dict[str, Any]
     ) -> None:
         """Admin (rank 80) cannot create a custom role with rank 100 — 422."""
         resp = test_client.post(
@@ -346,7 +355,7 @@ class TestCustomRoleRankCannotExceedCreatorRank:
         assert resp.status_code in (403, 422)
 
     def test_admin_cannot_create_role_with_equal_admin_rank(
-        self, test_client: TestClient, ranked_company: dict
+        self, test_client: TestClient, ranked_company: dict[str, Any]
     ) -> None:
         """Admin (rank 80) cannot create a custom role with rank >= 80 — 422."""
         resp = test_client.post(
@@ -357,7 +366,7 @@ class TestCustomRoleRankCannotExceedCreatorRank:
         assert resp.status_code in (403, 422)
 
     def test_admin_can_create_role_below_own_rank(
-        self, test_client: TestClient, ranked_company: dict
+        self, test_client: TestClient, ranked_company: dict[str, Any]
     ) -> None:
         """Admin (rank 80) can create a custom role with rank 79 — 201."""
         resp = test_client.post(

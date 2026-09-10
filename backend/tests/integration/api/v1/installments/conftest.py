@@ -20,10 +20,13 @@ contract, not activation itself (T124's own dedicated concern).
 from __future__ import annotations
 
 import uuid
+from collections.abc import Generator
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 import pytest
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.events.outbox import EventOutboxRepository
@@ -97,7 +100,7 @@ from tests.integration.migrations.conftest import (  # noqa: F401
 
 
 @pytest.fixture
-def pg_engine(request: pytest.FixtureRequest):
+def pg_engine(request: pytest.FixtureRequest) -> Generator[Engine, None, None]:
     pg_url = request.getfixturevalue("pg_test_db")
     alembic_upgrade(pg_url, "072")
     engine = db_engine(pg_url)
@@ -108,7 +111,7 @@ def pg_engine(request: pytest.FixtureRequest):
 
 
 @pytest.fixture
-def db_session(pg_engine) -> Session:
+def db_session(pg_engine: Engine) -> Generator[Session, None, None]:
     session_factory = sessionmaker(bind=pg_engine)
     session = session_factory()
     try:
@@ -276,11 +279,11 @@ def build_active_contract_with_schedule(
     installment_amount: Decimal = Decimal("100.00"),
     down_payment_amount: Decimal = Decimal("0"),
     grace_period_days: int = 0,
-    late_charge_policy: dict | None = None,
+    late_charge_policy: dict[str, Any] | None = None,
     status: str = "ACTIVE",
     company_id: uuid.UUID | None = None,
     customer_id: uuid.UUID | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Build a fully self-contained, real-Postgres-backed ACTIVE
     installment contract with an active schedule version, ready for
     ``InstallmentCollectionService.record_collection()``/
