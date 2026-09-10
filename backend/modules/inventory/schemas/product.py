@@ -74,7 +74,7 @@ class VariantCreateRequest(InventoryBaseSchema):
         description="Unique SKU for this variant within the company",
     )
     attributes: dict[str, Any] = Field(
-        default_factory=dict,
+        default_factory=dict[str, Any],
         description="Key-value attribute dictionary (e.g. {'size': 'L', 'colour': 'Red'})",
     )
     is_stock_tracked: bool = Field(default=True)
@@ -257,7 +257,7 @@ class LookupResult(InventoryBaseSchema):
     status: str
     base_uom_id: str
     barcode_value: str | None = None
-    stock_positions: list[dict] = []
+    stock_positions: list[dict[str, Any]] = []
 
 
 class LabelData(InventoryBaseSchema):

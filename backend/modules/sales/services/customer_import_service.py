@@ -21,6 +21,7 @@ import csv
 import io
 import logging
 from decimal import Decimal, InvalidOperation
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -73,10 +74,10 @@ class CustomerImportService:
         company_id: UUID,
         csv_bytes: bytes,
         created_by: UUID | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Import customers from CSV bytes.
 
-        Returns a dict with: total_rows, imported, skipped, errors.
+        Returns a dict[str, Any] with: total_rows, imported, skipped, errors.
         """
         text = csv_bytes.decode("utf-8-sig")
         reader = csv.DictReader(io.StringIO(text))
@@ -107,8 +108,8 @@ class CustomerImportService:
 
         imported = 0
         skipped = 0
-        errors: list[dict] = []
-        warnings: list[dict] = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
         batch: list[Customer] = []
         total_rows = 0
 
@@ -309,7 +310,9 @@ class CustomerImportService:
         # create_warehouse's comment for the full root-cause explanation.
         self.db.commit()
 
-    def _validate_row(self, row: dict, row_num: int, company_id: UUID) -> list[dict]:
+    def _validate_row(
+        self, row: dict[str, Any], row_num: int, company_id: UUID
+    ) -> list[dict[str, Any]]:
         """Validate a single CSV row. Returns list of error dicts."""
         errors = []
 

@@ -34,7 +34,11 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
-from core.auth.dependencies import require_authenticated
+from core.auth.dependencies import (
+    require_authenticated,
+    require_session_id,
+    require_user_id,
+)
 from core.auth.interfaces import CurrentUser
 from core.config.settings import Settings, get_settings
 from core.database.session import get_db
@@ -210,8 +214,8 @@ async def logout(
 ) -> StandardResponse[LogoutResponse]:
     """Revoke the current session and all its refresh tokens."""
     svc.logout(
-        user_id=current_user.user_id,
-        session_id=current_user.session_id,
+        user_id=require_user_id(current_user),
+        session_id=require_session_id(current_user),
         request=request,
     )
     return StandardResponse(
@@ -253,7 +257,7 @@ async def get_me(
     svc: AuthService = Depends(_auth_service),
 ) -> StandardResponse[UserProfileResponse]:
     """Return the current authenticated user's profile."""
-    profile = svc.get_current_user_profile(current_user.user_id)
+    profile = svc.get_current_user_profile(require_user_id(current_user))
     return StandardResponse(
         data=UserProfileResponse(
             user_id=profile.user_id,
@@ -377,7 +381,7 @@ async def change_password(
 ) -> JSONResponse:
     """Change password for the currently authenticated user."""
     svc.change_password(
-        user_id=current_user.user_id,
+        user_id=require_user_id(current_user),
         current_password=payload.current_password,
         new_password=payload.new_password,
         request=request,

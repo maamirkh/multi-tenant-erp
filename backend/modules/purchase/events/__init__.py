@@ -50,11 +50,11 @@ class PurchaseDomainEvent:
 
     event_type: str
     aggregate_type: str
-    aggregate_id: UUID
-    company_id: UUID
+    aggregate_id: str
+    company_id: str
     occurred_at: datetime = field(default_factory=utcnow)
     event_id: UUID = field(default_factory=uuid4)
-    actor_id: UUID | None = None
+    actor_id: str | None = None
     correlation_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:

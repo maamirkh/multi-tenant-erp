@@ -21,7 +21,16 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Path, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    File,
+    HTTPException,
+    Path,
+    UploadFile,
+    status,
+)
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -64,6 +73,7 @@ from modules.inventory.dependencies import (
     get_warehouse_service,
 )
 from modules.inventory.exceptions import InventoryPermissionDeniedError
+from modules.inventory.models.product import Product
 from modules.inventory.repositories.alerts_repository import (
     LowStockAlertRepository,
     ReorderRuleRepository,
@@ -284,7 +294,7 @@ def list_feature_flags(
 def update_feature_flag(
     company_id: UUID = Path(...),
     flag_key: str = Path(...),
-    body: FeatureFlagUpdateRequest = ...,
+    body: FeatureFlagUpdateRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     flag_service: FeatureFlagService = Depends(get_feature_flag_service),
     db: Session = Depends(get_db),
@@ -339,14 +349,14 @@ def update_feature_flag(
         flag_service.enable(
             company_id=company_id,
             flag_key=flag_key,
-            actor_id=current_user.user_id,  # type: ignore[arg-type]
+            actor_id=current_user.user_id,
             description=body.description,
         )
     else:
         flag_service.disable(
             company_id=company_id,
             flag_key=flag_key,
-            actor_id=current_user.user_id,  # type: ignore[arg-type]
+            actor_id=current_user.user_id,
             description=body.description,
         )
     all_flags = flag_service.get_all(company_id=company_id)
@@ -371,7 +381,7 @@ def update_feature_flag(
 )
 def create_category(
     company_id: UUID = Path(...),
-    body: CategoryCreateRequest = ...,
+    body: CategoryCreateRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: CategoryService = Depends(get_category_service),
 ) -> StandardResponse[CategoryResponse]:
@@ -382,7 +392,7 @@ def create_category(
         description=body.description,
         parent_id=body.parent_id,
         sort_order=body.sort_order,
-        actor_id=current_user.user_id,  # type: ignore[arg-type]
+        actor_id=current_user.user_id,
     )
     return StandardResponse(
         data=CategoryResponse.model_validate(category),
@@ -436,7 +446,7 @@ def get_category(
 def update_category(
     company_id: UUID = Path(...),
     category_id: UUID = Path(...),
-    body: CategoryUpdateRequest = ...,
+    body: CategoryUpdateRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: CategoryService = Depends(get_category_service),
 ) -> StandardResponse[CategoryResponse]:
@@ -521,7 +531,7 @@ def delete_category(
 )
 def create_brand(
     company_id: UUID = Path(...),
-    body: BrandCreateRequest = ...,
+    body: BrandCreateRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: BrandService = Depends(get_brand_service),
 ) -> StandardResponse[BrandResponse]:
@@ -532,7 +542,7 @@ def create_brand(
         country_of_origin=body.country_of_origin,
         logo_url=body.logo_url,
         website=body.website,
-        actor_id=current_user.user_id,  # type: ignore[arg-type]
+        actor_id=current_user.user_id,
     )
     return StandardResponse(
         data=BrandResponse.model_validate(brand),
@@ -594,7 +604,7 @@ def get_brand(
 def update_brand(
     company_id: UUID = Path(...),
     brand_id: UUID = Path(...),
-    body: BrandUpdateRequest = ...,
+    body: BrandUpdateRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: BrandService = Depends(get_brand_service),
 ) -> StandardResponse[BrandResponse]:
@@ -679,7 +689,7 @@ def delete_brand(
 )
 def create_uom(
     company_id: UUID = Path(...),
-    body: UOMCreateRequest = ...,
+    body: UOMCreateRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: UOMService = Depends(get_uom_service),
 ) -> StandardResponse[UOMResponse]:
@@ -689,7 +699,7 @@ def create_uom(
         name=body.name,
         uom_type=body.uom_type,
         symbol=body.symbol,
-        actor_id=current_user.user_id,  # type: ignore[arg-type]
+        actor_id=current_user.user_id,
     )
     return StandardResponse(
         data=UOMResponse.model_validate(uom),
@@ -751,7 +761,7 @@ def get_uom(
 def update_uom(
     company_id: UUID = Path(...),
     uom_id: UUID = Path(...),
-    body: UOMUpdateRequest = ...,
+    body: UOMUpdateRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: UOMService = Depends(get_uom_service),
 ) -> StandardResponse[UOMResponse]:
@@ -811,7 +821,7 @@ def delete_uom(
 )
 def create_uom_conversion(
     company_id: UUID = Path(...),
-    body: UOMConversionCreateRequest = ...,
+    body: UOMConversionCreateRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: UOMConversionService = Depends(get_uom_conversion_service),
 ) -> StandardResponse[UOMConversionResponse]:
@@ -821,7 +831,7 @@ def create_uom_conversion(
         target_uom_id=body.target_uom_id,
         conversion_factor=body.conversion_factor,
         notes=body.notes,
-        actor_id=current_user.user_id,  # type: ignore[arg-type]
+        actor_id=current_user.user_id,
     )
     return StandardResponse(
         data=UOMConversionResponse.model_validate(conversion),
@@ -857,7 +867,7 @@ def delete_uom_conversion(
 )
 def create_attribute(
     company_id: UUID = Path(...),
-    body: AttributeDefinitionCreateRequest = ...,
+    body: AttributeDefinitionCreateRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: AttributeDefinitionService = Depends(get_attr_definition_service),
 ) -> StandardResponse[AttributeDefinitionResponse]:
@@ -868,7 +878,7 @@ def create_attribute(
         options=body.options,
         is_required=body.is_required,
         description=body.description,
-        actor_id=current_user.user_id,  # type: ignore[arg-type]
+        actor_id=current_user.user_id,
     )
     return StandardResponse(
         data=AttributeDefinitionResponse.model_validate(attr),
@@ -922,7 +932,7 @@ def get_attribute(
 def update_attribute(
     company_id: UUID = Path(...),
     attr_id: UUID = Path(...),
-    body: AttributeDefinitionUpdateRequest = ...,
+    body: AttributeDefinitionUpdateRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: AttributeDefinitionService = Depends(get_attr_definition_service),
 ) -> StandardResponse[AttributeDefinitionResponse]:
@@ -967,7 +977,7 @@ def delete_attribute(
 )
 def create_attribute_set(
     company_id: UUID = Path(...),
-    body: AttributeSetCreateRequest = ...,
+    body: AttributeSetCreateRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: AttributeSetService = Depends(get_attr_set_service),
 ) -> StandardResponse[AttributeSetResponse]:
@@ -976,7 +986,7 @@ def create_attribute_set(
         name=body.name,
         scope=body.scope,
         description=body.description,
-        actor_id=current_user.user_id,  # type: ignore[arg-type]
+        actor_id=current_user.user_id,
     )
     return StandardResponse(
         data=AttributeSetResponse.model_validate(attr_set),
@@ -1031,7 +1041,7 @@ def get_attribute_set(
 def add_attribute_to_set(
     company_id: UUID = Path(...),
     attr_set_id: UUID = Path(...),
-    body: AttributeSetMembershipAddRequest = ...,
+    body: AttributeSetMembershipAddRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: AttributeSetService = Depends(get_attr_set_service),
 ) -> StandardResponse[AttributeSetMembershipResponse]:
@@ -1040,7 +1050,7 @@ def add_attribute_to_set(
         attr_set_id=attr_set_id,
         attr_definition_id=body.attribute_definition_id,
         sort_order=body.sort_order,
-        actor_id=current_user.user_id,  # type: ignore[arg-type]
+        actor_id=current_user.user_id,
     )
     return StandardResponse(
         data=AttributeSetMembershipResponse.model_validate(membership),
@@ -1095,7 +1105,7 @@ def delete_attribute_set(
 )
 def create_tag(
     company_id: UUID = Path(...),
-    body: TagCreateRequest = ...,
+    body: TagCreateRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: TagService = Depends(get_tag_service),
 ) -> StandardResponse[TagResponse]:
@@ -1103,7 +1113,7 @@ def create_tag(
         company_id=company_id,
         name=body.name,
         color=body.color,
-        actor_id=current_user.user_id,  # type: ignore[arg-type]
+        actor_id=current_user.user_id,
     )
     return StandardResponse(
         data=TagResponse.model_validate(tag),
@@ -1157,7 +1167,7 @@ def get_tag(
 def update_tag(
     company_id: UUID = Path(...),
     tag_id: UUID = Path(...),
-    body: TagUpdateRequest = ...,
+    body: TagUpdateRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: TagService = Depends(get_tag_service),
 ) -> StandardResponse[TagResponse]:
@@ -1198,7 +1208,7 @@ def delete_tag(
 )
 def create_reason_code(
     company_id: UUID = Path(...),
-    body: ReasonCodeCreateRequest = ...,
+    body: ReasonCodeCreateRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ReasonCodeService = Depends(get_reason_code_service),
 ) -> StandardResponse[ReasonCodeResponse]:
@@ -1208,7 +1218,7 @@ def create_reason_code(
         label=body.label,
         applies_to=body.applies_to,
         description=body.description,
-        actor_id=current_user.user_id,  # type: ignore[arg-type]
+        actor_id=current_user.user_id,
     )
     return StandardResponse(
         data=ReasonCodeResponse.model_validate(rc),
@@ -1270,7 +1280,7 @@ def get_reason_code(
 def update_reason_code(
     company_id: UUID = Path(...),
     reason_code_id: UUID = Path(...),
-    body: ReasonCodeUpdateRequest = ...,
+    body: ReasonCodeUpdateRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ReasonCodeService = Depends(get_reason_code_service),
 ) -> StandardResponse[ReasonCodeResponse]:
@@ -1333,7 +1343,7 @@ def delete_reason_code(
 )
 def create_custom_field(
     company_id: UUID = Path(...),
-    body: CustomFieldCreateRequest = ...,
+    body: CustomFieldCreateRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: CustomFieldService = Depends(get_custom_field_service),
 ) -> StandardResponse[CustomFieldResponse]:
@@ -1347,7 +1357,7 @@ def create_custom_field(
         is_required=body.is_required,
         sort_order=body.sort_order,
         placeholder=body.placeholder,
-        actor_id=current_user.user_id,  # type: ignore[arg-type]
+        actor_id=current_user.user_id,
     )
     return StandardResponse(
         data=CustomFieldResponse.model_validate(cf),
@@ -1402,7 +1412,7 @@ def get_custom_field(
 def update_custom_field(
     company_id: UUID = Path(...),
     field_id: UUID = Path(...),
-    body: CustomFieldUpdateRequest = ...,
+    body: CustomFieldUpdateRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: CustomFieldService = Depends(get_custom_field_service),
 ) -> StandardResponse[CustomFieldResponse]:
@@ -1448,7 +1458,7 @@ def delete_custom_field(
 )
 def create_product(
     company_id: UUID = Path(...),
-    body: ProductCreateRequest = ...,
+    body: ProductCreateRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ProductService = Depends(get_product_service),
 ) -> StandardResponse[ProductResponse]:
@@ -1546,7 +1556,7 @@ def get_product(
 def update_product(
     company_id: UUID = Path(...),
     product_id: UUID = Path(...),
-    body: ProductUpdateRequest = ...,
+    body: ProductUpdateRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ProductService = Depends(get_product_service),
 ) -> StandardResponse[ProductResponse]:
@@ -1592,7 +1602,7 @@ def update_product(
 def change_product_status(
     company_id: UUID = Path(...),
     product_id: UUID = Path(...),
-    body: ProductStatusRequest = ...,
+    body: ProductStatusRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ProductService = Depends(get_product_service),
 ) -> StandardResponse[ProductResponse]:
@@ -1637,7 +1647,7 @@ def delete_product(
 def add_variant(
     company_id: UUID = Path(...),
     product_id: UUID = Path(...),
-    body: VariantCreateRequest = ...,
+    body: VariantCreateRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ProductService = Depends(get_product_service),
 ) -> StandardResponse[VariantResponse]:
@@ -1687,7 +1697,7 @@ def list_variants(
 def add_barcode(
     company_id: UUID = Path(...),
     product_id: UUID = Path(...),
-    body: BarcodeAddRequest = ...,
+    body: BarcodeAddRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ProductService = Depends(get_product_service),
 ) -> StandardResponse[BarcodeResponse]:
@@ -1759,7 +1769,7 @@ def delete_barcode(
 def assign_tag(
     company_id: UUID = Path(...),
     product_id: UUID = Path(...),
-    body: TagAssignRequest = ...,
+    body: TagAssignRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ProductEnrichmentService = Depends(get_product_enrichment_service),
 ) -> StandardResponse[ProductTagResponse]:
@@ -1823,7 +1833,7 @@ def remove_tag(
 def set_custom_field_value(
     company_id: UUID = Path(...),
     product_id: UUID = Path(...),
-    body: CustomFieldValueSetRequest = ...,
+    body: CustomFieldValueSetRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ProductEnrichmentService = Depends(get_product_enrichment_service),
 ) -> StandardResponse[CustomFieldValueResponse]:
@@ -1895,7 +1905,7 @@ def delete_custom_field_value(
 def add_note(
     company_id: UUID = Path(...),
     product_id: UUID = Path(...),
-    body: NoteAddRequest = ...,
+    body: NoteAddRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ProductEnrichmentService = Depends(get_product_enrichment_service),
 ) -> StandardResponse[InternalNoteResponse]:
@@ -1903,7 +1913,7 @@ def add_note(
         company_id=company_id,
         product_id=product_id,
         note_text=body.note_text,
-        author_id=current_user.user_id,  # type: ignore[arg-type]
+        author_id=current_user.user_id,
     )
     return StandardResponse(
         data=InternalNoteResponse.model_validate(note),
@@ -2065,7 +2075,7 @@ async def import_products(
         company_id=company_id,
         file_name=filename,
         content=content,
-        actor_id=current_user.user_id,  # type: ignore[arg-type]
+        actor_id=current_user.user_id,
     )
     return StandardResponse(
         data=ImportJobResponse.model_validate(job),
@@ -2146,7 +2156,7 @@ def create_warehouse(
             country_code=payload.country_code,
             phone=payload.phone,
             notes=payload.notes,
-            actor_id=current_user.user_id,  # type: ignore[arg-type]
+            actor_id=current_user.user_id,
         )
     except Exception as exc:
         from modules.inventory.exceptions import (
@@ -2238,7 +2248,7 @@ def update_warehouse(
             country_code=payload.country_code,
             phone=payload.phone,
             notes=payload.notes,
-            actor_id=current_user.user_id,  # type: ignore[arg-type]
+            actor_id=current_user.user_id,
         )
     except WarehouseNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -2269,7 +2279,7 @@ def deactivate_warehouse(
             company_id=company_id,
             warehouse_id=warehouse_id,
             target_status="INACTIVE",
-            actor_id=current_user.user_id,  # type: ignore[arg-type]
+            actor_id=current_user.user_id,
         )
     except WarehouseNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -2302,7 +2312,7 @@ def activate_warehouse(
             company_id=company_id,
             warehouse_id=warehouse_id,
             target_status="ACTIVE",
-            actor_id=current_user.user_id,  # type: ignore[arg-type]
+            actor_id=current_user.user_id,
         )
     except WarehouseNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -2335,7 +2345,7 @@ def archive_warehouse(
             company_id=company_id,
             warehouse_id=warehouse_id,
             target_status="ARCHIVED",
-            actor_id=current_user.user_id,  # type: ignore[arg-type]
+            actor_id=current_user.user_id,
         )
     except WarehouseNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -2412,7 +2422,7 @@ def add_warehouse_location(
             zone=payload.zone,
             shelf=payload.shelf,
             is_active=payload.is_active,
-            actor_id=current_user.user_id,  # type: ignore[arg-type]
+            actor_id=current_user.user_id,
         )
     except WarehouseNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -2451,7 +2461,7 @@ def update_warehouse_location(
             zone=payload.zone,
             shelf=payload.shelf,
             is_active=payload.is_active,
-            actor_id=current_user.user_id,  # type: ignore[arg-type]
+            actor_id=current_user.user_id,
         )
     except WarehouseNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -2497,7 +2507,7 @@ def record_opening_stock(
             variant_id=payload.variant_id,
             notes=payload.notes,
             performed_at=payload.performed_at,
-            actor_id=current_user.user_id,  # type: ignore[arg-type]
+            actor_id=current_user.user_id,
         )
     except WarehouseNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -2542,7 +2552,7 @@ def record_adjustment(
             reference_id=payload.reference_id,
             notes=payload.notes,
             performed_at=payload.performed_at,
-            actor_id=current_user.user_id,  # type: ignore[arg-type]
+            actor_id=current_user.user_id,
         )
     except WarehouseNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -2662,7 +2672,7 @@ def create_snapshot(
     snap = svc.create_snapshot(
         company_id=company_id,
         snapshot_name=payload.snapshot_name,
-        actor_id=current_user.user_id,  # type: ignore[arg-type]
+        actor_id=current_user.user_id,
     )
     return StandardResponse(
         data=SnapshotResponse.model_validate(snap),
@@ -2721,7 +2731,7 @@ def list_snapshot_lines(
 )
 def create_adjustment(
     company_id: UUID = Path(...),
-    body: AdjustmentCreateRequest = ...,
+    body: AdjustmentCreateRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: AdjustmentService = Depends(get_adjustment_service),
 ) -> StandardResponse[AdjustmentResponse]:
@@ -2738,7 +2748,7 @@ def create_adjustment(
         variant_id=body.variant_id,
         reason_code_id=body.reason_code_id,
         notes=body.notes,
-        actor_id=current_user.user_id,  # type: ignore[arg-type]
+        actor_id=current_user.user_id,
     )
     return StandardResponse(
         data=AdjustmentResponse.model_validate(adj),
@@ -2793,14 +2803,14 @@ def get_adjustment(
 def submit_adjustment(
     company_id: UUID = Path(...),
     adjustment_id: UUID = Path(...),
-    body: AdjustmentSubmitRequest = ...,
+    body: AdjustmentSubmitRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: AdjustmentService = Depends(get_adjustment_service),
 ) -> StandardResponse[AdjustmentResponse]:
     adj = svc.submit_adjustment(
         company_id=company_id,
         adjustment_id=adjustment_id,
-        actor_id=current_user.user_id,  # type: ignore[arg-type]
+        actor_id=current_user.user_id,
     )
     return StandardResponse(
         data=AdjustmentResponse.model_validate(adj),
@@ -2817,14 +2827,14 @@ def submit_adjustment(
 def approve_adjustment(
     company_id: UUID = Path(...),
     adjustment_id: UUID = Path(...),
-    body: AdjustmentApproveRequest = ...,
+    body: AdjustmentApproveRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: AdjustmentService = Depends(get_adjustment_service),
 ) -> StandardResponse[AdjustmentResponse]:
     adj = svc.approve_adjustment(
         company_id=company_id,
         adjustment_id=adjustment_id,
-        actor_id=current_user.user_id,  # type: ignore[arg-type]
+        actor_id=current_user.user_id,
     )
     return StandardResponse(
         data=AdjustmentResponse.model_validate(adj),
@@ -2841,7 +2851,7 @@ def approve_adjustment(
 def reject_adjustment(
     company_id: UUID = Path(...),
     adjustment_id: UUID = Path(...),
-    body: AdjustmentRejectRequest = ...,
+    body: AdjustmentRejectRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: AdjustmentService = Depends(get_adjustment_service),
 ) -> StandardResponse[AdjustmentResponse]:
@@ -2849,7 +2859,7 @@ def reject_adjustment(
         company_id=company_id,
         adjustment_id=adjustment_id,
         rejection_reason=body.rejection_reason,
-        actor_id=current_user.user_id,  # type: ignore[arg-type]
+        actor_id=current_user.user_id,
     )
     return StandardResponse(
         data=AdjustmentResponse.model_validate(adj),
@@ -2871,7 +2881,7 @@ def reject_adjustment(
 )
 def create_stock_transfer(
     company_id: UUID = Path(...),
-    body: TransferCreateRequest = ...,
+    body: TransferCreateRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: TransferService = Depends(get_transfer_service),
 ) -> StandardResponse[TransferResponse]:
@@ -2882,7 +2892,7 @@ def create_stock_transfer(
         lines=[line.model_dump() for line in body.lines],
         notes=body.notes,
         reference_no=body.reference_no,
-        actor_id=current_user.user_id,  # type: ignore[arg-type]
+        actor_id=current_user.user_id,
     )
     return StandardResponse(
         data=TransferResponse.model_validate(transfer),
@@ -2954,7 +2964,7 @@ def dispatch_stock_transfer(
     transfer = svc.dispatch_transfer(
         company_id=company_id,
         transfer_id=transfer_id,
-        actor_id=current_user.user_id,  # type: ignore[arg-type]
+        actor_id=current_user.user_id,
     )
     return StandardResponse(
         data=TransferResponse.model_validate(transfer),
@@ -2977,7 +2987,7 @@ def receive_stock_transfer(
     transfer = svc.receive_transfer(
         company_id=company_id,
         transfer_id=transfer_id,
-        actor_id=current_user.user_id,  # type: ignore[arg-type]
+        actor_id=current_user.user_id,
     )
     return StandardResponse(
         data=TransferResponse.model_validate(transfer),
@@ -2994,7 +3004,7 @@ def receive_stock_transfer(
 def cancel_stock_transfer(
     company_id: UUID = Path(...),
     transfer_id: UUID = Path(...),
-    body: TransferCancelRequest = ...,
+    body: TransferCancelRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: TransferService = Depends(get_transfer_service),
 ) -> StandardResponse[TransferResponse]:
@@ -3002,7 +3012,7 @@ def cancel_stock_transfer(
         company_id=company_id,
         transfer_id=transfer_id,
         cancelled_reason=body.cancelled_reason,
-        actor_id=current_user.user_id,  # type: ignore[arg-type]
+        actor_id=current_user.user_id,
     )
     return StandardResponse(
         data=TransferResponse.model_validate(transfer),
@@ -3023,7 +3033,7 @@ def cancel_stock_transfer(
 )
 def reserve_stock(
     company_id: UUID = Path(...),
-    body: StockReserveRequest = ...,
+    body: StockReserveRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: TransferService = Depends(get_transfer_service),
 ) -> StandardResponse[StockReservationResponse]:
@@ -3071,7 +3081,7 @@ def reserve_stock(
 )
 def release_stock(
     company_id: UUID = Path(...),
-    body: StockReleaseRequest = ...,
+    body: StockReleaseRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: TransferService = Depends(get_transfer_service),
 ) -> StandardResponse[StockReservationResponse]:
@@ -3126,7 +3136,7 @@ def release_stock(
 )
 def create_reorder_rule(
     company_id: UUID = Path(...),
-    body: ReorderRuleCreate = ...,
+    body: ReorderRuleCreate = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     rule_repo: ReorderRuleRepository = Depends(get_reorder_rule_repo),
 ) -> StandardResponse[ReorderRuleResponse]:
@@ -3211,7 +3221,7 @@ def get_reorder_rule(
 def update_reorder_rule(
     company_id: UUID = Path(...),
     rule_id: UUID = Path(...),
-    body: ReorderRuleUpdate = ...,
+    body: ReorderRuleUpdate = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     rule_repo: ReorderRuleRepository = Depends(get_reorder_rule_repo),
 ) -> StandardResponse[ReorderRuleResponse]:
@@ -3320,7 +3330,7 @@ def get_alert(
 def acknowledge_alert(
     company_id: UUID = Path(...),
     alert_id: UUID = Path(...),
-    body: AlertAcknowledgeRequest = ...,
+    body: AlertAcknowledgeRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     alert_repo: LowStockAlertRepository = Depends(get_alert_repo),
 ) -> StandardResponse[LowStockAlertResponse]:
@@ -3414,7 +3424,7 @@ def get_suggestion(
 def acknowledge_suggestion(
     company_id: UUID = Path(...),
     suggestion_id: UUID = Path(...),
-    body: SuggestionAcknowledgeRequest = ...,
+    body: SuggestionAcknowledgeRequest = Body(...),
     current_user: CurrentUser = Depends(require_authenticated),
     suggestion_repo: ReorderSuggestionRepository = Depends(get_suggestion_repo),
 ) -> StandardResponse[ReorderSuggestionResponse]:
@@ -3817,7 +3827,7 @@ class _ExportBody(_BaseModel):
 )
 def export_inventory_summary(
     company_id: UUID = Path(...),
-    body: _ExportBody = ...,
+    body: _ExportBody = Body(...),
     warehouse_id: UUID | None = None,
     current_user: CurrentUser = Depends(require_authenticated),
     report_svc: ReportQueryService = Depends(get_report_service),
@@ -3846,7 +3856,7 @@ def export_inventory_summary(
 )
 def export_stock_ledger(
     company_id: UUID = Path(...),
-    body: _ExportBody = ...,
+    body: _ExportBody = Body(...),
     product_id: UUID | None = None,
     warehouse_id: UUID | None = None,
     current_user: CurrentUser = Depends(require_authenticated),
@@ -3875,7 +3885,7 @@ def export_stock_ledger(
 
 
 def _build_lookup_result(
-    product: object,
+    product: Product,
     barcode_value: str | None,
     stock_svc: StockLedgerService,
     company_id: UUID,

@@ -11,6 +11,8 @@ Data model: specs/005-inventory-management/data-model.md §2
 
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy import Boolean, CheckConstraint, Index, String, UniqueConstraint, false
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -78,7 +80,7 @@ class CustomFieldDefinition(TenantBaseModel):
         doc="Value type: TEXT / NUMBER / BOOLEAN / DATE / DROPDOWN",
     )
 
-    options: Mapped[dict | list | None] = mapped_column(
+    options: Mapped[dict[str, Any] | list[Any] | None] = mapped_column(
         JSONB,
         nullable=True,
         doc="For DROPDOWN type: list of allowed option strings",

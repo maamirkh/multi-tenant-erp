@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
+from types import EllipsisType
 from typing import Any
 from uuid import UUID
 
@@ -249,7 +250,7 @@ class RoleService:
         role_id: UUID,
         actor_user_id: UUID,
         name: str | None = None,
-        description: str | None = ...,  # type: ignore[assignment]
+        description: str | None | EllipsisType = ...,
         rank: int | None = None,
         permission_codes: list[str] | None = None,
         request_context: dict[str, Any] | None = None,

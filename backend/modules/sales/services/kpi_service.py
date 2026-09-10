@@ -181,7 +181,8 @@ class KPIService:
             q = q.filter(SalesInvoice.invoice_date >= date_from)
         if date_to:
             q = q.filter(SalesInvoice.invoice_date <= date_to)
-        return q.scalar()
+        result: Decimal | None = q.scalar()
+        return result
 
     # -----------------------------------------------------------------------
     # KPI-02: Gross Margin %

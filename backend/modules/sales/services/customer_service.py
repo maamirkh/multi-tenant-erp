@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -132,7 +133,7 @@ class CustomerService:
         website: str | None = None,
         industry: str | None = None,
         annual_revenue_range: str | None = None,
-        custom_fields: dict | None = None,
+        custom_fields: dict[str, Any] | None = None,
         notes: str | None = None,
         created_by: UUID | None = None,
     ) -> Customer:
@@ -389,41 +390,63 @@ class CustomerService:
         reason: str | None,
     ) -> None:
         """Publish the appropriate domain event for a transition."""
-        kwargs = dict(
-            aggregate_id=customer_id,
-            customer_id=customer_id,
-            company_id=company_id,
-        )
         if action in ("activate", "reactivate"):
             self._bus.publish(
                 CustomerActivated(
+                    aggregate_id=customer_id,
+                    customer_id=customer_id,
+                    company_id=company_id,
                     previous_status=previous_status,
                     activated_by=actor_id,
-                    **kwargs,
                 )
             )
         elif action == "hold":
             self._bus.publish(
                 CustomerOnHold(
+                    aggregate_id=customer_id,
+                    customer_id=customer_id,
+                    company_id=company_id,
                     reason=reason or "",
                     placed_by=actor_id,
-                    **kwargs,
                 )
             )
         elif action == "release_hold":
-            self._bus.publish(CustomerHoldReleased(released_by=actor_id, **kwargs))
+            self._bus.publish(
+                CustomerHoldReleased(
+                    aggregate_id=customer_id,
+                    customer_id=customer_id,
+                    company_id=company_id,
+                    released_by=actor_id,
+                )
+            )
         elif action == "block":
             self._bus.publish(
                 CustomerBlocked(
+                    aggregate_id=customer_id,
+                    customer_id=customer_id,
+                    company_id=company_id,
                     reason=reason or "",
                     blocked_by=actor_id,
-                    **kwargs,
                 )
             )
         elif action == "unblock":
-            self._bus.publish(CustomerUnblocked(unblocked_by=actor_id, **kwargs))
+            self._bus.publish(
+                CustomerUnblocked(
+                    aggregate_id=customer_id,
+                    customer_id=customer_id,
+                    company_id=company_id,
+                    unblocked_by=actor_id,
+                )
+            )
         elif action == "deactivate":
-            self._bus.publish(CustomerDeactivated(deactivated_by=actor_id, **kwargs))
+            self._bus.publish(
+                CustomerDeactivated(
+                    aggregate_id=customer_id,
+                    customer_id=customer_id,
+                    company_id=company_id,
+                    deactivated_by=actor_id,
+                )
+            )
 
     # ------------------------------------------------------------------
     # Credit management

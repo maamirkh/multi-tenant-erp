@@ -27,7 +27,9 @@ Tasks: T079-T085
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -528,7 +530,7 @@ class ApprovalService:
         company_id: UUID,
         document_type: str,
         document_id: UUID,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Return levels that are pending beyond their escalation_days threshold.
 
         Returns a list of dicts with keys: level_number, approver_type,
@@ -658,8 +660,8 @@ class ApprovalService:
         approval_level: int = 1,
         approval_mode: str = "SEQUENTIAL",
         *,
-        min_amount=None,
-        max_amount=None,
+        min_amount: Decimal | None = None,
+        max_amount: Decimal | None = None,
         category_id: UUID | None = None,
         department: str | None = None,
     ) -> MatrixRule:
@@ -681,7 +683,7 @@ class ApprovalService:
         self,
         rule_id: UUID,
         company_id: UUID,
-        **kwargs,
+        **kwargs: Any,
     ) -> MatrixRule:
         rule = self._rule_repo.get_by_id_or_none(id=rule_id, company_id=company_id)
         if rule is None or rule.is_deleted:
@@ -730,7 +732,9 @@ class ApprovalService:
         )
         return self._level_repo.create(level)
 
-    def update_level(self, level_id: UUID, company_id: UUID, **kwargs) -> ApprovalLevel:
+    def update_level(
+        self, level_id: UUID, company_id: UUID, **kwargs: Any
+    ) -> ApprovalLevel:
         level = self._level_repo.get_by_id_or_none(id=level_id, company_id=company_id)
         if level is None or level.is_deleted:
             raise NotFoundException(f"ApprovalLevel {level_id} not found.")
@@ -757,8 +761,8 @@ class ApprovalService:
         company_id: UUID,
         actor_id: UUID,
         delegate_id: UUID,
-        valid_from,
-        valid_until,
+        valid_from: datetime,
+        valid_until: datetime,
         document_type: str | None = None,
         is_active: bool = True,
     ) -> ApprovalDelegate:
@@ -780,7 +784,7 @@ class ApprovalService:
         return self._delegate_repo.create(delegate)
 
     def update_delegate(
-        self, delegate_id: UUID, company_id: UUID, **kwargs
+        self, delegate_id: UUID, company_id: UUID, **kwargs: Any
     ) -> ApprovalDelegate:
         delegation = self._delegate_repo.get_by_id_or_none(
             id=delegate_id, company_id=company_id

@@ -60,6 +60,8 @@ from modules.platform_admin.dependencies import (
     get_effective_permissions_cached,
     require_platform_permission,
 )
+from modules.platform_admin.models.plan import Plan
+from modules.platform_admin.models.platform_rbac import PlatformRole
 from modules.platform_admin.repositories.ai_credit_repository import AiCreditRepository
 from modules.platform_admin.repositories.capability_repository import (
     CapabilityRepository,
@@ -451,7 +453,7 @@ def _rbac_service(db: Session = Depends(get_db)) -> PlatformRbacService:
     )
 
 
-def _role_response(role, repo: PlatformRbacRepository) -> RoleResponse:
+def _role_response(role: PlatformRole, repo: PlatformRbacRepository) -> RoleResponse:
     codes = sorted(repo.get_role_permission_codes(role.id))
     return RoleResponse(
         id=role.id,
@@ -653,7 +655,7 @@ def _subscription_service(db: Session = Depends(get_db)) -> SubscriptionService:
     )
 
 
-def _plan_response(plan, repo: PlanRepository) -> PlanResponse:
+def _plan_response(plan: Plan, repo: PlanRepository) -> PlanResponse:
     return PlanResponse(
         id=plan.id,
         code=plan.code,

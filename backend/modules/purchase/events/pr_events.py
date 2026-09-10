@@ -15,6 +15,7 @@ Task: T107
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 from uuid import UUID
 
 from modules.purchase.events import PurchaseDomainEvent
@@ -43,14 +44,18 @@ class PurchaseRequestCreated(PurchaseDomainEvent):
         department: str | None = None,
         actor_id: UUID | None = None,
     ) -> PurchaseRequestCreated:
-        event = cls(aggregate_id=aggregate_id, company_id=company_id, actor_id=actor_id)
+        event = cls(
+            aggregate_id=str(aggregate_id),
+            company_id=str(company_id),
+            actor_id=str(actor_id) if actor_id else None,
+        )
         event.pr_number = pr_number
         event.title = title
         event.requestor_id = requestor_id
         event.department = department
         return event
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         base = super().to_dict()
         base.update(
             {
@@ -82,12 +87,16 @@ class PurchaseRequestSubmitted(PurchaseDomainEvent):
         requestor_id: str,
         actor_id: UUID | None = None,
     ) -> PurchaseRequestSubmitted:
-        event = cls(aggregate_id=aggregate_id, company_id=company_id, actor_id=actor_id)
+        event = cls(
+            aggregate_id=str(aggregate_id),
+            company_id=str(company_id),
+            actor_id=str(actor_id) if actor_id else None,
+        )
         event.pr_number = pr_number
         event.requestor_id = requestor_id
         return event
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         base = super().to_dict()
         base.update({"pr_number": self.pr_number, "requestor_id": self.requestor_id})
         return base
@@ -112,12 +121,16 @@ class PurchaseRequestApproved(PurchaseDomainEvent):
         auto_approved: bool = False,
         actor_id: UUID | None = None,
     ) -> PurchaseRequestApproved:
-        event = cls(aggregate_id=aggregate_id, company_id=company_id, actor_id=actor_id)
+        event = cls(
+            aggregate_id=str(aggregate_id),
+            company_id=str(company_id),
+            actor_id=str(actor_id) if actor_id else None,
+        )
         event.pr_number = pr_number
         event.auto_approved = auto_approved
         return event
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         base = super().to_dict()
         base.update({"pr_number": self.pr_number, "auto_approved": self.auto_approved})
         return base
@@ -144,13 +157,17 @@ class PurchaseRequestRejected(PurchaseDomainEvent):
         rejected_by: str,
         actor_id: UUID | None = None,
     ) -> PurchaseRequestRejected:
-        event = cls(aggregate_id=aggregate_id, company_id=company_id, actor_id=actor_id)
+        event = cls(
+            aggregate_id=str(aggregate_id),
+            company_id=str(company_id),
+            actor_id=str(actor_id) if actor_id else None,
+        )
         event.pr_number = pr_number
         event.rejection_reason = rejection_reason
         event.rejected_by = rejected_by
         return event
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         base = super().to_dict()
         base.update(
             {
@@ -181,12 +198,16 @@ class PurchaseRequestCancelled(PurchaseDomainEvent):
         cancellation_reason: str | None = None,
         actor_id: UUID | None = None,
     ) -> PurchaseRequestCancelled:
-        event = cls(aggregate_id=aggregate_id, company_id=company_id, actor_id=actor_id)
+        event = cls(
+            aggregate_id=str(aggregate_id),
+            company_id=str(company_id),
+            actor_id=str(actor_id) if actor_id else None,
+        )
         event.pr_number = pr_number
         event.cancellation_reason = cancellation_reason
         return event
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         base = super().to_dict()
         base.update(
             {
@@ -218,13 +239,17 @@ class PurchaseRequestConvertedToPO(PurchaseDomainEvent):
         po_number: str,
         actor_id: UUID | None = None,
     ) -> PurchaseRequestConvertedToPO:
-        event = cls(aggregate_id=aggregate_id, company_id=company_id, actor_id=actor_id)
+        event = cls(
+            aggregate_id=str(aggregate_id),
+            company_id=str(company_id),
+            actor_id=str(actor_id) if actor_id else None,
+        )
         event.pr_number = pr_number
         event.po_id = po_id
         event.po_number = po_number
         return event
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         base = super().to_dict()
         base.update(
             {

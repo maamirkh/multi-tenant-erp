@@ -100,6 +100,10 @@ class InstallmentQuoteService:
             company_id, sales_invoice_id
         )
         invoice = self._invoices.get_invoice(company_id, sales_invoice_id)
+        assert invoice is not None, (
+            "check_invoice_eligibility() above already raised "
+            "InstallmentNotFoundError if the invoice did not exist"
+        )
 
         config = self._configuration.get_effective_config(company_id, branch_id)
         rounding_policy = (

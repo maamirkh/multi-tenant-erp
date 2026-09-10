@@ -206,7 +206,7 @@ class KPIService:
         row = self.db.execute(stmt).mappings().one_or_none()
         if not row or not row["total"]:
             return 0.0
-        return round((row["accepted"] or 0) / row["total"] * 100, 2)
+        return float(round((row["accepted"] or 0) / row["total"] * 100, 2))
 
     # ------------------------------------------------------------------
     # KPI-04  Rejection Rate
@@ -565,7 +565,7 @@ class KPIService:
         *,
         date_from: date | None = None,
         date_to: date | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Return all 10 KPIs in a single response dict."""
         return {
             "kpi_01_purchase_cycle_time_days": self.purchase_cycle_time(

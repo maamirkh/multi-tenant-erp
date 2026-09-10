@@ -23,6 +23,8 @@ from modules.users_roles.dependencies import (
     get_role_service,
 )
 from modules.users_roles.models.company_member import CompanyMember
+from modules.users_roles.models.permission import Permission
+from modules.users_roles.models.role import Role
 from modules.users_roles.schemas.role import (
     CreateRoleRequest,
     PermissionResponse,
@@ -47,8 +49,8 @@ def _request_context(request: Request) -> dict[str, str | None]:
 
 
 def _build_role_detail(
-    role,
-    permissions: list | None = None,
+    role: Role,
+    permissions: list[Permission] | None = None,
     member_count: int = 0,
 ) -> RoleDetailResponse:
     """Convert a Role ORM instance to RoleDetailResponse.
@@ -145,7 +147,8 @@ def update_role(
         role_id=role_id,
         actor_user_id=current_user.user_id,  # type: ignore[arg-type]
         name=body.name,
-        description=body.description if body.description is not None else ...,
+        # sentinel: "not provided" vs None-to-clear
+        description=(body.description if body.description is not None else ...),
         rank=body.rank,
         permission_codes=body.permission_codes,
         request_context=_request_context(request),

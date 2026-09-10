@@ -16,7 +16,8 @@ from __future__ import annotations
 
 import logging
 from io import BytesIO
-from typing import BinaryIO, Protocol
+from types import EllipsisType
+from typing import Any, BinaryIO, Protocol
 from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
@@ -132,7 +133,7 @@ class ProfileService:
         user_id: UUID,
         *,
         display_name: str | None = None,
-        phone: str | ... = ...,  # type: ignore[assignment]
+        phone: str | None | EllipsisType = ...,
     ) -> User:
         """Update the user's display name and/or phone number.
 
@@ -152,7 +153,7 @@ class ProfileService:
             NotFoundException: If the user does not exist.
         """
         user = self._user_repo.get_by_id(user_id)
-        before: dict = {
+        before: dict[str, Any] = {
             "display_name": user.display_name,
             "phone": user.phone,
         }
@@ -161,7 +162,7 @@ class ProfileService:
             user.display_name = display_name
 
         if phone is not ...:
-            user.phone = phone  # type: ignore[assignment]
+            user.phone = phone
 
         self._db.commit()
         self._db.refresh(user)

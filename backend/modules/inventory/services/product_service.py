@@ -18,6 +18,7 @@ Data model: specs/005-inventory-management/data-model.md §4.1
 from __future__ import annotations
 
 import logging
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -343,7 +344,7 @@ class ProductService:
         }
         event_cls = _EVENT_CLS.get(target)
         if event_cls is not None:
-            evt_kwargs: dict = {
+            evt_kwargs: dict[str, Any] = {
                 "aggregate_id": product.id,
                 "company_id": product.company_id,
             }
@@ -416,7 +417,7 @@ class ProductService:
         product_id: UUID,
         variant_code: str,
         *,
-        attributes: dict | None = None,
+        attributes: dict[str, Any] | None = None,
         is_stock_tracked: bool = True,
         created_by: UUID | None = None,
     ) -> ProductVariant:
@@ -538,7 +539,7 @@ class ProductService:
         self.db.commit()
 
     # =========================================================================
-    # Search & list (T069, T070)
+    # Search & list[Any] (T069, T070)
     # =========================================================================
 
     def search_products(
@@ -553,7 +554,7 @@ class ProductService:
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[Product], int]:
-        """Search / list products with optional FTS and filters."""
+        """Search / list[Any] products with optional FTS and filters."""
         return self._repo.search(
             company_id,
             query=query,

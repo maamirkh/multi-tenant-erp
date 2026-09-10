@@ -45,8 +45,9 @@ logger = logging.getLogger(__name__)
 def main() -> None:
     """Entry point — delete expired/stale auth records."""
     from datetime import timedelta
+    from typing import Any, cast
 
-    from sqlalchemy import delete
+    from sqlalchemy import CursorResult, delete
     from sqlalchemy.orm import Session
 
     from core.config.settings import get_settings
@@ -69,41 +70,54 @@ def main() -> None:
 
     with Session(engine) as db:
         # 1. Expired refresh tokens.
-        result = db.execute(delete(RefreshToken).where(RefreshToken.expires_at <= now))
-        rt_count: int = result.rowcount
+        rt_result = cast(
+            CursorResult[Any],
+            db.execute(delete(RefreshToken).where(RefreshToken.expires_at <= now)),
+        )
+        rt_count: int = rt_result.rowcount
         logger.info("Deleted %d expired refresh token(s).", rt_count)
 
         # 2. Expired password reset tokens.
-        result = db.execute(
-            delete(PasswordResetToken).where(PasswordResetToken.expires_at <= now)
+        prt_result = cast(
+            CursorResult[Any],
+            db.execute(
+                delete(PasswordResetToken).where(PasswordResetToken.expires_at <= now)
+            ),
         )
-        prt_count: int = result.rowcount
+        prt_count: int = prt_result.rowcount
         logger.info("Deleted %d expired password reset token(s).", prt_count)
 
         # 3. Expired email verification tokens.
-        result = db.execute(
-            delete(EmailVerificationToken).where(
-                EmailVerificationToken.expires_at <= now
-            )
+        evt_result = cast(
+            CursorResult[Any],
+            db.execute(
+                delete(EmailVerificationToken).where(
+                    EmailVerificationToken.expires_at <= now
+                )
+            ),
         )
-        evt_count: int = result.rowcount
+        evt_count: int = evt_result.rowcount
         logger.info("Deleted %d expired email verification token(s).", evt_count)
 
         # 4. Revoked sessions beyond the retention window.
-        result = db.execute(
-            delete(AuthSession).where(
-                AuthSession.is_revoked == True,  # noqa: E712
-                AuthSession.revoked_at <= retention_cutoff,
-            )
+        sess_result = cast(
+            CursorResult[Any],
+            db.execute(
+                delete(AuthSession).where(
+                    AuthSession.is_revoked == True,  # noqa: E712
+                    AuthSession.revoked_at <= retention_cutoff,
+                )
+            ),
         )
-        sess_count: int = result.rowcount
+        sess_count: int = sess_result.rowcount
         logger.info("Deleted %d old revoked session(s).", sess_count)
 
         # 5. Audit logs older than the retention window.
-        result = db.execute(
-            delete(AuditLog).where(AuditLog.created_at <= retention_cutoff)
+        al_result = cast(
+            CursorResult[Any],
+            db.execute(delete(AuditLog).where(AuditLog.created_at <= retention_cutoff)),
         )
-        al_count: int = result.rowcount
+        al_count: int = al_result.rowcount
         logger.info(
             "Deleted %d audit log entr(ies) older than %d days.",
             al_count,

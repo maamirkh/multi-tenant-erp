@@ -411,7 +411,8 @@ class InstallmentCollectionService:
             self.db.commit()
             return payload
 
-        return result_holder["payload"]
+        payload_result: dict[str, Any] = result_holder["payload"]
+        return payload_result
 
     def reverse_collection(
         self,

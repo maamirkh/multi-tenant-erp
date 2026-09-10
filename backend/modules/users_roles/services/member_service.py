@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import date
+from types import EllipsisType
 from typing import Any
 from uuid import UUID
 
@@ -614,12 +615,12 @@ class MemberService:
         actor_user_id: UUID,
         actor_role_rank: int,
         role_id: UUID | None = None,
-        employee_id: str | None = ...,  # type: ignore[assignment]
-        job_title: str | None = ...,  # type: ignore[assignment]
-        department: str | None = ...,  # type: ignore[assignment]
-        work_phone: str | None = ...,  # type: ignore[assignment]
+        employee_id: str | None | EllipsisType = ...,
+        job_title: str | None | EllipsisType = ...,
+        department: str | None | EllipsisType = ...,
+        work_phone: str | None | EllipsisType = ...,
         hire_date: Any = ...,
-        notes: str | None = ...,  # type: ignore[assignment]
+        notes: str | None | EllipsisType = ...,
         request_context: dict[str, Any] | None = None,
     ) -> CompanyMember:
         """Update a member's role and/or employee information.

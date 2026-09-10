@@ -295,6 +295,15 @@ class InstallmentDelinquencyService:
                 )
             )
 
+        # accounting_ar_transaction_id/accounting_journal_entry_id are set
+        # together, atomically, by apply_late_charge() (model docstring) —
+        # the only write site. A committed InstallmentLateCharge row is
+        # therefore expected to always carry one; None here would mean the
+        # atomic staging invariant was violated, not a normal business state.
+        assert late_charge.accounting_ar_transaction_id is not None, (
+            f"InstallmentLateCharge {late_charge.id} is missing "
+            "accounting_ar_transaction_id despite being committed"
+        )
         self._accounting.reverse_late_charge(
             company_id=company_id,
             ar_transaction_id=late_charge.accounting_ar_transaction_id,

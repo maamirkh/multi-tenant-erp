@@ -872,7 +872,7 @@ class InvoiceService:
             flag_repo = SalesFeatureFlagRepository(self._db)
             flag_svc = SalesFeatureFlagService(db=self._db, flag_repo=flag_repo)
             if not flag_svc.is_enabled(
-                "sales.invoice_pdf_export", company_id=company_id
+                company_id=company_id, flag_key="sales.invoice_pdf_export"
             ):
                 raise ConflictException(
                     "Invoice PDF export is not enabled for this company. "

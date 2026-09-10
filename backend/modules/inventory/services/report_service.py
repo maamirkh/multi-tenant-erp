@@ -418,9 +418,9 @@ class ReportQueryService:
         if date_to:
             mv_q = mv_q.filter(StockMovement.performed_at <= date_to)
         mv_q = mv_q.group_by(Product.category_id)
-        for row in mv_q.all():
-            if row.category_id:
-                mov_cat[row.category_id] = int(row.cnt)
+        for mv_row in mv_q.all():
+            if mv_row.category_id:
+                mov_cat[mv_row.category_id] = int(mv_row.cnt)
 
         categories = []
         for row in cat_q.all():
@@ -472,9 +472,9 @@ class ReportQueryService:
         if date_to:
             mv_bq = mv_bq.filter(StockMovement.performed_at <= date_to)
         mv_bq = mv_bq.group_by(Product.brand_id)
-        for row in mv_bq.all():
-            if row.brand_id:
-                mov_brand[row.brand_id] = int(row.cnt)
+        for mv_row in mv_bq.all():
+            if mv_row.brand_id:
+                mov_brand[mv_row.brand_id] = int(mv_row.cnt)
 
         brands = []
         for row in brand_q.all():
@@ -868,7 +868,7 @@ class ReportQueryService:
         for performed_at, direction, quantity in mov_q.all():
             if performed_at is None:
                 continue
-            date_key = performed_at.strftime("%Y-%m-%d")  # type: ignore[union-attr]
+            date_key = performed_at.strftime("%Y-%m-%d")
             if date_key not in daily:
                 daily[date_key] = {"in": Decimal("0"), "out": Decimal("0")}
             qty = _dec(quantity)

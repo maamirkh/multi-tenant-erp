@@ -121,7 +121,6 @@ class SupplierDocumentService:
 
         doc.is_deleted = True
         doc.deleted_at = utcnow()
-        doc.deleted_by = actor_id
         self.db.flush()
 
     # ------------------------------------------------------------------

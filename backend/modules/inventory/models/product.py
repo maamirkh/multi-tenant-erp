@@ -14,6 +14,8 @@ Data model: specs/005-inventory-management/data-model.md §1.1 / §4.1
 
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
@@ -306,7 +308,7 @@ class ProductVariant(TenantBaseModel):
         doc="Unique SKU code per company (e.g. 'PROD-001-L-RED')",
     )
 
-    attributes: Mapped[dict | None] = mapped_column(
+    attributes: Mapped[dict[str, Any] | None] = mapped_column(
         JSONB,
         nullable=True,
         doc="Key-value attribute dictionary (e.g. {'size': 'L', 'colour': 'Red'})",

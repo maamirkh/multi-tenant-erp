@@ -55,6 +55,7 @@ from modules.platform_admin.repositories.subscription_repository import (
     SubscriptionRepository,
 )
 from modules.platform_admin.services.entitlement_service import (
+    EffectiveEntitlement,
     PlatformEntitlementService,
 )
 from modules.platform_admin.services.override_service import OverrideService
@@ -143,7 +144,7 @@ _ENTITLEMENT_CACHE_ATTR = "_platform_entitlement_cache"
 
 def get_effective_permissions_cached(
     request: Request, principal: PlatformPrincipal, db: Session
-) -> set[str]:
+) -> frozenset[str]:
     """Request-scoped memoisation (T213, plan.md §31) of
     ``PlatformRbacRepository.get_effective_permissions()`` — several
     dependencies/handlers within one request need the same
@@ -154,7 +155,9 @@ def get_effective_permissions_cached(
     process-level cache, so there is no invalidation/consistency
     concern across requests.
     """
-    cache: dict[UUID, set[str]] = getattr(request.state, _PERMISSIONS_CACHE_ATTR, None)
+    cache: dict[UUID, frozenset[str]] | None = getattr(
+        request.state, _PERMISSIONS_CACHE_ATTR, None
+    )
     if cache is None:
         cache = {}
         setattr(request.state, _PERMISSIONS_CACHE_ATTR, cache)
@@ -251,7 +254,7 @@ def require_capability_entitled(capability_key: str) -> Callable[..., None]:
         # cross-request cache (FR-9A-170's "resolved fresh" still holds:
         # fresh per *request*, not re-resolved per *dependency call*
         # within the same request).
-        cache: dict[tuple[UUID, str], object] = getattr(
+        cache: dict[tuple[UUID, str], EffectiveEntitlement] | None = getattr(
             request.state, _ENTITLEMENT_CACHE_ATTR, None
         )
         if cache is None:

@@ -22,6 +22,7 @@ Spec ref: specs/007-sales-management/data-model.md §Customer Aggregate
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import (
     Boolean,
@@ -253,7 +254,7 @@ class Customer(TenantBaseModel):
 
     # ---- Custom Fields ----
 
-    custom_fields: Mapped[dict | None] = mapped_column(
+    custom_fields: Mapped[dict[str, Any] | None] = mapped_column(
         JSONB,
         nullable=True,
         doc="Custom field values (max 20 fields, JSONB)",

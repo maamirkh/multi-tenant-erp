@@ -14,6 +14,8 @@ Data model: specs/005-inventory-management/data-model.md §stock
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
@@ -95,21 +97,21 @@ class StockPosition(TenantBaseModel):
     )
 
     # Quantities (stored as Numeric for precision; service validates invariants)
-    qty_on_hand: Mapped[float] = mapped_column(
+    qty_on_hand: Mapped[Decimal] = mapped_column(
         Numeric(18, 4),
         nullable=False,
         server_default="0",
         doc="Total quantity physically on hand (including reserved and damaged)",
     )
 
-    qty_reserved: Mapped[float] = mapped_column(
+    qty_reserved: Mapped[Decimal] = mapped_column(
         Numeric(18, 4),
         nullable=False,
         server_default="0",
         doc="Quantity reserved for pending sales orders",
     )
 
-    qty_damaged: Mapped[float] = mapped_column(
+    qty_damaged: Mapped[Decimal] = mapped_column(
         Numeric(18, 4),
         nullable=False,
         server_default="0",
@@ -117,7 +119,7 @@ class StockPosition(TenantBaseModel):
     )
 
     # Cost (WAC updated on each stock-in movement)
-    unit_cost: Mapped[float | None] = mapped_column(
+    unit_cost: Mapped[Decimal | None] = mapped_column(
         Numeric(18, 4),
         nullable=True,
         doc="Current weighted-average or FIFO unit cost",
@@ -130,27 +132,27 @@ class StockPosition(TenantBaseModel):
     )
 
     # Stock level thresholds
-    safety_stock: Mapped[float] = mapped_column(
+    safety_stock: Mapped[Decimal] = mapped_column(
         Numeric(18, 4),
         nullable=False,
         server_default="0",
         doc="Safety stock level — alert when qty_on_hand falls below this",
     )
 
-    minimum_stock: Mapped[float] = mapped_column(
+    minimum_stock: Mapped[Decimal] = mapped_column(
         Numeric(18, 4),
         nullable=False,
         server_default="0",
         doc="Minimum stock level",
     )
 
-    maximum_stock: Mapped[float | None] = mapped_column(
+    maximum_stock: Mapped[Decimal | None] = mapped_column(
         Numeric(18, 4),
         nullable=True,
         doc="Maximum stock level (optional cap)",
     )
 
-    reorder_level: Mapped[float] = mapped_column(
+    reorder_level: Mapped[Decimal] = mapped_column(
         Numeric(18, 4),
         nullable=False,
         server_default="0",
@@ -234,13 +236,13 @@ class StockMovement(TenantBaseModel):
         doc="IN = stock increases; OUT = stock decreases",
     )
 
-    quantity: Mapped[float] = mapped_column(
+    quantity: Mapped[Decimal] = mapped_column(
         Numeric(18, 4),
         nullable=False,
         doc="Quantity moved (always positive)",
     )
 
-    unit_cost: Mapped[float | None] = mapped_column(
+    unit_cost: Mapped[Decimal | None] = mapped_column(
         Numeric(18, 4),
         nullable=True,
         doc="Unit cost at time of movement",
@@ -251,7 +253,7 @@ class StockMovement(TenantBaseModel):
         nullable=True,
     )
 
-    total_cost: Mapped[float | None] = mapped_column(
+    total_cost: Mapped[Decimal | None] = mapped_column(
         Numeric(18, 4),
         nullable=True,
         doc="quantity × unit_cost at time of movement",
@@ -322,13 +324,13 @@ class FIFOCostLayer(TenantBaseModel):
         nullable=False,
     )
 
-    remaining_qty: Mapped[float] = mapped_column(
+    remaining_qty: Mapped[Decimal] = mapped_column(
         Numeric(18, 4),
         nullable=False,
         doc="Remaining unconsumed quantity in this cost layer",
     )
 
-    unit_cost: Mapped[float] = mapped_column(
+    unit_cost: Mapped[Decimal] = mapped_column(
         Numeric(18, 4),
         nullable=False,
         doc="Unit cost for this batch",
@@ -425,15 +427,15 @@ class InventorySnapshotLine(TenantBaseModel):
         nullable=False,
     )
 
-    qty_on_hand: Mapped[float] = mapped_column(
+    qty_on_hand: Mapped[Decimal] = mapped_column(
         Numeric(18, 4), nullable=False, server_default="0"
     )
-    qty_reserved: Mapped[float] = mapped_column(
+    qty_reserved: Mapped[Decimal] = mapped_column(
         Numeric(18, 4), nullable=False, server_default="0"
     )
-    qty_damaged: Mapped[float] = mapped_column(
+    qty_damaged: Mapped[Decimal] = mapped_column(
         Numeric(18, 4), nullable=False, server_default="0"
     )
 
-    unit_cost: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
+    unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     currency_code: Mapped[str | None] = mapped_column(String(3), nullable=True)

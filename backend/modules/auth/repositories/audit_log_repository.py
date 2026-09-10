@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -39,7 +40,7 @@ class AuditLogRepository:
         user_agent: str | None = None,
         request_id: str | None = None,
         reason: str | None = None,
-        metadata: dict | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> AuditLog:
         """Append a new audit log record.
 

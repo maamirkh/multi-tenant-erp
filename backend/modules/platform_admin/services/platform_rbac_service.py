@@ -16,6 +16,10 @@ from modules.platform_admin.exceptions import (
     SelfEscalationError,
     UnknownPlatformPermissionError,
 )
+from modules.platform_admin.models.platform_rbac import (
+    PlatformAdminRoleAssignment,
+    PlatformRole,
+)
 from modules.platform_admin.repositories.platform_administrator_repository import (
     PlatformAdministratorRepository,
 )
@@ -70,7 +74,7 @@ class PlatformRbacService:
         permission_codes: set[str],
         actor_platform_administrator_id: UUID,
         reason: str | None = None,
-    ):
+    ) -> PlatformRole:
         """Create a new Platform Role, or update an existing one's name/
         description/permission bundle, keyed by *code*. Rejects any code
         not present in the seeded ``PLATFORM_PERMISSION_CODES`` catalogue
@@ -191,7 +195,7 @@ class PlatformRbacService:
         role_id: UUID,
         actor_platform_administrator_id: UUID,
         reason: str | None = None,
-    ):
+    ) -> PlatformAdminRoleAssignment:
         """Assign a Platform Role to an administrator. Requires
         `platform.rbac.manage` (enforced at the router); assigning
         `platform_owner` additionally requires the actor to already hold

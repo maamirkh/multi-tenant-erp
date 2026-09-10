@@ -16,6 +16,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -126,7 +127,7 @@ class BulkImportService:
         try:
             text = content.decode("utf-8-sig").strip()
             reader = csv.DictReader(io.StringIO(text))
-            rows = list(reader)
+            rows = list[Any](reader)
         except Exception as e:
             self._job_repo.update_status(
                 job, "FAILED", error_message=f"Could not parse CSV: {e}"
@@ -158,7 +159,7 @@ class BulkImportService:
 
         processed = 0
         failed = 0
-        error_rows: list[dict] = []
+        error_rows: list[dict[str, Any]] = []
 
         for row_num, row in enumerate(rows, start=2):  # 2 = data starts at line 2
             code = row.get("product_code", "").strip().upper()
@@ -212,7 +213,7 @@ class BulkImportService:
                 continue
 
             # Build create kwargs
-            create_kwargs: dict = {
+            create_kwargs: dict[str, Any] = {
                 "company_id": company_id,
                 "product_code": code,
                 "name": name,
@@ -278,7 +279,7 @@ class BulkImportService:
 
         from modules.inventory.models.product import Product
 
-        products = list(
+        products = list[Any](
             self.db.execute(
                 select(Product)
                 .where(Product.company_id == company_id)

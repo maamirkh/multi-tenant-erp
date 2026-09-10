@@ -17,6 +17,7 @@ specs/010-installments/plan.md §7.1/§7.2.
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import Boolean, Index, Integer, Numeric, String, text
@@ -76,8 +77,12 @@ class InstallmentConfiguration(TenantBaseModel):
     grace_period_days: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0"
     )
-    late_charge_policy: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    early_settlement_policy: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    late_charge_policy: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True
+    )
+    early_settlement_policy: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True
+    )
     approval_threshold_amount: Mapped[Decimal | None] = mapped_column(
         Numeric(20, 6), nullable=True
     )
@@ -85,12 +90,16 @@ class InstallmentConfiguration(TenantBaseModel):
         Boolean, nullable=False, server_default="false"
     )
     backdating_max_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    cancellation_policy: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    default_policy: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    cancellation_policy: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True
+    )
+    default_policy: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     writeoff_requires_permission: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="true"
     )
     cure_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
-    eligibility_rules: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    eligibility_rules: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True
+    )

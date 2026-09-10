@@ -74,7 +74,7 @@ class PlanRepository:
         stmt = select(PlanCapability.capability_key, PlanCapability.allowed).where(
             PlanCapability.plan_id == plan_id
         )
-        return dict(self.db.execute(stmt).all())
+        return {key: allowed for key, allowed in self.db.execute(stmt).all()}
 
     def set_capabilities(self, plan_id: UUID, capability_map: dict[str, bool]) -> None:
         """Replace a Plan's capability ceiling wholesale. Caller commits."""

@@ -2,7 +2,7 @@
 
 Covers:
   - ProductTag        : assign / remove tags on products
-  - ProductCustomFieldValue : set / get / list per-product custom field values
+  - ProductCustomFieldValue : set / get / list[Any] per-product custom field values
   - ProductInternalNote : append-only notes
   - ImportJob          : create / get / update import job state
 
@@ -13,6 +13,7 @@ Spec ref: specs/005-inventory-management/spec.md §14, §35
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -81,7 +82,7 @@ class ProductTagRepository:
 
     def list_for_product(self, company_id: UUID, product_id: str) -> list[ProductTag]:
         """Return all active tag assignments for the given product."""
-        return list(
+        return list[Any](
             self.db.execute(
                 select(ProductTag)
                 .where(ProductTag.company_id == company_id)
@@ -104,7 +105,7 @@ class ProductTagRepository:
             .scalars()
             .all()
         )
-        return list(rows)
+        return list[Any](rows)
 
 
 # =============================================================================
@@ -126,7 +127,7 @@ class ProductCustomFieldValueRepository:
         value_text: str | None = None,
         value_number: str | None = None,
         value_bool: bool | None = None,
-        value_json: dict | None = None,
+        value_json: dict[str, Any] | None = None,
     ) -> ProductCustomFieldValue:
         """Upsert a custom field value for the product."""
         existing = (
@@ -179,7 +180,7 @@ class ProductCustomFieldValueRepository:
     def list_values(
         self, company_id: UUID, product_id: str
     ) -> list[ProductCustomFieldValue]:
-        return list(
+        return list[Any](
             self.db.execute(
                 select(ProductCustomFieldValue)
                 .where(ProductCustomFieldValue.company_id == company_id)
@@ -233,7 +234,7 @@ class ProductInternalNoteRepository:
         self, company_id: UUID, product_id: str
     ) -> list[ProductInternalNote]:
         """Return all notes for the product, newest first."""
-        return list(
+        return list[Any](
             self.db.execute(
                 select(ProductInternalNote)
                 .where(ProductInternalNote.company_id == company_id)
@@ -293,7 +294,7 @@ class ImportJobRepository:
         status: str,
         processed_rows: int | None = None,
         failed_rows: int | None = None,
-        error_rows: list | None = None,
+        error_rows: list[Any] | None = None,
         error_message: str | None = None,
     ) -> ImportJob:
         job.status = status
@@ -309,7 +310,7 @@ class ImportJobRepository:
         return job
 
     def list_for_company(self, company_id: UUID, limit: int = 50) -> list[ImportJob]:
-        return list(
+        return list[Any](
             self.db.execute(
                 select(ImportJob)
                 .where(ImportJob.company_id == company_id)

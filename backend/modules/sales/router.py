@@ -60,11 +60,14 @@ Spec ref: specs/007-sales-management/spec.md §23 Functional Requirements
 from __future__ import annotations
 
 import logging
+from typing import Any
 from uuid import UUID
 
 from fastapi import (
     APIRouter,
+    Body,
     Depends,
+    File,
     HTTPException,
     Path,
     Query,
@@ -75,7 +78,7 @@ from fastapi import (
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from core.auth.dependencies import require_authenticated
+from core.auth.dependencies import require_authenticated, require_user_id
 from core.auth.interfaces import CurrentUser
 from core.database.session import get_db
 from core.exceptions.base import (
@@ -131,6 +134,7 @@ from modules.sales.dependencies import (
     get_sales_payment_term_service,
     get_sales_reason_code_service,
 )
+from modules.sales.repositories.pricing import PriceEntryRepository
 from modules.sales.schemas.customer import (
     CustomerAddressCreate,
     CustomerAddressRead,
@@ -199,6 +203,7 @@ from modules.sales.schemas.order import (
     SalesApprovalMatrixCreate,
     SalesApprovalMatrixRead,
     SalesApprovalRecordRead,
+    SalesMatrixRuleRead,
     SalesOrderCreate,
     SalesOrderListItem,
     SalesOrderRead,
@@ -367,7 +372,7 @@ async def list_feature_flags(
 async def update_feature_flag(
     company_id: UUID = Path(...),
     flag_key: str = Path(...),
-    body: SalesFeatureFlagUpdate = ...,
+    body: SalesFeatureFlagUpdate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     flag_service: SalesFeatureFlagService = Depends(get_sales_feature_flag_service),
     db: Session = Depends(get_db),
@@ -482,7 +487,7 @@ async def list_customer_categories(
 )
 async def create_customer_category(
     company_id: UUID = Path(...),
-    body: CustomerCategoryCreate = ...,
+    body: CustomerCategoryCreate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CustomerCategoryService = Depends(get_customer_category_service),
 ) -> StandardResponse[CustomerCategoryRead]:
@@ -514,7 +519,7 @@ async def create_customer_category(
 async def update_customer_category(
     company_id: UUID = Path(...),
     category_id: UUID = Path(...),
-    body: CustomerCategoryUpdate = ...,
+    body: CustomerCategoryUpdate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CustomerCategoryService = Depends(get_customer_category_service),
 ) -> StandardResponse[CustomerCategoryRead]:
@@ -568,7 +573,7 @@ async def list_customer_groups(
 )
 async def create_customer_group(
     company_id: UUID = Path(...),
-    body: CustomerGroupCreate = ...,
+    body: CustomerGroupCreate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CustomerGroupService = Depends(get_customer_group_service),
 ) -> StandardResponse[CustomerGroupRead]:
@@ -598,7 +603,7 @@ async def create_customer_group(
 async def update_customer_group(
     company_id: UUID = Path(...),
     group_id: UUID = Path(...),
-    body: CustomerGroupUpdate = ...,
+    body: CustomerGroupUpdate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CustomerGroupService = Depends(get_customer_group_service),
 ) -> StandardResponse[CustomerGroupRead]:
@@ -652,7 +657,7 @@ async def list_payment_terms(
 )
 async def create_payment_term(
     company_id: UUID = Path(...),
-    body: SalesPaymentTermCreate = ...,
+    body: SalesPaymentTermCreate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: SalesPaymentTermService = Depends(get_sales_payment_term_service),
 ) -> StandardResponse[SalesPaymentTermRead]:
@@ -687,7 +692,7 @@ async def create_payment_term(
 async def update_payment_term(
     company_id: UUID = Path(...),
     term_id: UUID = Path(...),
-    body: SalesPaymentTermUpdate = ...,
+    body: SalesPaymentTermUpdate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: SalesPaymentTermService = Depends(get_sales_payment_term_service),
 ) -> StandardResponse[SalesPaymentTermRead]:
@@ -748,7 +753,7 @@ async def list_reason_codes(
 )
 async def create_reason_code(
     company_id: UUID = Path(...),
-    body: SalesReasonCodeCreate = ...,
+    body: SalesReasonCodeCreate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: SalesReasonCodeService = Depends(get_sales_reason_code_service),
 ) -> StandardResponse[SalesReasonCodeRead]:
@@ -778,7 +783,7 @@ async def create_reason_code(
 async def update_reason_code(
     company_id: UUID = Path(...),
     reason_id: UUID = Path(...),
-    body: SalesReasonCodeUpdate = ...,
+    body: SalesReasonCodeUpdate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: SalesReasonCodeService = Depends(get_sales_reason_code_service),
 ) -> StandardResponse[SalesReasonCodeRead]:
@@ -829,7 +834,7 @@ async def get_configuration(
 )
 async def update_configuration(
     company_id: UUID = Path(...),
-    body: SalesConfigurationUpdate = ...,
+    body: SalesConfigurationUpdate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: SalesConfigurationService = Depends(get_sales_configuration_service),
 ) -> StandardResponse[SalesConfigurationRead]:
@@ -893,7 +898,7 @@ async def list_customers(
 )
 async def create_customer(
     company_id: UUID = Path(...),
-    body: CustomerCreate = ...,
+    body: CustomerCreate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CustomerService = Depends(get_customer_service),
 ) -> StandardResponse[CustomerRead]:
@@ -962,7 +967,7 @@ async def get_customer(
 async def update_customer(
     company_id: UUID = Path(...),
     customer_id: UUID = Path(...),
-    body: CustomerUpdate = ...,
+    body: CustomerUpdate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CustomerService = Depends(get_customer_service),
 ) -> StandardResponse[CustomerRead]:
@@ -991,7 +996,7 @@ async def update_customer(
 async def transition_customer(
     company_id: UUID = Path(...),
     customer_id: UUID = Path(...),
-    body: CustomerStatusTransition = ...,
+    body: CustomerStatusTransition = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CustomerService = Depends(get_customer_service),
 ) -> StandardResponse[CustomerRead]:
@@ -1025,7 +1030,7 @@ async def transition_customer(
 async def update_customer_credit(
     company_id: UUID = Path(...),
     customer_id: UUID = Path(...),
-    body: CustomerCreditUpdate = ...,
+    body: CustomerCreditUpdate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CustomerService = Depends(get_customer_service),
 ) -> StandardResponse[CustomerRead]:
@@ -1081,7 +1086,7 @@ async def list_customer_contacts(
 async def add_customer_contact(
     company_id: UUID = Path(...),
     customer_id: UUID = Path(...),
-    body: CustomerContactCreate = ...,
+    body: CustomerContactCreate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CustomerContactService = Depends(get_customer_contact_service),
 ) -> StandardResponse[CustomerContactRead]:
@@ -1117,7 +1122,7 @@ async def update_customer_contact(
     company_id: UUID = Path(...),
     customer_id: UUID = Path(...),
     contact_id: UUID = Path(...),
-    body: CustomerContactUpdate = ...,
+    body: CustomerContactUpdate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CustomerContactService = Depends(get_customer_contact_service),
 ) -> StandardResponse[CustomerContactRead]:
@@ -1200,7 +1205,7 @@ async def list_customer_addresses(
 async def add_customer_address(
     company_id: UUID = Path(...),
     customer_id: UUID = Path(...),
-    body: CustomerAddressCreate = ...,
+    body: CustomerAddressCreate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CustomerAddressService = Depends(get_customer_address_service),
 ) -> StandardResponse[CustomerAddressRead]:
@@ -1236,7 +1241,7 @@ async def update_customer_address(
     company_id: UUID = Path(...),
     customer_id: UUID = Path(...),
     address_id: UUID = Path(...),
-    body: CustomerAddressUpdate = ...,
+    body: CustomerAddressUpdate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CustomerAddressService = Depends(get_customer_address_service),
 ) -> StandardResponse[CustomerAddressRead]:
@@ -1315,7 +1320,7 @@ async def list_customer_bank_details(
 async def add_customer_bank_detail(
     company_id: UUID = Path(...),
     customer_id: UUID = Path(...),
-    body: CustomerBankDetailCreate = ...,
+    body: CustomerBankDetailCreate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CustomerBankDetailService = Depends(get_customer_bank_detail_service),
 ) -> StandardResponse[CustomerBankDetailRead]:
@@ -1348,7 +1353,7 @@ async def update_customer_bank_detail(
     company_id: UUID = Path(...),
     customer_id: UUID = Path(...),
     bank_id: UUID = Path(...),
-    body: CustomerBankDetailUpdate = ...,
+    body: CustomerBankDetailUpdate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CustomerBankDetailService = Depends(get_customer_bank_detail_service),
 ) -> StandardResponse[CustomerBankDetailRead]:
@@ -1430,11 +1435,11 @@ async def list_customer_notes(
 async def add_customer_note(
     company_id: UUID = Path(...),
     customer_id: UUID = Path(...),
-    body: CustomerNoteCreate = ...,
+    body: CustomerNoteCreate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CustomerNoteService = Depends(get_customer_note_service),
 ) -> StandardResponse[CustomerNoteRead]:
-    actor_id = user.user_id
+    actor_id = require_user_id(user)
     actor_name = user.email or "System"
     note = service.add_note(
         company_id=company_id,
@@ -1463,7 +1468,7 @@ async def add_customer_note(
 )
 async def import_customers(
     company_id: UUID = Path(...),
-    file: UploadFile = ...,
+    file: UploadFile = File(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CustomerImportService = Depends(get_customer_import_service),
 ) -> StandardResponse[CustomerImportResult]:
@@ -1523,7 +1528,7 @@ async def list_price_lists(
     limit: int = Query(20, ge=1, le=100),
     user: CurrentUser = Depends(require_authenticated),
     service: PriceListService = Depends(get_price_list_service),
-) -> StandardResponse:
+) -> StandardResponse[list[PriceListListItem]]:
     items, total = service._repo.paginated(
         company_id=company_id,
         is_active=is_active,
@@ -1550,7 +1555,7 @@ async def create_price_list(
     company_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     service: PriceListService = Depends(get_price_list_service),
-) -> StandardResponse:
+) -> StandardResponse[PriceListRead]:
     from uuid import UUID as _UUID
 
     try:
@@ -1592,8 +1597,8 @@ async def get_price_list(
     price_list_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     service: PriceListService = Depends(get_price_list_service),
-    entry_repo=Depends(get_price_entry_repo),
-) -> StandardResponse:
+    entry_repo: PriceEntryRepository = Depends(get_price_entry_repo),
+) -> StandardResponse[PriceListRead]:
     try:
         pl = service.get_by_id(company_id=company_id, price_list_id=price_list_id)
     except NotFoundException as exc:
@@ -1624,7 +1629,7 @@ async def update_price_list(
     price_list_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     service: PriceListService = Depends(get_price_list_service),
-) -> StandardResponse:
+) -> StandardResponse[PriceListRead]:
     try:
         pl = service.update(
             company_id=company_id,
@@ -1675,7 +1680,7 @@ async def add_price_entry(
     price_list_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     service: PriceListService = Depends(get_price_list_service),
-) -> StandardResponse:
+) -> StandardResponse[PriceEntryRead]:
     from uuid import UUID as _UUID
 
     try:
@@ -1710,7 +1715,7 @@ async def update_price_entry(
     entry_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     service: PriceListService = Depends(get_price_list_service),
-) -> StandardResponse:
+) -> StandardResponse[PriceEntryRead]:
     try:
         entry = service.update_entry(
             company_id=company_id,
@@ -1764,7 +1769,7 @@ async def list_customer_prices(
     service: CustomerSpecificPriceService = Depends(
         get_customer_specific_price_service
     ),
-) -> StandardResponse:
+) -> StandardResponse[list[CustomerSpecificPriceRead]]:
     items, total = service._repo.list_all(
         company_id=company_id,
         customer_id=customer_id,
@@ -1794,7 +1799,7 @@ async def create_customer_price(
     service: CustomerSpecificPriceService = Depends(
         get_customer_specific_price_service
     ),
-) -> StandardResponse:
+) -> StandardResponse[CustomerSpecificPriceRead]:
     from uuid import UUID as _UUID
 
     record = service.create(
@@ -1827,7 +1832,7 @@ async def get_customer_price(
     service: CustomerSpecificPriceService = Depends(
         get_customer_specific_price_service
     ),
-) -> StandardResponse:
+) -> StandardResponse[CustomerSpecificPriceRead]:
     try:
         record = service.get_by_id(company_id=company_id, record_id=price_id)
     except NotFoundException as exc:
@@ -1853,7 +1858,7 @@ async def update_customer_price(
     service: CustomerSpecificPriceService = Depends(
         get_customer_specific_price_service
     ),
-) -> StandardResponse:
+) -> StandardResponse[CustomerSpecificPriceRead]:
     try:
         record = service.update(
             company_id=company_id,
@@ -1906,7 +1911,7 @@ async def list_discount_rules(
     limit: int = Query(20, ge=1, le=100),
     user: CurrentUser = Depends(require_authenticated),
     service: DiscountRuleService = Depends(get_discount_rule_service),
-) -> StandardResponse:
+) -> StandardResponse[list[DiscountRuleRead]]:
     items, total = service._repo.paginated(
         company_id=company_id,
         is_active=is_active,
@@ -1931,7 +1936,7 @@ async def create_discount_rule(
     company_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     service: DiscountRuleService = Depends(get_discount_rule_service),
-) -> StandardResponse:
+) -> StandardResponse[DiscountRuleRead]:
     from uuid import UUID as _UUID
 
     rule = service.create(
@@ -1974,7 +1979,7 @@ async def get_discount_rule(
     rule_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     service: DiscountRuleService = Depends(get_discount_rule_service),
-) -> StandardResponse:
+) -> StandardResponse[DiscountRuleRead]:
     try:
         rule = service.get_by_id(company_id=company_id, rule_id=rule_id)
     except NotFoundException as exc:
@@ -1998,7 +2003,7 @@ async def update_discount_rule(
     rule_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     service: DiscountRuleService = Depends(get_discount_rule_service),
-) -> StandardResponse:
+) -> StandardResponse[DiscountRuleRead]:
     try:
         rule = service.update(
             company_id=company_id,
@@ -2047,7 +2052,7 @@ async def resolve_price(
     company_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     service: PricingService = Depends(get_pricing_service),
-) -> StandardResponse:
+) -> StandardResponse[PriceResolutionResponse]:
     from uuid import UUID as _UUID
 
     result = service.resolve_price(
@@ -2086,7 +2091,7 @@ async def check_margin(
     company_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     service: MarginGuardService = Depends(get_margin_guard_service),
-) -> StandardResponse:
+) -> StandardResponse[MarginCheckResponse]:
     result = service.check_margin(
         unit_price=body.unit_price,
         cost_price=body.cost_price,
@@ -2133,7 +2138,7 @@ async def create_quotation(
         quot = service.create(
             company_id=company_id,
             data=body,
-            created_by=user.user_id,
+            created_by=require_user_id(user),
         )
         lines = line_service._line_repo.list_for_quotation(
             company_id, UUID(str(quot.id))
@@ -2237,7 +2242,7 @@ async def update_quotation(
             company_id=company_id,
             quotation_id=quotation_id,
             data=body,
-            updated_by=user.user_id,
+            updated_by=require_user_id(user),
         )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -2278,7 +2283,7 @@ async def send_quotation(
             company_id=company_id,
             quotation_id=quotation_id,
             request=body,
-            sent_by=user.user_id,
+            sent_by=require_user_id(user),
         )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -2311,7 +2316,7 @@ async def accept_quotation(
             company_id=company_id,
             quotation_id=quotation_id,
             request=body,
-            accepted_by=user.user_id,
+            accepted_by=require_user_id(user),
         )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -2344,7 +2349,7 @@ async def reject_quotation(
             company_id=company_id,
             quotation_id=quotation_id,
             request=body,
-            rejected_by=user.user_id,
+            rejected_by=require_user_id(user),
         )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -2377,7 +2382,7 @@ async def cancel_quotation(
             company_id=company_id,
             quotation_id=quotation_id,
             request=body,
-            cancelled_by=user.user_id,
+            cancelled_by=require_user_id(user),
         )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -2440,7 +2445,7 @@ async def convert_quotation(
         result = service.convert_to_order(
             company_id=company_id,
             quotation_id=quotation_id,
-            converted_by=user.user_id,
+            converted_by=require_user_id(user),
         )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -2472,8 +2477,10 @@ async def get_quotation_revisions(
     user: CurrentUser = Depends(require_authenticated),
     service: QuotationService = Depends(get_quotation_service),
 ) -> StandardResponse[list[QuotationRevisionRead]]:
+    from modules.sales.models.quotation import QuotationRevision  # noqa: PLC0415
+
     try:
-        revisions = service.get_revisions(
+        revisions: list[QuotationRevision] = service.get_revisions(
             company_id=company_id, quotation_id=quotation_id
         )
     except NotFoundException as exc:
@@ -2646,7 +2653,7 @@ async def create_sales_order(
         order = svc.create_order(
             company_id=company_id,
             data=payload,
-            created_by=user.user_id,
+            created_by=require_user_id(user),
         )
     except ConflictException as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
@@ -3011,19 +3018,16 @@ async def list_approval_matrices(
     svc: ApprovalService = Depends(get_approval_service),
 ) -> StandardResponse[list[SalesApprovalMatrixRead]]:
     matrices = svc._matrix_repo.list_for_company(company_id, document_type)
-    result = []
+    result: list[SalesApprovalMatrixRead] = []
     for m in matrices:
         rules = svc._rule_repo.list_for_matrix(company_id, m.id)
         matrix_read = SalesApprovalMatrixRead.model_validate(m)
-        matrix_read.rules = [
-            SalesApprovalMatrixRead.__fields__
-            for _ in rules  # type: ignore  # noqa
-        ]
+        matrix_read.rules = [SalesMatrixRuleRead.model_validate(r) for r in rules]
         result.append(matrix_read)
 
     now = utcnow()
     return StandardResponse(
-        data=[SalesApprovalMatrixRead.model_validate(m) for m in matrices],
+        data=result,
         message=f"Retrieved {len(matrices)} approval matrices",
         meta=ResponseMeta(request_id=REQUEST_ID_CONTEXT.get("-"), timestamp=now),
     )
@@ -3158,7 +3162,7 @@ async def list_delivery_notes(
     limit: int = Query(20, ge=1, le=100),
     user: CurrentUser = Depends(require_authenticated),
     svc: DeliveryService = Depends(get_delivery_service),
-) -> StandardResponse:
+) -> StandardResponse[DeliveryNoteListResponse]:
     items, total = svc.list_delivery_notes(
         company_id,
         order_id=order_id,
@@ -3195,12 +3199,12 @@ async def create_delivery_note(
     company_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     svc: DeliveryService = Depends(get_delivery_service),
-) -> StandardResponse:
+) -> StandardResponse[DeliveryNoteRead]:
     try:
         dn = svc.create_delivery_note(
             company_id=company_id,
             data=body,
-            created_by=user.user_id,
+            created_by=require_user_id(user),
         )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -3224,7 +3228,7 @@ async def get_delivery_note(
     dn_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     svc: DeliveryService = Depends(get_delivery_service),
-) -> StandardResponse:
+) -> StandardResponse[DeliveryNoteRead]:
     try:
         dn = svc.get_delivery_note(company_id, dn_id)
     except NotFoundException as exc:
@@ -3248,13 +3252,13 @@ async def dispatch_delivery_note(
     dn_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     svc: DeliveryService = Depends(get_delivery_service),
-) -> StandardResponse:
+) -> StandardResponse[DeliveryNoteRead]:
     try:
         dn = svc.dispatch(
             company_id=company_id,
             delivery_note_id=dn_id,
             data=body,
-            dispatched_by=user.user_id,
+            dispatched_by=require_user_id(user),
         )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -3278,12 +3282,12 @@ async def deliver_delivery_note(
     dn_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     svc: DeliveryService = Depends(get_delivery_service),
-) -> StandardResponse:
+) -> StandardResponse[DeliveryNoteRead]:
     try:
         dn = svc.mark_delivered(
             company_id=company_id,
             delivery_note_id=dn_id,
-            updated_by=user.user_id,
+            updated_by=require_user_id(user),
         )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -3307,12 +3311,12 @@ async def cancel_delivery_note(
     dn_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     svc: DeliveryService = Depends(get_delivery_service),
-) -> StandardResponse:
+) -> StandardResponse[DeliveryNoteRead]:
     try:
         dn = svc.cancel(
             company_id=company_id,
             delivery_note_id=dn_id,
-            cancelled_by=user.user_id,
+            cancelled_by=require_user_id(user),
         )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -3336,7 +3340,7 @@ async def list_delivery_note_lines(
     dn_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     svc: DeliveryService = Depends(get_delivery_service),
-) -> StandardResponse:
+) -> StandardResponse[list[DeliveryNoteLineRead]]:
     try:
         svc.get_delivery_note(company_id, dn_id)  # validates existence + tenant
     except NotFoundException as exc:
@@ -3375,7 +3379,7 @@ async def list_invoices(
     offset: int = 0,
     user: CurrentUser = Depends(require_authenticated),
     svc: InvoiceService = Depends(get_invoice_service),
-) -> StandardResponse:
+) -> StandardResponse[InvoiceListResponse]:
     items, total = svc.list_invoices(
         company_id,
         customer_id=customer_id,
@@ -3410,12 +3414,14 @@ async def list_invoices(
 )
 async def create_invoice(
     company_id: UUID = Path(...),
-    payload: InvoiceCreate = ...,
+    payload: InvoiceCreate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     svc: InvoiceService = Depends(get_invoice_service),
-) -> StandardResponse:
+) -> StandardResponse[InvoiceRead]:
     try:
-        invoice = svc.create_invoice(company_id, payload, created_by=user.user_id)
+        invoice = svc.create_invoice(
+            company_id, payload, created_by=require_user_id(user)
+        )
     except (NotFoundException, ConflictException) as exc:
         raise HTTPException(
             status_code=(
@@ -3443,7 +3449,7 @@ async def get_invoice(
     invoice_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     svc: InvoiceService = Depends(get_invoice_service),
-) -> StandardResponse:
+) -> StandardResponse[InvoiceRead]:
     try:
         invoice = svc.get_invoice(company_id, invoice_id)
     except NotFoundException as exc:
@@ -3464,13 +3470,13 @@ async def get_invoice(
 async def issue_invoice(
     company_id: UUID = Path(...),
     invoice_id: UUID = Path(...),
-    payload: InvoiceIssueRequest = ...,
+    payload: InvoiceIssueRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     svc: InvoiceService = Depends(get_invoice_service),
-) -> StandardResponse:
+) -> StandardResponse[InvoiceRead]:
     try:
         invoice = svc.issue_invoice(
-            company_id, invoice_id, payload, issued_by=user.user_id
+            company_id, invoice_id, payload, issued_by=require_user_id(user)
         )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -3494,9 +3500,11 @@ async def cancel_invoice(
     invoice_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     svc: InvoiceService = Depends(get_invoice_service),
-) -> StandardResponse:
+) -> StandardResponse[InvoiceRead]:
     try:
-        invoice = svc.cancel_invoice(company_id, invoice_id, cancelled_by=user.user_id)
+        invoice = svc.cancel_invoice(
+            company_id, invoice_id, cancelled_by=require_user_id(user)
+        )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except ConflictException as exc:
@@ -3517,13 +3525,13 @@ async def cancel_invoice(
 async def issue_credit_note(
     company_id: UUID = Path(...),
     invoice_id: UUID = Path(...),
-    payload: InvoiceCreditNoteRequest = ...,
+    payload: InvoiceCreditNoteRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     svc: InvoiceService = Depends(get_invoice_service),
-) -> StandardResponse:
+) -> StandardResponse[InvoiceRead]:
     try:
         invoice = svc.issue_credit_note(
-            company_id, invoice_id, payload, issued_by=user.user_id
+            company_id, invoice_id, payload, issued_by=require_user_id(user)
         )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -3547,7 +3555,7 @@ async def list_invoice_lines(
     invoice_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     svc: InvoiceService = Depends(get_invoice_service),
-) -> StandardResponse:
+) -> StandardResponse[list[InvoiceLineRead]]:
     try:
         svc.get_invoice(company_id, invoice_id)
     except NotFoundException as exc:
@@ -3571,7 +3579,7 @@ async def list_invoice_charges(
     invoice_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     svc: InvoiceService = Depends(get_invoice_service),
-) -> StandardResponse:
+) -> StandardResponse[list[InvoiceChargeRead]]:
     try:
         svc.get_invoice(company_id, invoice_id)
     except NotFoundException as exc:
@@ -3633,7 +3641,7 @@ async def list_sales_returns(
     offset: int = Query(0, ge=0),
     user: CurrentUser = Depends(require_authenticated),
     svc: ReturnService = Depends(get_return_service),
-) -> StandardResponse:
+) -> StandardResponse[SalesReturnListResponse]:
     items, total = svc.list_returns(
         company_id,
         customer_id=customer_id,
@@ -3667,12 +3675,14 @@ async def list_sales_returns(
 )
 async def create_sales_return(
     company_id: UUID = Path(...),
-    data: SalesReturnCreate = ...,
+    data: SalesReturnCreate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     svc: ReturnService = Depends(get_return_service),
-) -> StandardResponse:
+) -> StandardResponse[dict[str, Any]]:
     try:
-        sales_return = svc.create_return(company_id, data, created_by=user.user_id)
+        sales_return = svc.create_return(
+            company_id, data, created_by=require_user_id(user)
+        )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except ConflictException as exc:
@@ -3700,7 +3710,7 @@ async def get_sales_return(
     return_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     svc: ReturnService = Depends(get_return_service),
-) -> StandardResponse:
+) -> StandardResponse[dict[str, Any]]:
     try:
         sales_return = svc.get_return(company_id, return_id)
     except NotFoundException as exc:
@@ -3728,10 +3738,10 @@ async def submit_sales_return(
     return_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     svc: ReturnService = Depends(get_return_service),
-) -> StandardResponse:
+) -> StandardResponse[SalesReturnRead]:
     try:
         sales_return = svc.submit_return(
-            company_id, return_id, submitted_by=user.user_id
+            company_id, return_id, submitted_by=require_user_id(user)
         )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -3755,13 +3765,13 @@ async def submit_sales_return(
 async def approve_sales_return(
     company_id: UUID = Path(...),
     return_id: UUID = Path(...),
-    data: ReturnApproveRequest = ...,
+    data: ReturnApproveRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     svc: ReturnService = Depends(get_return_service),
-) -> StandardResponse:
+) -> StandardResponse[SalesReturnRead]:
     try:
         sales_return = svc.approve_return(
-            company_id, return_id, data, approved_by=user.user_id
+            company_id, return_id, data, approved_by=require_user_id(user)
         )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -3785,13 +3795,13 @@ async def approve_sales_return(
 async def reject_sales_return(
     company_id: UUID = Path(...),
     return_id: UUID = Path(...),
-    data: ReturnRejectRequest = ...,
+    data: ReturnRejectRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     svc: ReturnService = Depends(get_return_service),
-) -> StandardResponse:
+) -> StandardResponse[SalesReturnRead]:
     try:
         sales_return = svc.reject_return(
-            company_id, return_id, data, rejected_by=user.user_id
+            company_id, return_id, data, rejected_by=require_user_id(user)
         )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -3815,13 +3825,13 @@ async def reject_sales_return(
 async def receive_sales_return(
     company_id: UUID = Path(...),
     return_id: UUID = Path(...),
-    data: ReturnReceiveRequest = ...,
+    data: ReturnReceiveRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     svc: ReturnService = Depends(get_return_service),
-) -> StandardResponse:
+) -> StandardResponse[dict[str, Any]]:
     try:
         sales_return = svc.receive_return(
-            company_id, return_id, data, received_by=user.user_id
+            company_id, return_id, data, received_by=require_user_id(user)
         )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -3848,13 +3858,13 @@ async def receive_sales_return(
 async def complete_sales_return(
     company_id: UUID = Path(...),
     return_id: UUID = Path(...),
-    data: ReturnCompleteRequest = ...,
+    data: ReturnCompleteRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     svc: ReturnService = Depends(get_return_service),
-) -> StandardResponse:
+) -> StandardResponse[SalesReturnRead]:
     try:
         sales_return = svc.complete_return(
-            company_id, return_id, data, completed_by=user.user_id
+            company_id, return_id, data, completed_by=require_user_id(user)
         )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -3880,10 +3890,10 @@ async def cancel_sales_return(
     return_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     svc: ReturnService = Depends(get_return_service),
-) -> StandardResponse:
+) -> StandardResponse[SalesReturnRead]:
     try:
         sales_return = svc.cancel_return(
-            company_id, return_id, cancelled_by=user.user_id
+            company_id, return_id, cancelled_by=require_user_id(user)
         )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -3909,7 +3919,7 @@ async def list_return_lines(
     return_id: UUID = Path(...),
     user: CurrentUser = Depends(require_authenticated),
     svc: ReturnService = Depends(get_return_service),
-) -> StandardResponse:
+) -> StandardResponse[list[ReturnLineRead]]:
     try:
         lines = svc.get_return_lines(company_id, return_id)
     except NotFoundException as exc:
@@ -3948,7 +3958,7 @@ async def get_sales_report(
     offset: int = Query(default=0, ge=0),
     user: CurrentUser = Depends(require_authenticated),
     svc: ReportService = Depends(get_report_service),
-) -> StandardResponse:
+) -> StandardResponse[dict[str, Any]]:
     params = ReportParams(
         date_from=date_from,
         date_to=date_to,
@@ -4016,7 +4026,7 @@ async def get_kpi_dashboard(
     date_to: str | None = Query(default=None, description="End date YYYY-MM-DD"),
     user: CurrentUser = Depends(require_authenticated),
     svc: KPIService = Depends(get_kpi_service),
-) -> StandardResponse:
+) -> StandardResponse[dict[str, Any]]:
     dashboard = svc.get_dashboard(str(company_id), date_from=date_from, date_to=date_to)
     now = utcnow()
     return StandardResponse(

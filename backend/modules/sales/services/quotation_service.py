@@ -17,6 +17,7 @@ Task: T086, T087, T088, T089, T090
 
 from __future__ import annotations
 
+import builtins
 import logging
 from datetime import date, timedelta
 from decimal import Decimal
@@ -173,11 +174,11 @@ class QuotationLineService:
         unit_price = data.unit_price
         if data.product_id is not None:
             try:
-                resolution = self._pricing.resolve(
+                resolution = self._pricing.resolve_price(
                     company_id=company_id,
                     product_id=data.product_id,
                     quantity=data.quantity,
-                    customer_id=quotation.customer_id,  # type: ignore[arg-type]
+                    customer_id=UUID(quotation.customer_id),
                 )
                 if resolution and resolution.resolution_level < 7:
                     # Override with resolved price only if caller didn't set explicit price
@@ -253,8 +254,6 @@ class QuotationLineService:
             line.tax_category = data.tax_category
         if data.notes is not None:
             line.notes = data.notes
-        if updated_by:
-            line.updated_by = str(updated_by)
 
         # Recompute line totals
         extended, disc_amount = self._compute_line_extended(
@@ -284,8 +283,6 @@ class QuotationLineService:
             raise NotFoundException(f"Quotation line not found: {line_id}")
 
         line.is_deleted = True
-        if deleted_by:
-            line.deleted_by = str(deleted_by)
         self.db.flush()
         _recalculate_totals(quotation, self._line_repo)
         self.db.commit()
@@ -302,7 +299,7 @@ def _recalculate_totals(
 ) -> None:
     """Recompute subtotal/discount_amount/total_amount from active lines."""
     lines = line_repo.list_for_quotation(quotation.company_id, quotation.id)
-    subtotal = sum(ln.extended_amount for ln in lines)
+    subtotal = sum((ln.extended_amount for ln in lines), start=Decimal("0"))
     quotation.subtotal = subtotal
 
     # Apply header-level discount
@@ -600,7 +597,6 @@ class QuotationService:
         if data.customer_notes is not None:
             quotation.customer_notes = data.customer_notes
 
-        quotation.updated_by = str(updated_by)
         quotation.revision_number += 1
 
         # Recalculate totals
@@ -628,7 +624,6 @@ class QuotationService:
         _assert_transition(quotation.status, "SENT_TO_CUSTOMER")
 
         quotation.status = "SENT_TO_CUSTOMER"
-        quotation.updated_by = str(sent_by)
         if request.notes:
             quotation.internal_notes = (
                 (quotation.internal_notes or "") + f"\n[SENT] {request.notes}"
@@ -662,7 +657,6 @@ class QuotationService:
         _assert_transition(quotation.status, "ACCEPTED")
 
         quotation.status = "ACCEPTED"
-        quotation.updated_by = str(accepted_by)
         if request.notes:
             quotation.internal_notes = (
                 (quotation.internal_notes or "") + f"\n[ACCEPTED] {request.notes}"
@@ -698,7 +692,6 @@ class QuotationService:
         _assert_transition(quotation.status, "REJECTED")
 
         quotation.status = "REJECTED"
-        quotation.updated_by = str(rejected_by)
         self.db.flush()
 
         self._capture_revision(
@@ -733,7 +726,6 @@ class QuotationService:
         _assert_transition(quotation.status, "CANCELLED")
 
         quotation.status = "CANCELLED"
-        quotation.updated_by = str(cancelled_by)
         self.db.flush()
 
         self._capture_revision(
@@ -770,8 +762,6 @@ class QuotationService:
         _assert_transition(quotation.status, "EXPIRED")
 
         quotation.status = "EXPIRED"
-        if expired_by:
-            quotation.updated_by = str(expired_by)
         self.db.flush()
 
         actor = expired_by or UUID(int=0)
@@ -816,7 +806,6 @@ class QuotationService:
 
         quotation.status = "CONVERTED"
         quotation.converted_order_id = str(order_id)
-        quotation.updated_by = str(converted_by)
         self.db.flush()
 
         self._capture_revision(
@@ -912,7 +901,7 @@ class QuotationService:
 
     def get_revisions(
         self, company_id: UUID, quotation_id: UUID
-    ) -> list[QuotationRevision]:
+    ) -> builtins.list[QuotationRevision]:
         """Return all revision history for a quotation."""
         self._get_or_404(company_id, quotation_id)
         return self._rev_repo.list_for_quotation(company_id, quotation_id)

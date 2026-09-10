@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import CursorResult, delete, select, update
 from sqlalchemy.orm import Session
 
 from core.utils.datetime import utcnow
@@ -85,10 +86,13 @@ class EmailVerificationTokenRepository:
     def delete_expired(self) -> int:
         """Delete all expired email verification tokens. Intended for scheduled cleanup."""
         now = utcnow()
-        result = self.db.execute(
-            delete(EmailVerificationToken).where(
-                EmailVerificationToken.expires_at <= now
-            )
+        result = cast(
+            CursorResult[Any],
+            self.db.execute(
+                delete(EmailVerificationToken).where(
+                    EmailVerificationToken.expires_at <= now
+                )
+            ),
         )
         self.db.commit()
         count: int = result.rowcount

@@ -118,7 +118,9 @@ class CompanyRepository:
         self.db.flush()
         return company
 
-    def set_subscription_id(self, company: Company, subscription_id) -> Company:
+    def set_subscription_id(
+        self, company: Company, subscription_id: UUID | None
+    ) -> Company:
         """Stage a sync of the denormalised `subscription_id` pointer to
         the tenant's current `Subscription` (Epic 9A ADR-9,
         `SubscriptionService`, T112). The `subscriptions` table's own

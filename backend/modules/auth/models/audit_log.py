@@ -17,6 +17,7 @@ not be navigated from other models.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import DateTime, Enum, Index, String, Text, Uuid, func, text
@@ -103,7 +104,7 @@ class AuditLog(Base):
         doc="X-Request-ID header value for correlating with application logs.",
     )
 
-    metadata_: Mapped[dict | None] = mapped_column(
+    metadata_: Mapped[dict[str, Any] | None] = mapped_column(
         "metadata",
         JSONB,
         nullable=True,

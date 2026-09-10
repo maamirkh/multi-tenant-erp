@@ -25,6 +25,7 @@ Import rules:
 import logging
 
 from sqlalchemy import Engine, create_engine, event
+from sqlalchemy.engine.interfaces import DBAPIConnection
 
 from core.config.settings import get_settings
 
@@ -50,7 +51,9 @@ engine: Engine = create_engine(
 
 
 @event.listens_for(engine, "connect")
-def _set_pg_lock_timeout(dbapi_connection: object, connection_record: object) -> None:  # noqa: ARG001
+def _set_pg_lock_timeout(
+    dbapi_connection: DBAPIConnection, connection_record: object
+) -> None:  # noqa: ARG001
     """Set PostgreSQL lock_timeout on every new connection.
 
     Skipped for SQLite (test environment) since it uses a different dialect.
@@ -66,7 +69,7 @@ def _set_pg_lock_timeout(dbapi_connection: object, connection_record: object) ->
         return
 
     try:
-        cursor = dbapi_connection.cursor()  # type: ignore[union-attr]
+        cursor = dbapi_connection.cursor()
         cursor.execute(f"SET lock_timeout = '{timeout_seconds}s'")
         cursor.close()
     except Exception:  # noqa: BLE001

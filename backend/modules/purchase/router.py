@@ -32,10 +32,12 @@ Task: T064
 from __future__ import annotations
 
 import logging
+from typing import Any, NoReturn
 from uuid import UUID
 
 from fastapi import (
     APIRouter,
+    Body,
     Depends,
     File,
     HTTPException,
@@ -47,7 +49,7 @@ from fastapi import (
 )
 from sqlalchemy.orm import Session
 
-from core.auth.dependencies import require_authenticated
+from core.auth.dependencies import require_authenticated, require_user_id
 from core.auth.interfaces import CurrentUser
 from core.database.session import get_db
 from core.exceptions.base import (
@@ -211,6 +213,7 @@ from modules.purchase.schemas.vendor_return import (
     VendorReturnRead,
     VendorReturnUpdate,
 )
+from modules.purchase.services.approval_service import ApprovalService
 from modules.purchase.services.cost_service import CostService
 from modules.purchase.services.feature_flag_service import PurchaseFeatureFlagService
 from modules.purchase.services.gr_service import (
@@ -1548,7 +1551,7 @@ async def bulk_import_suppliers(
 # ---------------------------------------------------------------------------
 
 
-def _meta():
+def _meta() -> ResponseMeta:
     return ResponseMeta(request_id=REQUEST_ID_CONTEXT.get("-"), timestamp=utcnow())
 
 
@@ -1739,7 +1742,7 @@ async def update_bank_details(
 
 @router.delete(
     "/suppliers/{supplier_id}/bank-details/{bd_id}",
-    response_model=StandardResponse[dict],
+    response_model=StandardResponse[dict[str, Any]],
     summary="Delete bank details (Finance Manager only)",
 )
 async def delete_bank_details(
@@ -1748,7 +1751,7 @@ async def delete_bank_details(
     bd_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     repo: BankDetailsRepository = Depends(get_bank_details_repo),
-) -> StandardResponse[dict]:
+) -> StandardResponse[dict[str, Any]]:
     """Soft-delete a bank detail record. Finance Manager role required."""
     _require_finance_manager(current_user)
     from core.utils.datetime import utcnow as _now
@@ -1760,7 +1763,6 @@ async def delete_bank_details(
         )
     bd.is_deleted = True
     bd.deleted_at = _now()
-    bd.deleted_by = current_user.user_id
     repo.db.commit()
     return StandardResponse(data={}, message="Bank details deleted", meta=_meta())
 
@@ -1801,7 +1803,7 @@ async def get_supplier_rating(
     summary="Trigger rating recompute from raw metrics",
 )
 async def recompute_supplier_rating(
-    body: dict,
+    body: dict[str, Any],
     company_id: UUID = Path(..., description="Company identifier"),
     supplier_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
@@ -1851,7 +1853,7 @@ async def override_supplier_rating(
         supplier_id=supplier_id,
         override_score=body.override_score,
         override_reason=body.override_reason,
-        actor_id=current_user.user_id,
+        actor_id=require_user_id(current_user),
     )
     rating_svc.db.commit()
     rating_svc.db.refresh(rating)
@@ -1878,7 +1880,7 @@ async def clear_rating_override(
         rating = rating_svc.clear_manual_override(
             company_id=company_id,
             supplier_id=supplier_id,
-            actor_id=current_user.user_id,
+            actor_id=require_user_id(current_user),
         )
         rating_svc.db.commit()
         rating_svc.db.refresh(rating)
@@ -1938,7 +1940,7 @@ async def add_supplier_document(
         issue_date=body.issue_date,
         expiry_date=body.expiry_date,
         file_url=body.file_url,
-        actor_id=current_user.user_id,
+        actor_id=require_user_id(current_user),
     )
     doc_svc.db.commit()
     doc_svc.db.refresh(doc)
@@ -1951,7 +1953,7 @@ async def add_supplier_document(
 
 @router.delete(
     "/suppliers/{supplier_id}/documents/{doc_id}",
-    response_model=StandardResponse[dict],
+    response_model=StandardResponse[dict[str, Any]],
     summary="Delete a supplier compliance document",
 )
 async def delete_supplier_document(
@@ -1960,14 +1962,14 @@ async def delete_supplier_document(
     doc_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     doc_svc: SupplierDocumentService = Depends(get_supplier_document_service),
-) -> StandardResponse[dict]:
+) -> StandardResponse[dict[str, Any]]:
     """Soft-delete a supplier compliance document."""
     try:
         doc_svc.delete_document(
             company_id=company_id,
             supplier_id=supplier_id,
             document_id=doc_id,
-            actor_id=current_user.user_id,
+            actor_id=require_user_id(current_user),
         )
         doc_svc.db.commit()
         return StandardResponse(data={}, message="Document deleted", meta=_meta())
@@ -2089,23 +2091,23 @@ async def update_supplier_lead_time(
 
 @router.post(
     "/suppliers/{supplier_id}/preferred",
-    response_model=StandardResponse[dict],
+    response_model=StandardResponse[dict[str, Any]],
     summary="Set or clear preferred supplier flag (Purchase Manager only)",
 )
 async def set_preferred_supplier(
-    body: dict,
+    body: dict[str, Any],
     company_id: UUID = Path(..., description="Company identifier"),
     supplier_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     supplier_svc: SupplierService = Depends(get_supplier_service),
-) -> StandardResponse[dict]:
+) -> StandardResponse[dict[str, Any]]:
     """Set or clear the is_preferred flag. Purchase Manager role required."""
     is_preferred = bool(body.get("is_preferred", False))
     supplier = supplier_svc.set_preferred(
         supplier_id=supplier_id,
         company_id=company_id,
         is_preferred=is_preferred,
-        actor_id=current_user.user_id,
+        actor_id=require_user_id(current_user),
     )
     supplier_svc.db.commit()
     return StandardResponse(
@@ -2211,8 +2213,8 @@ def _require_purchase_manager(current_user: CurrentUser) -> None:
 def list_approval_matrices(
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
-    svc=Depends(get_approval_service),
-):
+    svc: ApprovalService = Depends(get_approval_service),
+) -> StandardResponse[list[ApprovalMatrixRead]]:
     matrices = svc.list_matrices(company_id=company_id)
     return StandardResponse(
         data=[
@@ -2242,8 +2244,8 @@ def create_approval_matrix(
     body: ApprovalMatrixCreate,
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
-    svc=Depends(get_approval_service),
-):
+    svc: ApprovalService = Depends(get_approval_service),
+) -> StandardResponse[ApprovalMatrixRead]:
     _require_purchase_manager(current_user)
     matrix = svc.create_matrix(
         company_id=company_id,
@@ -2276,8 +2278,8 @@ def get_approval_matrix(
     matrix_id: UUID = Path(...),
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
-    svc=Depends(get_approval_service),
-):
+    svc: ApprovalService = Depends(get_approval_service),
+) -> StandardResponse[ApprovalMatrixRead]:
     try:
         matrix = svc.get_matrix(matrix_id=matrix_id, company_id=company_id)
     except Exception:
@@ -2309,8 +2311,8 @@ def update_approval_matrix(
     matrix_id: UUID = Path(...),
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
-    svc=Depends(get_approval_service),
-):
+    svc: ApprovalService = Depends(get_approval_service),
+) -> StandardResponse[ApprovalMatrixRead]:
     _require_purchase_manager(current_user)
     try:
         matrix = svc.update_matrix(
@@ -2347,8 +2349,8 @@ def delete_approval_matrix(
     matrix_id: UUID = Path(...),
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
-    svc=Depends(get_approval_service),
-):
+    svc: ApprovalService = Depends(get_approval_service),
+) -> None:
     _require_purchase_manager(current_user)
     try:
         svc.delete_matrix(matrix_id=matrix_id, company_id=company_id)
@@ -2373,8 +2375,8 @@ def list_matrix_rules(
     matrix_id: UUID = Path(...),
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
-    svc=Depends(get_approval_service),
-):
+    svc: ApprovalService = Depends(get_approval_service),
+) -> StandardResponse[list[MatrixRuleRead]]:
     rules = svc.list_rules(matrix_id=matrix_id, company_id=company_id)
     return StandardResponse(
         data=[
@@ -2410,8 +2412,8 @@ def create_matrix_rule(
     matrix_id: UUID = Path(...),
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
-    svc=Depends(get_approval_service),
-):
+    svc: ApprovalService = Depends(get_approval_service),
+) -> StandardResponse[MatrixRuleRead]:
     _require_purchase_manager(current_user)
     rule = svc.create_rule(
         matrix_id=matrix_id,
@@ -2456,8 +2458,8 @@ def update_matrix_rule(
     rule_id: UUID = Path(...),
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
-    svc=Depends(get_approval_service),
-):
+    svc: ApprovalService = Depends(get_approval_service),
+) -> StandardResponse[MatrixRuleRead]:
     _require_purchase_manager(current_user)
     try:
         rule = svc.update_rule(
@@ -2499,8 +2501,8 @@ def delete_matrix_rule(
     rule_id: UUID = Path(...),
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
-    svc=Depends(get_approval_service),
-):
+    svc: ApprovalService = Depends(get_approval_service),
+) -> None:
     _require_purchase_manager(current_user)
     try:
         svc.delete_rule(rule_id=rule_id, company_id=company_id)
@@ -2525,8 +2527,8 @@ def list_approval_levels(
     rule_id: UUID = Path(...),
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
-    svc=Depends(get_approval_service),
-):
+    svc: ApprovalService = Depends(get_approval_service),
+) -> StandardResponse[list[ApprovalLevelRead]]:
     levels = svc.list_levels(rule_id=rule_id, company_id=company_id)
     return StandardResponse(
         data=[
@@ -2560,8 +2562,8 @@ def create_approval_level(
     rule_id: UUID = Path(...),
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
-    svc=Depends(get_approval_service),
-):
+    svc: ApprovalService = Depends(get_approval_service),
+) -> StandardResponse[ApprovalLevelRead]:
     _require_purchase_manager(current_user)
     level = svc.create_level(
         rule_id=rule_id,
@@ -2602,8 +2604,8 @@ def update_approval_level(
     level_id: UUID = Path(...),
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
-    svc=Depends(get_approval_service),
-):
+    svc: ApprovalService = Depends(get_approval_service),
+) -> StandardResponse[ApprovalLevelRead]:
     _require_purchase_manager(current_user)
     try:
         level = svc.update_level(
@@ -2643,8 +2645,8 @@ def delete_approval_level(
     level_id: UUID = Path(...),
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
-    svc=Depends(get_approval_service),
-):
+    svc: ApprovalService = Depends(get_approval_service),
+) -> None:
     _require_purchase_manager(current_user)
     try:
         svc.delete_level(level_id=level_id, company_id=company_id)
@@ -2670,13 +2672,13 @@ def approve_document(
     body: ApproveAction,
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
-    svc=Depends(get_approval_service),
-):
+    svc: ApprovalService = Depends(get_approval_service),
+) -> StandardResponse[ApprovalRecordRead]:
     try:
         record = svc.approve(
             document_type=body.document_type,
             document_id=body.document_id,
-            approver_id=current_user.user_id,
+            approver_id=require_user_id(current_user),
             company_id=company_id,
             level_number=body.level_number,
             comment=body.comment,
@@ -2714,13 +2716,13 @@ def reject_document(
     body: RejectAction,
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
-    svc=Depends(get_approval_service),
-):
+    svc: ApprovalService = Depends(get_approval_service),
+) -> StandardResponse[ApprovalRecordRead]:
     try:
         record = svc.reject(
             document_type=body.document_type,
             document_id=body.document_id,
-            approver_id=current_user.user_id,
+            approver_id=require_user_id(current_user),
             company_id=company_id,
             level_number=body.level_number,
             comment=body.comment,
@@ -2758,14 +2760,14 @@ def emergency_bypass(
     body: EmergencyBypassAction,
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
-    svc=Depends(get_approval_service),
-):
+    svc: ApprovalService = Depends(get_approval_service),
+) -> StandardResponse[ApprovalRecordRead]:
     _require_purchase_manager(current_user)
     try:
         record = svc.emergency_bypass(
             document_type=body.document_type,
             document_id=body.document_id,
-            bypasser_id=current_user.user_id,
+            bypasser_id=require_user_id(current_user),
             company_id=company_id,
             justification=body.justification,
         )
@@ -2804,8 +2806,8 @@ def get_approval_status(
     document_id: UUID = Query(...),
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
-    svc=Depends(get_approval_service),
-):
+    svc: ApprovalService = Depends(get_approval_service),
+) -> StandardResponse[ApprovalStatusRead]:
     status_data = svc.get_approval_status(
         document_type=document_type,
         document_id=document_id,
@@ -2830,8 +2832,8 @@ def get_approval_route(
     amount: float | None = Query(None),
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
-    svc=Depends(get_approval_service),
-):
+    svc: ApprovalService = Depends(get_approval_service),
+) -> StandardResponse[RouteForApprovalResult]:
     from decimal import Decimal
 
     result = svc.route_for_approval(
@@ -2862,8 +2864,8 @@ def list_delegates_by_delegator(
     delegator_id: UUID = Path(...),
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
-    svc=Depends(get_approval_service),
-):
+    svc: ApprovalService = Depends(get_approval_service),
+) -> StandardResponse[list[ApprovalDelegateRead]]:
     delegations = svc._delegate_repo.list_for_delegator(
         company_id=company_id, delegator_id=delegator_id
     )
@@ -2898,12 +2900,12 @@ def create_approval_delegate(
     body: ApprovalDelegateCreate,
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
-    svc=Depends(get_approval_service),
-):
+    svc: ApprovalService = Depends(get_approval_service),
+) -> StandardResponse[ApprovalDelegateRead]:
     try:
         delegation = svc.create_delegate(
             company_id=company_id,
-            actor_id=current_user.user_id,
+            actor_id=require_user_id(current_user),
             delegate_id=body.delegate_id,
             valid_from=body.valid_from,
             valid_until=body.valid_until,
@@ -2940,8 +2942,8 @@ def update_approval_delegate(
     delegate_id: UUID = Path(...),
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
-    svc=Depends(get_approval_service),
-):
+    svc: ApprovalService = Depends(get_approval_service),
+) -> StandardResponse[ApprovalDelegateRead]:
     try:
         delegation = svc.update_delegate(
             delegate_id=delegate_id,
@@ -2979,8 +2981,8 @@ def delete_approval_delegate(
     delegate_id: UUID = Path(...),
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
-    svc=Depends(get_approval_service),
-):
+    svc: ApprovalService = Depends(get_approval_service),
+) -> None:
     try:
         svc.delete_delegate(delegate_id=delegate_id, company_id=company_id)
     except Exception:
@@ -3010,11 +3012,11 @@ def create_purchase_request(
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: PRService = Depends(get_pr_service),
-):
+) -> StandardResponse[PurchaseRequestRead]:
     pr = svc.create_pr(
         payload=body,
         company_id=company_id,
-        requestor_id=current_user.user_id,
+        requestor_id=require_user_id(current_user),
     )
     return StandardResponse(
         data=pr,
@@ -3036,7 +3038,7 @@ def list_purchase_requests(
     limit: int = Query(50, ge=1, le=200),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: PRService = Depends(get_pr_service),
-):
+) -> StandardResponse[list[PurchaseRequestListRead]]:
     items, total = svc.list_prs(
         company_id=company_id,
         status=status_filter,
@@ -3067,7 +3069,7 @@ def get_purchase_request(
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: PRService = Depends(get_pr_service),
-):
+) -> StandardResponse[PurchaseRequestRead]:
     from core.exceptions.base import NotFoundException
 
     try:
@@ -3089,11 +3091,11 @@ def get_purchase_request(
 )
 def update_purchase_request(
     pr_id: UUID = Path(...),
-    body: PurchaseRequestUpdate = ...,
+    body: PurchaseRequestUpdate = Body(...),
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: PRService = Depends(get_pr_service),
-):
+) -> StandardResponse[PurchaseRequestRead]:
     from core.exceptions.base import NotFoundException
 
     try:
@@ -3120,7 +3122,7 @@ def delete_purchase_request(
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: PRService = Depends(get_pr_service),
-):
+) -> None:
     from core.exceptions.base import NotFoundException
 
     try:
@@ -3149,11 +3151,11 @@ def delete_purchase_request(
 )
 def add_pr_line(
     pr_id: UUID = Path(...),
-    body: PRLineCreate = ...,
+    body: PRLineCreate = Body(...),
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: PRService = Depends(get_pr_service),
-):
+) -> StandardResponse[PRLineRead]:
     from core.exceptions.base import NotFoundException
 
     try:
@@ -3178,11 +3180,11 @@ def add_pr_line(
 def update_pr_line(
     pr_id: UUID = Path(...),
     line_id: UUID = Path(...),
-    body: PRLineUpdate = ...,
+    body: PRLineUpdate = Body(...),
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: PRService = Depends(get_pr_service),
-):
+) -> StandardResponse[PRLineRead]:
     from core.exceptions.base import NotFoundException
 
     try:
@@ -3210,7 +3212,7 @@ def remove_pr_line(
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: PRService = Depends(get_pr_service),
-):
+) -> None:
     from core.exceptions.base import NotFoundException
 
     try:
@@ -3237,11 +3239,11 @@ def submit_purchase_request(
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: PRService = Depends(get_pr_service),
-):
+) -> StandardResponse[PurchaseRequestRead]:
     from core.exceptions.base import NotFoundException
 
     try:
-        pr = svc.submit_pr(pr_id, company_id, current_user.user_id)
+        pr = svc.submit_pr(pr_id, company_id, require_user_id(current_user))
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except PRMissingLinesError as exc:
@@ -3268,11 +3270,11 @@ def approve_purchase_request(
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: PRService = Depends(get_pr_service),
-):
+) -> StandardResponse[PurchaseRequestRead]:
     from core.exceptions.base import NotFoundException
 
     try:
-        pr = svc.approve_pr(pr_id, company_id, current_user.user_id)
+        pr = svc.approve_pr(pr_id, company_id, require_user_id(current_user))
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except InvalidPRStatusTransitionError as exc:
@@ -3292,16 +3294,16 @@ def approve_purchase_request(
 )
 def reject_purchase_request(
     pr_id: UUID = Path(...),
-    body: PRCancelRequest = ...,
+    body: PRCancelRequest = Body(...),
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: PRService = Depends(get_pr_service),
-):
+) -> StandardResponse[PurchaseRequestRead]:
     from core.exceptions.base import NotFoundException
 
     try:
         pr = svc.reject_pr(
-            pr_id, company_id, current_user.user_id, reason=body.reason or ""
+            pr_id, company_id, require_user_id(current_user), reason=body.reason or ""
         )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -3326,15 +3328,17 @@ def reject_purchase_request(
 )
 def cancel_purchase_request(
     pr_id: UUID = Path(...),
-    body: PRCancelRequest = ...,
+    body: PRCancelRequest = Body(...),
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: PRService = Depends(get_pr_service),
-):
+) -> StandardResponse[PurchaseRequestRead]:
     from core.exceptions.base import NotFoundException
 
     try:
-        pr = svc.cancel_pr(pr_id, company_id, current_user.user_id, reason=body.reason)
+        pr = svc.cancel_pr(
+            pr_id, company_id, require_user_id(current_user), reason=body.reason
+        )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except InvalidPRStatusTransitionError as exc:
@@ -3348,7 +3352,7 @@ def cancel_purchase_request(
 
 @router.post(
     "/purchase-requests/{pr_id}/convert-to-po",
-    response_model=StandardResponse[dict],
+    response_model=StandardResponse[dict[str, Any]],
     summary="Convert an approved Purchase Request to a Purchase Order",
     tags=["Purchase Requests"],
 )
@@ -3357,11 +3361,11 @@ def convert_pr_to_po(
     company_id: UUID = Path(..., description="Company identifier"),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: PRService = Depends(get_pr_service),
-):
+) -> StandardResponse[dict[str, Any]]:
     from core.exceptions.base import NotFoundException
 
     try:
-        po = svc.convert_to_po(pr_id, company_id, current_user.user_id)
+        po = svc.convert_to_po(pr_id, company_id, require_user_id(current_user))
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except PRNotConvertibleError as exc:
@@ -3402,9 +3406,9 @@ def create_purchase_order(
     company_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: POService = Depends(get_po_service),
-):
+) -> StandardResponse[PurchaseOrderRead]:
 
-    po = svc.create_po(body, company_id, current_user.user_id)
+    po = svc.create_po(body, company_id, require_user_id(current_user))
     return StandardResponse(
         data=po,
         message="Purchase order created.",
@@ -3426,7 +3430,7 @@ def list_purchase_orders(
     limit: int = Query(50, ge=1, le=200),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: POService = Depends(get_po_service),
-):
+) -> StandardResponse[list[PurchaseOrderListRead]]:
     items, total = svc.list_pos(
         company_id,
         status=status_filter,
@@ -3451,7 +3455,7 @@ def list_overdue_purchase_orders(
     company_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: POService = Depends(get_po_service),
-):
+) -> StandardResponse[list[PurchaseOrderListRead]]:
     items = svc.get_overdue_pos(company_id)
     return StandardResponse(
         data=items,
@@ -3471,7 +3475,7 @@ def get_purchase_order(
     company_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: POService = Depends(get_po_service),
-):
+) -> StandardResponse[PurchaseOrderRead]:
     from core.exceptions.base import NotFoundException
 
     try:
@@ -3493,15 +3497,15 @@ def get_purchase_order(
 )
 def update_purchase_order(
     po_id: UUID = Path(...),
-    body: PurchaseOrderUpdate = ...,
+    body: PurchaseOrderUpdate = Body(...),
     company_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: POService = Depends(get_po_service),
-):
+) -> StandardResponse[PurchaseOrderRead]:
     from core.exceptions.base import ConflictException, NotFoundException
 
     try:
-        po = svc.update_po(po_id, company_id, body, current_user.user_id)
+        po = svc.update_po(po_id, company_id, body, require_user_id(current_user))
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except POImmutableError as exc:
@@ -3517,7 +3521,7 @@ def update_purchase_order(
 
 @router.delete(
     "/purchase-orders/{po_id}",
-    response_model=StandardResponse[dict],
+    response_model=StandardResponse[dict[str, Any]],
     summary="Soft-delete a DRAFT Purchase Order",
     tags=["Purchase Orders"],
 )
@@ -3526,7 +3530,7 @@ def delete_purchase_order(
     company_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: POService = Depends(get_po_service),
-):
+) -> StandardResponse[dict[str, Any]]:
 
     po = svc.po_repo.get_by_id_or_none(po_id, company_id)
     if po is None:
@@ -3560,15 +3564,15 @@ def delete_purchase_order(
 )
 def add_po_line(
     po_id: UUID = Path(...),
-    body: POLineCreate = ...,
+    body: POLineCreate = Body(...),
     company_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: POService = Depends(get_po_service),
-):
+) -> StandardResponse[PurchaseOrderRead]:
     from core.exceptions.base import ConflictException, NotFoundException
 
     try:
-        po = svc.add_line(po_id, company_id, body, current_user.user_id)
+        po = svc.add_line(po_id, company_id, body, require_user_id(current_user))
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except ConflictException as exc:
@@ -3589,15 +3593,17 @@ def add_po_line(
 def update_po_line(
     po_id: UUID = Path(...),
     line_id: UUID = Path(...),
-    body: POLineUpdate = ...,
+    body: POLineUpdate = Body(...),
     company_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: POService = Depends(get_po_service),
-):
+) -> StandardResponse[PurchaseOrderRead]:
     from core.exceptions.base import ConflictException, NotFoundException
 
     try:
-        po = svc.update_line(po_id, line_id, company_id, body, current_user.user_id)
+        po = svc.update_line(
+            po_id, line_id, company_id, body, require_user_id(current_user)
+        )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except ConflictException as exc:
@@ -3621,7 +3627,7 @@ def remove_po_line(
     company_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: POService = Depends(get_po_service),
-):
+) -> StandardResponse[PurchaseOrderRead]:
     from core.exceptions.base import ConflictException, NotFoundException
 
     try:
@@ -3651,15 +3657,15 @@ def remove_po_line(
 )
 def add_po_charge(
     po_id: UUID = Path(...),
-    body: POAdditionalChargeCreate = ...,
+    body: POAdditionalChargeCreate = Body(...),
     company_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: POService = Depends(get_po_service),
-):
+) -> StandardResponse[PurchaseOrderRead]:
     from core.exceptions.base import ConflictException, NotFoundException
 
     try:
-        po = svc.add_charge(po_id, company_id, body, current_user.user_id)
+        po = svc.add_charge(po_id, company_id, body, require_user_id(current_user))
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except ConflictException as exc:
@@ -3680,15 +3686,17 @@ def add_po_charge(
 def update_po_charge(
     po_id: UUID = Path(...),
     charge_id: UUID = Path(...),
-    body: POAdditionalChargeUpdate = ...,
+    body: POAdditionalChargeUpdate = Body(...),
     company_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: POService = Depends(get_po_service),
-):
+) -> StandardResponse[PurchaseOrderRead]:
     from core.exceptions.base import ConflictException, NotFoundException
 
     try:
-        po = svc.update_charge(po_id, charge_id, company_id, body, current_user.user_id)
+        po = svc.update_charge(
+            po_id, charge_id, company_id, body, require_user_id(current_user)
+        )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except ConflictException as exc:
@@ -3712,7 +3720,7 @@ def remove_po_charge(
     company_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: POService = Depends(get_po_service),
-):
+) -> StandardResponse[PurchaseOrderRead]:
     from core.exceptions.base import ConflictException, NotFoundException
 
     try:
@@ -3744,11 +3752,11 @@ def submit_purchase_order(
     company_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: POService = Depends(get_po_service),
-):
+) -> StandardResponse[PurchaseOrderRead]:
     from core.exceptions.base import NotFoundException
 
     try:
-        po = svc.submit_po(po_id, company_id, current_user.user_id)
+        po = svc.submit_po(po_id, company_id, require_user_id(current_user))
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except POMissingSupplierError as exc:
@@ -3779,11 +3787,11 @@ def approve_purchase_order(
     company_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: POService = Depends(get_po_service),
-):
+) -> StandardResponse[PurchaseOrderRead]:
     from core.exceptions.base import NotFoundException
 
     try:
-        po = svc.approve_po(po_id, company_id, current_user.user_id)
+        po = svc.approve_po(po_id, company_id, require_user_id(current_user))
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except InvalidPOStatusTransitionError as exc:
@@ -3803,16 +3811,18 @@ def approve_purchase_order(
 )
 def reject_purchase_order(
     po_id: UUID = Path(...),
-    body: dict = ...,
+    body: dict[str, Any] = Body(...),
     company_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: POService = Depends(get_po_service),
-):
+) -> StandardResponse[PurchaseOrderRead]:
     from core.exceptions.base import NotFoundException
 
     reason = body.get("reason", "") if body else ""
     try:
-        po = svc.reject_po(po_id, company_id, current_user.user_id, reason=reason)
+        po = svc.reject_po(
+            po_id, company_id, require_user_id(current_user), reason=reason
+        )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except ValueError as exc:
@@ -3836,18 +3846,18 @@ def reject_purchase_order(
 )
 def cancel_purchase_order(
     po_id: UUID = Path(...),
-    body: POCancelRequest = ...,
+    body: POCancelRequest = Body(...),
     company_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: POService = Depends(get_po_service),
-):
+) -> StandardResponse[PurchaseOrderRead]:
     from core.exceptions.base import NotFoundException
 
     try:
         po = svc.cancel_po(
             po_id,
             company_id,
-            current_user.user_id,
+            require_user_id(current_user),
             reason_code_id=body.reason_code_id,
             reason=body.reason or body.cancellation_reason,
             has_confirmed_gr=body.has_confirmed_gr,
@@ -3878,11 +3888,11 @@ def close_purchase_order(
     company_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: POService = Depends(get_po_service),
-):
+) -> StandardResponse[PurchaseOrderRead]:
     from core.exceptions.base import NotFoundException
 
     try:
-        po = svc.close_po(po_id, company_id, current_user.user_id)
+        po = svc.close_po(po_id, company_id, require_user_id(current_user))
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except InvalidPOStatusTransitionError as exc:
@@ -3902,11 +3912,11 @@ def close_purchase_order(
 )
 def amend_purchase_order(
     po_id: UUID = Path(...),
-    body: POAmendRequest = ...,
+    body: POAmendRequest = Body(...),
     company_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: POService = Depends(get_po_service),
-):
+) -> StandardResponse[PurchaseOrderRead]:
     from core.exceptions.base import ConflictException, NotFoundException
 
     try:
@@ -3915,7 +3925,7 @@ def amend_purchase_order(
             company_id,
             changes=body.changes,
             reason=body.reason,
-            actor_id=current_user.user_id,
+            actor_id=require_user_id(current_user),
         )
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -3939,11 +3949,11 @@ def revert_po_to_draft(
     company_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: POService = Depends(get_po_service),
-):
+) -> StandardResponse[PurchaseOrderRead]:
     from core.exceptions.base import NotFoundException
 
     try:
-        po = svc.revert_to_draft(po_id, company_id, current_user.user_id)
+        po = svc.revert_to_draft(po_id, company_id, require_user_id(current_user))
     except NotFoundException as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except InvalidPOStatusTransitionError as exc:
@@ -3970,7 +3980,7 @@ def export_po_pdf(
     company_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: POService = Depends(get_po_service),
-):
+) -> StandardResponse[dict[str, Any]]:
     """Return PO data formatted for PDF generation.
 
     Note: Full PDF generation (reportlab/WeasyPrint) is deferred to Phase 9
@@ -4050,7 +4060,7 @@ def create_goods_receipt(
         gr = svc.create_gr(
             payload=body,
             company_id=company_id,
-            user_id=current_user.user_id,
+            user_id=require_user_id(current_user),
         )
         svc.db.commit()
     except NotFoundException as exc:
@@ -4136,7 +4146,7 @@ def get_goods_receipt(
 )
 def update_goods_receipt(
     gr_id: UUID = Path(...),
-    body: GoodsReceiptUpdate = ...,
+    body: GoodsReceiptUpdate = Body(...),
     company_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: GRService = Depends(get_gr_service),
@@ -4170,7 +4180,7 @@ def update_goods_receipt(
 )
 def replace_gr_lines(
     gr_id: UUID = Path(...),
-    body: list[GRLineCreate] = ...,
+    body: list[GRLineCreate] = Body(...),
     company_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: GRService = Depends(get_gr_service),
@@ -4183,7 +4193,7 @@ def replace_gr_lines(
             gr_id=gr_id,
             company_id=company_id,
             lines=body,
-            user_id=current_user.user_id,
+            user_id=require_user_id(current_user),
         )
         svc.db.commit()
     except NotFoundException as exc:
@@ -4225,7 +4235,7 @@ def confirm_goods_receipt(
         gr = svc.confirm_gr(
             gr_id=gr_id,
             company_id=company_id,
-            user_id=current_user.user_id,
+            user_id=require_user_id(current_user),
         )
         svc.db.commit()
     except NotFoundException as exc:
@@ -4250,6 +4260,7 @@ def confirm_goods_receipt(
 
 @router.get(
     "/goods-receipts/barcode/{barcode}",
+    response_model=None,
     summary="Resolve product by barcode for GR line entry (feature-flagged)",
     tags=["Goods Receipts"],
 )
@@ -4258,7 +4269,7 @@ def resolve_barcode_for_gr(
     company_id: UUID = Path(...),
     current_user: CurrentUser = Depends(require_authenticated),
     flag_svc: PurchaseFeatureFlagService = Depends(get_purchase_feature_flag_service),
-):
+) -> NoReturn:
     """Resolve a product from a barcode scan for Goods Receipt line entry.
 
     Requires ``purchase.gr_barcode_scan`` feature flag to be enabled.
@@ -4331,7 +4342,7 @@ def create_vendor_return(
 ) -> StandardResponse[VendorReturnRead]:
     try:
         rma = svc.create_rma(
-            payload=body, company_id=company_id, user_id=current_user.user_id
+            payload=body, company_id=company_id, user_id=require_user_id(current_user)
         )
         svc.db.commit()
     except NotFoundException as exc:
@@ -4417,7 +4428,7 @@ def replace_return_lines(
             rma_id=rma_id,
             company_id=company_id,
             new_lines=body,
-            user_id=current_user.user_id,
+            user_id=require_user_id(current_user),
         )
         svc.db.commit()
     except NotFoundException as exc:
@@ -4449,7 +4460,7 @@ def submit_vendor_return(
 ) -> StandardResponse[VendorReturnRead]:
     try:
         rma = svc.submit_rma(
-            rma_id=rma_id, company_id=company_id, user_id=current_user.user_id
+            rma_id=rma_id, company_id=company_id, user_id=require_user_id(current_user)
         )
         svc.db.commit()
     except NotFoundException as exc:
@@ -4479,7 +4490,7 @@ def approve_vendor_return(
 ) -> StandardResponse[VendorReturnRead]:
     try:
         rma = svc.approve_rma(
-            rma_id=rma_id, company_id=company_id, user_id=current_user.user_id
+            rma_id=rma_id, company_id=company_id, user_id=require_user_id(current_user)
         )
         svc.db.commit()
     except NotFoundException as exc:
@@ -4507,7 +4518,7 @@ def dispatch_vendor_return(
 ) -> StandardResponse[VendorReturnRead]:
     try:
         rma = svc.dispatch_rma(
-            rma_id=rma_id, company_id=company_id, user_id=current_user.user_id
+            rma_id=rma_id, company_id=company_id, user_id=require_user_id(current_user)
         )
         svc.db.commit()
     except NotFoundException as exc:
@@ -4537,7 +4548,7 @@ def complete_vendor_return(
 ) -> StandardResponse[VendorReturnRead]:
     try:
         rma = svc.complete_rma(
-            rma_id=rma_id, company_id=company_id, user_id=current_user.user_id
+            rma_id=rma_id, company_id=company_id, user_id=require_user_id(current_user)
         )
         svc.db.commit()
     except NotFoundException as exc:
@@ -4565,7 +4576,7 @@ def cancel_vendor_return(
 ) -> StandardResponse[VendorReturnRead]:
     try:
         rma = svc.cancel_rma(
-            rma_id=rma_id, company_id=company_id, user_id=current_user.user_id
+            rma_id=rma_id, company_id=company_id, user_id=require_user_id(current_user)
         )
         svc.db.commit()
     except NotFoundException as exc:
@@ -4664,6 +4675,7 @@ def get_cost_entry_for_gr(
 
 @router.get(
     "/reports/purchase-order-summary",
+    response_model=None,
     summary="RPT-01: Purchase Order Summary — all POs filterable by status/supplier/date",
     tags=["Purchase Reports"],
 )
@@ -4679,7 +4691,7 @@ def rpt_01_purchase_order_summary(
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ReportService = Depends(get_report_service),
     export_svc: ReportExportService = Depends(get_report_export_service),
-):
+) -> Response | StandardResponse[list[dict[str, Any]]]:
     from datetime import date as _date
 
     rows = svc.purchase_order_summary(
@@ -4721,6 +4733,7 @@ def rpt_01_purchase_order_summary(
 
 @router.get(
     "/reports/pending-purchase-orders",
+    response_model=None,
     summary="RPT-02: Pending Purchase Orders (APPROVED/PARTIALLY_RECEIVED)",
     tags=["Purchase Reports"],
 )
@@ -4732,7 +4745,7 @@ def rpt_02_pending_purchase_orders(
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ReportService = Depends(get_report_service),
     export_svc: ReportExportService = Depends(get_report_export_service),
-):
+) -> Response | StandardResponse[list[dict[str, Any]]]:
     rows = svc.pending_purchase_orders(company_id, skip=skip, limit=limit)
     if fmt == "csv":
         return Response(
@@ -4764,6 +4777,7 @@ def rpt_02_pending_purchase_orders(
 
 @router.get(
     "/reports/overdue-deliveries",
+    response_model=None,
     summary="RPT-03: Overdue Deliveries — POs past expected delivery date",
     tags=["Purchase Reports"],
 )
@@ -4776,7 +4790,7 @@ def rpt_03_overdue_deliveries(
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ReportService = Depends(get_report_service),
     export_svc: ReportExportService = Depends(get_report_export_service),
-):
+) -> Response | StandardResponse[list[dict[str, Any]]]:
     from datetime import date as _date
 
     rows = svc.overdue_deliveries(
@@ -4815,6 +4829,7 @@ def rpt_03_overdue_deliveries(
 
 @router.get(
     "/reports/goods-receipt-report",
+    response_model=None,
     summary="RPT-04: Goods Receipt Report — confirmed GRs in period",
     tags=["Purchase Reports"],
 )
@@ -4829,7 +4844,7 @@ def rpt_04_goods_receipt_report(
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ReportService = Depends(get_report_service),
     export_svc: ReportExportService = Depends(get_report_export_service),
-):
+) -> Response | StandardResponse[list[dict[str, Any]]]:
     from datetime import date as _date
 
     rows = svc.goods_receipt_report(
@@ -4870,6 +4885,7 @@ def rpt_04_goods_receipt_report(
 
 @router.get(
     "/reports/purchase-request-status",
+    response_model=None,
     summary="RPT-05: Purchase Request Status — all PRs with age and requestor",
     tags=["Purchase Reports"],
 )
@@ -4884,7 +4900,7 @@ def rpt_05_purchase_request_status(
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ReportService = Depends(get_report_service),
     export_svc: ReportExportService = Depends(get_report_export_service),
-):
+) -> Response | StandardResponse[list[dict[str, Any]]]:
     from datetime import date as _date
 
     rows = svc.purchase_request_status(
@@ -4925,6 +4941,7 @@ def rpt_05_purchase_request_status(
 
 @router.get(
     "/reports/supplier-performance",
+    response_model=None,
     summary="RPT-06: Supplier Performance — on-time rate, fill rate, rejection rate",
     tags=["Purchase Reports"],
 )
@@ -4938,7 +4955,7 @@ def rpt_06_supplier_performance(
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ReportService = Depends(get_report_service),
     export_svc: ReportExportService = Depends(get_report_export_service),
-):
+) -> Response | StandardResponse[list[dict[str, Any]]]:
     from datetime import date as _date
 
     rows = svc.supplier_performance(
@@ -4978,6 +4995,7 @@ def rpt_06_supplier_performance(
 
 @router.get(
     "/reports/vendor-return-report",
+    response_model=None,
     summary="RPT-07: Vendor Return Report — RMAs in period",
     tags=["Purchase Reports"],
 )
@@ -4992,7 +5010,7 @@ def rpt_07_vendor_return_report(
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ReportService = Depends(get_report_service),
     export_svc: ReportExportService = Depends(get_report_export_service),
-):
+) -> Response | StandardResponse[list[dict[str, Any]]]:
     from datetime import date as _date
 
     rows = svc.vendor_return_report(
@@ -5033,6 +5051,7 @@ def rpt_07_vendor_return_report(
 
 @router.get(
     "/reports/purchase-by-supplier",
+    response_model=None,
     summary="RPT-08: Purchase by Supplier — total spend per supplier",
     tags=["Purchase Reports"],
 )
@@ -5046,7 +5065,7 @@ def rpt_08_purchase_by_supplier(
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ReportService = Depends(get_report_service),
     export_svc: ReportExportService = Depends(get_report_export_service),
-):
+) -> Response | StandardResponse[list[dict[str, Any]]]:
     from datetime import date as _date
 
     rows = svc.purchase_by_supplier(
@@ -5086,6 +5105,7 @@ def rpt_08_purchase_by_supplier(
 
 @router.get(
     "/reports/purchase-by-category",
+    response_model=None,
     summary="RPT-09: Purchase by Category — total spend per supplier category",
     tags=["Purchase Reports"],
 )
@@ -5099,7 +5119,7 @@ def rpt_09_purchase_by_category(
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ReportService = Depends(get_report_service),
     export_svc: ReportExportService = Depends(get_report_export_service),
-):
+) -> Response | StandardResponse[list[dict[str, Any]]]:
     from datetime import date as _date
 
     rows = svc.purchase_by_category(
@@ -5139,6 +5159,7 @@ def rpt_09_purchase_by_category(
 
 @router.get(
     "/reports/purchase-price-variance",
+    response_model=None,
     summary="RPT-10: Purchase Price Variance — GR vs PO cost per line",
     tags=["Purchase Reports"],
 )
@@ -5153,7 +5174,7 @@ def rpt_10_purchase_price_variance(
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ReportService = Depends(get_report_service),
     export_svc: ReportExportService = Depends(get_report_export_service),
-):
+) -> Response | StandardResponse[list[dict[str, Any]]]:
     from datetime import date as _date
 
     rows = svc.purchase_price_variance(
@@ -5194,6 +5215,7 @@ def rpt_10_purchase_price_variance(
 
 @router.get(
     "/reports/open-purchase-commitments",
+    response_model=None,
     summary="RPT-11: Open Purchase Commitments — open value per PO line",
     tags=["Purchase Reports"],
 )
@@ -5206,7 +5228,7 @@ def rpt_11_open_purchase_commitments(
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ReportService = Depends(get_report_service),
     export_svc: ReportExportService = Depends(get_report_export_service),
-):
+) -> Response | StandardResponse[list[dict[str, Any]]]:
     rows = svc.open_purchase_commitments(
         company_id, supplier_id=supplier_id, skip=skip, limit=limit
     )
@@ -5240,6 +5262,7 @@ def rpt_11_open_purchase_commitments(
 
 @router.get(
     "/reports/purchase-trend-analysis",
+    response_model=None,
     summary="RPT-12: Purchase Trend Analysis — monthly/quarterly aggregation",
     tags=["Purchase Reports"],
 )
@@ -5252,7 +5275,7 @@ def rpt_12_purchase_trend_analysis(
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ReportService = Depends(get_report_service),
     export_svc: ReportExportService = Depends(get_report_export_service),
-):
+) -> Response | StandardResponse[list[dict[str, Any]]]:
     from datetime import date as _date
 
     rows = svc.purchase_trend_analysis(
@@ -5291,6 +5314,7 @@ def rpt_12_purchase_trend_analysis(
 
 @router.get(
     "/reports/goods-rejection-analysis",
+    response_model=None,
     summary="RPT-13: Goods Rejection Analysis — grouped by supplier/reason/product",
     tags=["Purchase Reports"],
 )
@@ -5305,7 +5329,7 @@ def rpt_13_goods_rejection_analysis(
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ReportService = Depends(get_report_service),
     export_svc: ReportExportService = Depends(get_report_export_service),
-):
+) -> Response | StandardResponse[list[dict[str, Any]]]:
     from datetime import date as _date
 
     rows = svc.goods_rejection_analysis(
@@ -5346,6 +5370,7 @@ def rpt_13_goods_rejection_analysis(
 
 @router.get(
     "/reports/procurement-audit-trail",
+    response_model=None,
     summary="RPT-14: Procurement Audit Trail — full event history per document/supplier",
     tags=["Purchase Reports"],
 )
@@ -5362,7 +5387,7 @@ def rpt_14_procurement_audit_trail(
     current_user: CurrentUser = Depends(require_authenticated),
     svc: ReportService = Depends(get_report_service),
     export_svc: ReportExportService = Depends(get_report_export_service),
-):
+) -> Response | StandardResponse[list[dict[str, Any]]]:
     from datetime import date as _date
 
     rows = svc.procurement_audit_trail(
@@ -5414,7 +5439,7 @@ def get_purchase_kpis(
     date_to: str | None = Query(None),
     current_user: CurrentUser = Depends(require_authenticated),
     svc: KPIService = Depends(get_kpi_service),
-):
+) -> StandardResponse[dict[str, Any]]:
     from datetime import date as _date
 
     kpis = svc.get_all_kpis(

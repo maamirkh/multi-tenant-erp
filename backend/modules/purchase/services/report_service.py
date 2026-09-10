@@ -78,7 +78,7 @@ class ReportService:
         date_to: date | None = None,
         skip: int = 0,
         limit: int = 200,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """All POs with status, supplier, value, and dates.
 
         Filterable by status, supplier, and creation date range.
@@ -155,7 +155,7 @@ class ReportService:
         *,
         skip: int = 0,
         limit: int = 200,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """APPROVED/PARTIALLY_RECEIVED POs sorted by expected_delivery_date."""
         stmt = (
             select(
@@ -209,7 +209,7 @@ class ReportService:
         as_of: date | None = None,
         skip: int = 0,
         limit: int = 200,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """POs past expected_delivery_date without FULLY_RECEIVED status."""
         cutoff = as_of or date.today()
         stmt = (
@@ -264,7 +264,7 @@ class ReportService:
         supplier_id: UUID | None = None,
         skip: int = 0,
         limit: int = 200,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Confirmed GRs in period with quantities and cost."""
         stmt = (
             select(
@@ -340,7 +340,7 @@ class ReportService:
         date_to: date | None = None,
         skip: int = 0,
         limit: int = 200,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """All PRs with status, age (days since creation), requestor."""
         stmt = (
             select(
@@ -411,7 +411,7 @@ class ReportService:
         date_to: date | None = None,
         skip: int = 0,
         limit: int = 100,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Per-supplier on-time rate, fill rate, rejection rate, composite rating.
 
         Derived from confirmed GR data.
@@ -582,7 +582,7 @@ class ReportService:
         supplier_id: UUID | None = None,
         skip: int = 0,
         limit: int = 200,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """All RMAs in period with status, amounts, reasons."""
         stmt = (
             select(
@@ -652,7 +652,7 @@ class ReportService:
         date_to: date | None = None,
         skip: int = 0,
         limit: int = 100,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Total spend per supplier in period (sum of confirmed GR cost entries)."""
         stmt = (
             select(
@@ -704,7 +704,7 @@ class ReportService:
         date_to: date | None = None,
         skip: int = 0,
         limit: int = 100,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Total spend per supplier category in period."""
         # Join: PurchaseCostEntry → Supplier.category_id → SupplierCategory
         stmt = (
@@ -773,7 +773,7 @@ class ReportService:
         supplier_id: UUID | None = None,
         skip: int = 0,
         limit: int = 200,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """PO cost vs GR cost variance per line, sorted by absolute PPV amount."""
         stmt = (
             select(
@@ -857,7 +857,7 @@ class ReportService:
         supplier_id: UUID | None = None,
         skip: int = 0,
         limit: int = 200,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Open value per PO line (ordered − received) for APPROVED/PARTIALLY_RECEIVED POs."""
         stmt = (
             select(
@@ -937,7 +937,7 @@ class ReportService:
         granularity: str = "monthly",
         date_from: date | None = None,
         date_to: date | None = None,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Monthly/quarterly aggregation of PO count and GR total."""
         import sqlalchemy as sa
 
@@ -1007,7 +1007,7 @@ class ReportService:
         supplier_id: UUID | None = None,
         skip: int = 0,
         limit: int = 200,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Rejected GR lines grouped by supplier, reason code, and product."""
         stmt = (
             select(
@@ -1084,7 +1084,7 @@ class ReportService:
         date_to: date | None = None,
         skip: int = 0,
         limit: int = 200,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Full event history from domain events recorded in the purchase module.
 
         Since the platform does not yet have a shared audit_logs table, this

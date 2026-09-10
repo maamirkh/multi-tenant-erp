@@ -76,7 +76,9 @@ class DeliveryNoteCreate(SalesBaseSchema):
 
     @field_validator("lines")
     @classmethod
-    def must_have_lines(cls, v: list) -> list:
+    def must_have_lines(
+        cls, v: list[DeliveryNoteLineCreate]
+    ) -> list[DeliveryNoteLineCreate]:
         if not v:
             raise ValueError("Delivery note must have at least one line")
         return v

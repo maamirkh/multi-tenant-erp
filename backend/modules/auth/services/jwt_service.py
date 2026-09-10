@@ -28,6 +28,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import timedelta
+from typing import Any
 from uuid import UUID
 
 import jwt
@@ -84,7 +85,7 @@ class JWTService:
         )
         return token
 
-    def decode_access_token(self, token: str) -> dict:
+    def decode_access_token(self, token: str) -> dict[str, Any]:
         """Decode and validate a JWT access token.
 
         Validates signature, expiry, issuer, audience, and algorithm.
@@ -100,7 +101,7 @@ class JWTService:
             AuthenticationException: For all other JWT validation failures.
         """
         try:
-            claims: dict = jwt.decode(
+            claims: dict[str, Any] = jwt.decode(
                 token,
                 self._settings.JWT_SECRET_KEY,
                 algorithms=[self._settings.JWT_ALGORITHM],
@@ -117,7 +118,7 @@ class JWTService:
                 message="Invalid or malformed authentication token."
             )
 
-    def extract_user_id(self, claims: dict) -> UUID:
+    def extract_user_id(self, claims: dict[str, Any]) -> UUID:
         """Parse and return the ``sub`` claim as a UUID.
 
         Raises:
@@ -133,7 +134,7 @@ class JWTService:
                 message="Token 'sub' claim is not a valid UUID."
             )
 
-    def extract_session_id(self, claims: dict) -> UUID:
+    def extract_session_id(self, claims: dict[str, Any]) -> UUID:
         """Parse and return the ``sid`` claim as a UUID.
 
         Raises:

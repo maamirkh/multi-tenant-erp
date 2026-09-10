@@ -125,3 +125,27 @@ def require_authenticated(
     if not current_user.is_authenticated:
         raise UnauthorizedException(message="Authentication required.")
     return current_user
+
+
+def require_user_id(user: CurrentUser) -> UUID:
+    """Narrow ``CurrentUser.user_id`` (``UUID | None``, since ``CurrentUser``
+    also represents the unauthenticated stub case) to a concrete ``UUID`` for
+    callers downstream of ``require_authenticated``, where ``get_current_user``
+    above always populates ``user_id=user.id`` before setting
+    ``is_authenticated=True``. Raises rather than returning an invalid
+    sentinel, so a caller that reaches this without going through
+    ``require_authenticated`` fails loudly instead of passing ``None`` as an
+    actor/owner id into an audit or ownership field.
+    """
+    if user.user_id is None:
+        raise UnauthorizedException(message="Authentication required.")
+    return user.user_id
+
+
+def require_session_id(user: CurrentUser) -> UUID:
+    """Narrow ``CurrentUser.session_id`` (``UUID | None``) the same way
+    ``require_user_id`` narrows ``user_id`` — see its docstring.
+    """
+    if user.session_id is None:
+        raise UnauthorizedException(message="Authentication required.")
+    return user.session_id

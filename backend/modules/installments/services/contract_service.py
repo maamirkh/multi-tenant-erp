@@ -17,6 +17,7 @@ Integration).
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 from datetime import date
 from decimal import Decimal
@@ -337,7 +338,7 @@ class InstallmentContractService:
 
     def get_active_schedule(
         self, company_id: UUID, contract_id: UUID
-    ) -> tuple[InstallmentContract, Any, list[InstallmentScheduleLine]]:
+    ) -> tuple[InstallmentContract, Any, builtins.list[InstallmentScheduleLine]]:
         """``GET /contracts/{id}/schedule`` (tasks.md T129) — the current
         ``ACTIVE`` schedule version and its lines. Raises
         ``InstallmentNotFoundError`` if the contract has never been
@@ -357,7 +358,7 @@ class InstallmentContractService:
 
     def get_schedule_version(
         self, company_id: UUID, contract_id: UUID, version_number: int
-    ) -> tuple[InstallmentContract, Any, list[InstallmentScheduleLine]]:
+    ) -> tuple[InstallmentContract, Any, builtins.list[InstallmentScheduleLine]]:
         """``GET /contracts/{id}/schedule/versions/{v}`` (tasks.md T129) —
         a specific (possibly superseded) schedule version, for historical
         explanation."""

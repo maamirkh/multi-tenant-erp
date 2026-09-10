@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.orm import Session
 
 from modules.sales.models.customer import (
@@ -109,7 +109,7 @@ class CustomerRepository(BaseSalesRepository[Customer]):
         ]
 
         # Text search — FTS on PostgreSQL, ILIKE on SQLite
-        text_filter = None
+        text_filter: ColumnElement[bool] | None = None
         if query:
             q = query.strip()
             if _dialect_name(self.db) == "postgresql":

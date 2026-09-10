@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import logging
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -287,8 +288,6 @@ class SupplierService:
 
         if changed_fields:
             supplier.updated_at = utcnow()
-            if actor_id:
-                supplier.updated_by = str(actor_id)
             self.db.flush()
             # Missing-commit defect fixed during pre-Epic-9 hardening audit
             # (2026-08-14) — see create()'s comment above.
@@ -326,8 +325,6 @@ class SupplierService:
 
         supplier.status = "ACTIVE"
         supplier.updated_at = utcnow()
-        if actor_id:
-            supplier.updated_by = str(actor_id)
         self.db.flush()
         self.db.commit()
 
@@ -354,8 +351,6 @@ class SupplierService:
 
         supplier.status = "INACTIVE"
         supplier.updated_at = utcnow()
-        if actor_id:
-            supplier.updated_by = str(actor_id)
         self.db.flush()
         self.db.commit()
 
@@ -388,8 +383,6 @@ class SupplierService:
 
         supplier.status = "BLOCKED"
         supplier.updated_at = utcnow()
-        if actor_id:
-            supplier.updated_by = str(actor_id)
         self.db.flush()
         self.db.commit()
 
@@ -417,8 +410,6 @@ class SupplierService:
 
         supplier.status = "ACTIVE"
         supplier.updated_at = utcnow()
-        if actor_id:
-            supplier.updated_by = str(actor_id)
         self.db.flush()
         self.db.commit()
 
@@ -459,8 +450,6 @@ class SupplierService:
 
         supplier.status = "ARCHIVED"
         supplier.updated_at = utcnow()
-        if actor_id:
-            supplier.updated_by = str(actor_id)
         self.db.flush()
         self.db.commit()
 
@@ -602,8 +591,6 @@ class SupplierService:
             contact.is_primary = is_primary
 
         contact.updated_at = utcnow()
-        if actor_id:
-            contact.updated_by = str(actor_id)
         self.db.flush()
         self.db.commit()
         return contact
@@ -717,8 +704,6 @@ class SupplierService:
             address.is_default = is_default
 
         address.updated_at = utcnow()
-        if actor_id:
-            address.updated_by = str(actor_id)
         self.db.flush()
         self.db.commit()
         return address
@@ -759,7 +744,7 @@ class SupplierService:
         supplier_id: UUID,
         new_po_total: Decimal,
         outstanding_po_value: Decimal = Decimal("0"),
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Check whether a new PO would breach the supplier's credit limit.
 
         Called at PO approval time. Evaluates outstanding open PO value +
@@ -780,7 +765,7 @@ class SupplierService:
             outstanding_po_value: Sum of all open approved POs for this supplier.
 
         Returns:
-            dict with keys: exceeds_limit (bool), action (str), total_exposure,
+            dict[str, Any] with keys: exceeds_limit (bool), action (str), total_exposure,
             credit_limit_amount, enforcement_mode.
         """
         from sqlalchemy import select

@@ -11,6 +11,8 @@ Data model: specs/005-inventory-management/data-model.md §1.5
 
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy import (
     CheckConstraint,
     ForeignKey,
@@ -67,7 +69,7 @@ class AttributeDefinition(TenantBaseModel):
         doc="Value type: TEXT / NUMBER / BOOLEAN / DATE / DROPDOWN / MULTISELECT",
     )
 
-    options: Mapped[dict | list | None] = mapped_column(
+    options: Mapped[dict[str, Any] | list[Any] | None] = mapped_column(
         JSONB,
         nullable=True,
         doc="For DROPDOWN/MULTISELECT: list of allowed option strings",
