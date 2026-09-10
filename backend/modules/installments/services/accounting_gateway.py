@@ -35,10 +35,10 @@ Spec ref: specs/010-installments/plan.md §12.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, Protocol
 from uuid import UUID
 
 from modules.accounting.services.allocation_engine import (
@@ -54,6 +54,47 @@ from modules.accounting.services.payment_service import (
     DraftPaymentResult,
     PaymentService,
     StagedCustomerPayment,
+)
+
+
+class ARTransactionLike(Protocol):
+    """Structural view of Accounting's ``ARTransaction`` model.
+
+    The gateway may not import ``modules.accounting.models`` directly
+    (see module docstring) — callers that read AR-transaction fields
+    type against this Protocol instead of the concrete ORM model.
+    """
+
+    id: UUID
+    status: str
+    outstanding_amount: Decimal
+    transaction_type: str
+    source_document_type: str | None
+    source_document_id: UUID | None
+
+
+class PaymentLike(Protocol):
+    """Structural view of Accounting's ``Payment`` model. See ``ARTransactionLike``."""
+
+    id: UUID
+    status: str
+    payment_method: str
+    payment_date: date
+
+
+class PaymentAllocationLineLike(Protocol):
+    """Structural view of Accounting's ``PaymentAllocationLine`` model. See ``ARTransactionLike``."""
+
+    id: UUID
+
+
+#: Return shape shared by ``_record_payment_and_allocate()`` and its two
+#: public callers — either the above-threshold ``DraftPaymentResult``
+#: sentinel (nothing allocated yet), or the finalized
+#: ``(payment, allocation_lines)`` pair (the ``PostingResult`` half of
+#: ``finalize_customer_payment()``'s own return is discarded here).
+PaymentAndAllocationResult = (
+    DraftPaymentResult | tuple[PaymentLike, Sequence[PaymentAllocationLineLike]]
 )
 
 
@@ -87,7 +128,9 @@ class AccountingIntegrationGateway:
             return Decimal("0")
         return transaction.outstanding_amount
 
-    def get_ar_transaction(self, company_id: UUID, ar_transaction_id: UUID):
+    def get_ar_transaction(
+        self, company_id: UUID, ar_transaction_id: UUID
+    ) -> ARTransactionLike | None:
         """Live read of a single ``ARTransaction`` by id, or ``None`` if
         it does not exist for this company. Used starting Phase 6/9
         (late-charge tracking, ``InstallmentOutstandingService.assert_zero_outstanding()``,
@@ -126,7 +169,7 @@ class AccountingIntegrationGateway:
         )
         return transaction.id if transaction is not None else None
 
-    def get_payment(self, company_id: UUID, payment_id: UUID):
+    def get_payment(self, company_id: UUID, payment_id: UUID) -> PaymentLike | None:
         """Live read of a single Accounting ``Payment`` by id, or
         ``None`` if it does not exist for this company — the same
         None-on-missing convention as ``get_ar_transaction()``. Used
@@ -141,7 +184,9 @@ class AccountingIntegrationGateway:
         except PaymentNotFoundError:
             return None
 
-    def list_allocation_lines(self, company_id: UUID, payment_id: UUID):
+    def list_allocation_lines(
+        self, company_id: UUID, payment_id: UUID
+    ) -> Sequence[PaymentAllocationLineLike]:
         """Live read of every ``PaymentAllocationLine`` for a single
         Accounting payment — the authoritative per-line collected
         amount a Collection report row cross-references against (never
@@ -170,7 +215,7 @@ class AccountingIntegrationGateway:
         stage_installments_rows: Callable[
             [StagedCustomerPayment, StagedAllocation], None
         ],
-    ):
+    ) -> PaymentAndAllocationResult:
         """Shared mechanics for down payment / collection / settlement
         payment (plan.md §12.3.1 — "the only difference between the
         three is which ``ARTransaction`` (s) the ``allocation_lines``
@@ -236,7 +281,7 @@ class AccountingIntegrationGateway:
         ],
         bank_account_id: UUID | None = None,
         cash_account_id: UUID | None = None,
-    ):
+    ) -> PaymentAndAllocationResult:
         """Down payment (plan.md §12 "Down payment" row / §12.3.1) — a
         customer payment staged and allocated against the originating
         invoice's ``ARTransaction``, with the caller's own rows bundled
@@ -271,7 +316,7 @@ class AccountingIntegrationGateway:
         ],
         bank_account_id: UUID | None = None,
         cash_account_id: UUID | None = None,
-    ):
+    ) -> PaymentAndAllocationResult:
         """Ordinary collection / settlement payment (plan.md §12
         "Collection" row / §12.3.1) — identical mechanics to
         ``record_down_payment()``; only the schedule-line obligation(s)
@@ -342,7 +387,7 @@ class AccountingIntegrationGateway:
         source_document_id: UUID,
         actor_id: UUID | None,
         stage_installments_rows: Callable[[StagedAdjustment], None],
-    ):
+    ) -> ARTransactionLike:
         """Late charge (plan.md §12 "Late charge" row / §12.1/§12.2) —
         stages a ``DEBIT_NOTE`` AR adjustment linked back to the
         ``InstallmentLateCharge`` via ``source_document_type``/
@@ -374,7 +419,7 @@ class AccountingIntegrationGateway:
         reason: str,
         actor_id: UUID | None,
         stage_installments_rows: Callable[[], None],
-    ):
+    ) -> ARTransactionLike:
         """Late-charge waiver of an already-posted charge (plan.md §12
         "Waiver" row) — ``reverse_adjustment()`` is single-phase (its
         own sole commit is ``PostingEngine.reverse()``), so the caller's
@@ -399,7 +444,7 @@ class AccountingIntegrationGateway:
         reason: str,
         actor_id: UUID | None,
         stage_installments_rows: Callable[[StagedWriteOff], None],
-    ):
+    ) -> ARTransactionLike:
         """Write-off (plan.md §12 "Write-off" row / §12.3.3) — stages
         the GL write-off posting and AR status change, lets the caller
         stage its own contract-status/audit/outbox rows into the same
