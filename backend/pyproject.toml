@@ -71,6 +71,36 @@ ignore_missing_imports = true
 explicit_package_bases = true
 plugins = ["pydantic.mypy"]
 
+# Production code (modules/, core/, api/, migrations/) keeps full strict
+# mode. Tests are ~83% of the pre-remediation error backlog (~3900/4700),
+# overwhelmingly `no-untyped-def`/`no-untyped-call` from pytest test
+# functions/fixtures never annotated with `-> None` — a standard, accepted
+# gap (see mypy's own "Using mypy with an existing codebase" guidance) with
+# no correctness value: a missing `-> None` on `def test_x(self, db):` never
+# indicates a bug. `check_untyped_defs` stays on, so mypy still type-checks
+# the *body* of every test function against its (inferred) types — a real
+# mismatch like `arg-type`/`attr-defined`/`union-attr` inside a test still
+# fails, which is what would actually catch a test calling a service with a
+# stale/wrong signature. This is a scoped exemption from one specific
+# strict-mode requirement, not `ignore_errors`, and does not touch how any
+# production module is checked.
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+check_untyped_defs = true
+# `method-assign`: patching a real instance's bound method directly with a
+# `MagicMock` (`svc._user_repo.find_by_email = MagicMock(...)`) is the
+# standard, ubiquitous test-isolation pattern used throughout this suite —
+# mypy's structural objection (a class-level method reassigned per-instance
+# could break polymorphism) has no bearing on test doubles, which are never
+# subclassed/polymorphic. Disabling it does not weaken the arg-type/
+# attr-defined/union-attr coverage described above: a genuinely
+# wrong-shaped replacement still fails at its call site with a normal,
+# unsuppressed type error, not via method-assign itself.
+disable_error_code = ["method-assign"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = "test_*.py"

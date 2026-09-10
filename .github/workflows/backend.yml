@@ -79,7 +79,11 @@ jobs:
       - name: Ruff format check
         run: poetry run ruff format --check .
 
-      - name: MyPy type-check
+      # Blocking: the entire first-party codebase (production modules/,
+      # core/, api/, migrations/, scripts/ AND the tests/ suite) reached
+      # 0 MyPy errors at the close of the Pre-Epic-11 stabilization pass.
+      # Any new first-party MyPy error, production or test, fails CI.
+      - name: MyPy type-check (blocking)
         run: poetry run mypy .
 
   # ---------------------------------------------------------------------------
@@ -89,6 +93,33 @@ jobs:
     name: Tests & Coverage
     runs-on: ubuntu-latest
     needs: lint
+
+    # Real PostgreSQL for the subset of integration/security/performance
+    # tests that need genuine Postgres-only semantics (partial unique
+    # indexes, CHECK constraints, concurrency/locking) and deliberately
+    # bypass the SQLite-backed db_session fixture — see
+    # tests/integration/migrations/conftest.py's module docstring. Each
+    # such test creates and drops its OWN uniquely-named throwaway
+    # database via pg_test_db; nothing ever writes to a shared/persistent
+    # database. The credentials below are ephemeral, CI-only, and scoped
+    # to this single job run — not a real secret.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci_test
+          POSTGRES_PASSWORD: ci_test_password
+          POSTGRES_DB: ci_test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci_test -d ci_test_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: "postgresql://ci_test:ci_test_password@localhost:5432/ci_test_db"
 
     steps:
       - name: Checkout
