@@ -12,9 +12,10 @@ Spec ref: specs/008-accounting-finance/tasks.md T175-T180
 
 from __future__ import annotations
 
+from datetime import date
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from modules.accounting.models.banking import (
@@ -54,16 +55,56 @@ class BankTransactionRepository(BaseAccountingRepository[BankTransaction]):
         super().__init__(db=db, model=BankTransaction)
 
     def find_by_bank_account(
-        self, company_id: UUID, bank_account_id: UUID
+        self,
+        company_id: UUID,
+        bank_account_id: UUID,
+        *,
+        from_date: date | None = None,
+        to_date: date | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[BankTransaction]:
+        """``from_date``/``to_date``/``limit``/``offset`` are optional,
+        SQL-level bounds (Epic 11 Reports, additive seam) — omitting them
+        reproduces the exact prior unbounded behavior for existing
+        callers."""
         stmt = (
             select(BankTransaction)
             .where(BankTransaction.company_id == company_id)
             .where(BankTransaction.bank_account_id == bank_account_id)
             .where(BankTransaction.is_deleted == False)  # noqa: E712
-            .order_by(BankTransaction.transaction_date)
         )
+        if from_date is not None:
+            stmt = stmt.where(BankTransaction.transaction_date >= from_date)
+        if to_date is not None:
+            stmt = stmt.where(BankTransaction.transaction_date <= to_date)
+        stmt = stmt.order_by(BankTransaction.transaction_date)
+        if limit is not None:
+            stmt = stmt.offset(offset).limit(limit)
         return list(self.db.execute(stmt).scalars().all())
+
+    def count_bank_transactions(
+        self,
+        company_id: UUID,
+        bank_account_id: UUID,
+        *,
+        from_date: date | None = None,
+        to_date: date | None = None,
+    ) -> int:
+        """Epic 11 Reports additive seam — cheap SQL-level count mirroring
+        ``find_by_bank_account``'s filter."""
+        stmt = (
+            select(func.count())
+            .select_from(BankTransaction)
+            .where(BankTransaction.company_id == company_id)
+            .where(BankTransaction.bank_account_id == bank_account_id)
+            .where(BankTransaction.is_deleted == False)  # noqa: E712
+        )
+        if from_date is not None:
+            stmt = stmt.where(BankTransaction.transaction_date >= from_date)
+        if to_date is not None:
+            stmt = stmt.where(BankTransaction.transaction_date <= to_date)
+        return int(self.db.execute(stmt).scalar_one())
 
     def find_unreconciled(
         self, company_id: UUID, bank_account_id: UUID

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from core.repositories.base import BaseRepository
@@ -93,6 +93,24 @@ class ReorderRuleRepository(BaseRepository[ReorderRule]):
             stmt = stmt.where(ReorderRule.is_active == True)  # noqa: E712
         return list(self.db.execute(stmt).scalars().all())
 
+    def count_for_company(
+        self,
+        *,
+        company_id: UUID,
+        active_only: bool = False,
+    ) -> int:
+        """Epic 11 Reports additive seam — count mirroring
+        ``list_for_company``'s filters."""
+        stmt = (
+            select(func.count())
+            .select_from(ReorderRule)
+            .where(ReorderRule.company_id == company_id)
+            .where(ReorderRule.is_deleted == False)  # noqa: E712
+        )
+        if active_only:
+            stmt = stmt.where(ReorderRule.is_active == True)  # noqa: E712
+        return int(self.db.execute(stmt).scalar_one())
+
 
 class LowStockAlertRepository(BaseRepository[LowStockAlert]):
     """CRUD and alert-lifecycle queries for LowStockAlert."""
@@ -149,6 +167,33 @@ class LowStockAlertRepository(BaseRepository[LowStockAlert]):
         if warehouse_id:
             stmt = stmt.where(LowStockAlert.warehouse_id == str(warehouse_id))
         return list(self.db.execute(stmt).scalars().all())
+
+    def count_for_company(
+        self,
+        *,
+        company_id: UUID,
+        status: str | None = None,
+        alert_type: str | None = None,
+        product_id: UUID | None = None,
+        warehouse_id: UUID | None = None,
+    ) -> int:
+        """Epic 11 Reports additive seam — count mirroring
+        ``list_for_company``'s filters."""
+        stmt = (
+            select(func.count())
+            .select_from(LowStockAlert)
+            .where(LowStockAlert.company_id == company_id)
+            .where(LowStockAlert.is_deleted == False)  # noqa: E712
+        )
+        if status:
+            stmt = stmt.where(LowStockAlert.status == status)
+        if alert_type:
+            stmt = stmt.where(LowStockAlert.alert_type == alert_type)
+        if product_id:
+            stmt = stmt.where(LowStockAlert.product_id == str(product_id))
+        if warehouse_id:
+            stmt = stmt.where(LowStockAlert.warehouse_id == str(warehouse_id))
+        return int(self.db.execute(stmt).scalar_one())
 
     def get_all_open_for_position(
         self,

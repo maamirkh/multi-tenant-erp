@@ -62,6 +62,8 @@ from modules.platform_admin.router import (
 )
 from modules.platform_admin.router import tenant_router as platform_admin_tenant_router
 from modules.purchase.router import router as purchase_router
+from modules.reports.dependencies import require_reports_enabled
+from modules.reports.router import router as reports_router
 from modules.sales.router import router as sales_router
 from modules.users_roles.dependencies import get_current_company_member
 from modules.users_roles.ownership_router import ownership_router
@@ -257,6 +259,23 @@ router.include_router(
     installments_admin_router,
     prefix="/companies/{company_id}/installments",
     dependencies=[Depends(get_current_company_member)],
+)
+# Reports & Analytics (Epic 11, Phase 0 T008) — mounted with the same
+# three-dependency pattern as CRM: get_current_company_member (tenant
+# membership) -> require_capability_entitled("reports") (Plan x Toggle,
+# Epic 9A chain) -> require_reports_enabled (module-local defence-in-depth
+# second check). No report-key endpoints exist yet (router.py is an empty
+# APIRouter until Phase 3); this mount only proves the entitlement/gate
+# chain is live end-to-end from Phase 0 onward.
+reports_entitlement_gate = require_capability_entitled("reports")
+router.include_router(
+    reports_router,
+    prefix="/companies/{company_id}/reports",
+    dependencies=[
+        Depends(get_current_company_member),
+        Depends(reports_entitlement_gate),
+        Depends(require_reports_enabled),
+    ],
 )
 
 

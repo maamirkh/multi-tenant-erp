@@ -145,6 +145,38 @@ class ReportService:
             for r in rows
         ]
 
+    def count_purchase_order_summary(
+        self,
+        company_id: UUID,
+        *,
+        status: str | None = None,
+        supplier_id: UUID | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+    ) -> int:
+        """Epic 11 Reports additive seam — cheap SQL-level count mirroring
+        ``purchase_order_summary``'s filter."""
+        stmt = select(func.count(PurchaseOrder.id)).where(
+            and_(
+                PurchaseOrder.company_id == company_id,
+                PurchaseOrder.deleted_at.is_(None),
+            )
+        )
+        if status:
+            stmt = stmt.where(PurchaseOrder.status == status)
+        if supplier_id:
+            stmt = stmt.where(PurchaseOrder.supplier_id == str(supplier_id))
+        if date_from:
+            stmt = stmt.where(
+                cast(PurchaseOrder.created_at, __import__("sqlalchemy").Date)
+                >= date_from
+            )
+        if date_to:
+            stmt = stmt.where(
+                cast(PurchaseOrder.created_at, __import__("sqlalchemy").Date) <= date_to
+            )
+        return int(self.db.execute(stmt).scalar_one())
+
     # ------------------------------------------------------------------
     # RPT-02  Pending Purchase Orders  (T208)
     # ------------------------------------------------------------------
@@ -207,10 +239,15 @@ class ReportService:
         company_id: UUID,
         *,
         as_of: date | None = None,
+        branch_id: UUID | None = None,
         skip: int = 0,
         limit: int = 200,
     ) -> list[dict[str, Any]]:
-        """POs past expected_delivery_date without FULLY_RECEIVED status."""
+        """POs past expected_delivery_date without FULLY_RECEIVED status.
+
+        ``branch_id`` (Epic 11 Reports additive seam, FR-RPT-160) is a
+        plain data filter — never an authorization boundary (no per-user
+        branch ACL exists anywhere in the repository, spec §25)."""
         cutoff = as_of or date.today()
         stmt = (
             select(
@@ -235,6 +272,8 @@ class ReportService:
             .offset(skip)
             .limit(limit)
         )
+        if branch_id:
+            stmt = stmt.where(PurchaseOrder.branch_id == str(branch_id))
         rows = self.db.execute(stmt).mappings().all()
         today = date.today()
         return [
@@ -250,6 +289,29 @@ class ReportService:
             }
             for r in rows
         ]
+
+    def count_overdue_deliveries(
+        self,
+        company_id: UUID,
+        *,
+        as_of: date | None = None,
+        branch_id: UUID | None = None,
+    ) -> int:
+        """Epic 11 Reports additive seam — cheap SQL-level count mirroring
+        ``overdue_deliveries``'s filter."""
+        cutoff = as_of or date.today()
+        stmt = select(func.count(PurchaseOrder.id)).where(
+            and_(
+                PurchaseOrder.company_id == company_id,
+                PurchaseOrder.deleted_at.is_(None),
+                PurchaseOrder.status.in_(["APPROVED", "PARTIALLY_RECEIVED"]),
+                PurchaseOrder.expected_delivery_date.isnot(None),
+                PurchaseOrder.expected_delivery_date < cutoff,
+            )
+        )
+        if branch_id:
+            stmt = stmt.where(PurchaseOrder.branch_id == str(branch_id))
+        return int(self.db.execute(stmt).scalar_one())
 
     # ------------------------------------------------------------------
     # RPT-04  Goods Receipt Report  (T210)
@@ -439,10 +501,18 @@ class ReportService:
             gr_stmt = gr_stmt.where(
                 cast(GoodsReceipt.received_at, __import__("sqlalchemy").Date) <= date_to
             )
+        # Epic 11 Reports additive seam (micro-pass Blocker C): bound the
+        # SUPPLIER population at SQL level — "supplier count is finite" is
+        # not a technical bound. ot_stmt/rej_stmt below are then scoped to
+        # this same already-bounded supplier set via IN(), so no query in
+        # this method ever scans the full company-wide supplier
+        # population; the per-supplier calculation itself is unchanged.
+        gr_stmt = gr_stmt.order_by(GoodsReceipt.supplier_id).offset(skip).limit(limit)
 
         gr_rows = {
             r["supplier_id"]: r for r in self.db.execute(gr_stmt).mappings().all()
         }
+        page_supplier_ids = list(gr_rows.keys())
 
         # On-time: received_at <= PO.expected_delivery_date
         ot_stmt = (
@@ -485,10 +555,14 @@ class ReportService:
                 cast(GoodsReceipt.received_at, __import__("sqlalchemy").Date) <= date_to
             )
 
-        ot_rows = {
-            r["supplier_id"]: r["on_time_grs"]
-            for r in self.db.execute(ot_stmt).mappings().all()
-        }
+        if page_supplier_ids:
+            ot_stmt = ot_stmt.where(GoodsReceipt.supplier_id.in_(page_supplier_ids))
+            ot_rows = {
+                r["supplier_id"]: r["on_time_grs"]
+                for r in self.db.execute(ot_stmt).mappings().all()
+            }
+        else:
+            ot_rows = {}
 
         # Rejection rates from GR lines
         rej_stmt = (
@@ -530,12 +604,16 @@ class ReportService:
                 cast(GoodsReceipt.received_at, __import__("sqlalchemy").Date) <= date_to
             )
 
-        rej_rows = {
-            r["supplier_id"]: r for r in self.db.execute(rej_stmt).mappings().all()
-        }
+        if page_supplier_ids:
+            rej_stmt = rej_stmt.where(GoodsReceipt.supplier_id.in_(page_supplier_ids))
+            rej_rows = {
+                r["supplier_id"]: r for r in self.db.execute(rej_stmt).mappings().all()
+            }
+        else:
+            rej_rows = {}
 
         results = []
-        for supplier_id_str, gr_data in list(gr_rows.items())[skip : skip + limit]:
+        for supplier_id_str, gr_data in gr_rows.items():
             total_grs = gr_data["total_grs"] or 0
             on_time = ot_rows.get(supplier_id_str, 0)
             on_time_rate = round(on_time / total_grs * 100, 2) if total_grs else 0.0
@@ -568,6 +646,33 @@ class ReportService:
                 }
             )
         return results
+
+    def count_supplier_performance(
+        self,
+        company_id: UUID,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+    ) -> int:
+        """Epic 11 Reports additive seam — cheap SQL-level count of the
+        distinct-supplier population behind ``supplier_performance``."""
+        stmt = select(func.count(func.distinct(GoodsReceipt.supplier_id))).where(
+            and_(
+                GoodsReceipt.company_id == company_id,
+                GoodsReceipt.deleted_at.is_(None),
+                GoodsReceipt.status == "CONFIRMED",
+            )
+        )
+        if date_from:
+            stmt = stmt.where(
+                cast(GoodsReceipt.received_at, __import__("sqlalchemy").Date)
+                >= date_from
+            )
+        if date_to:
+            stmt = stmt.where(
+                cast(GoodsReceipt.received_at, __import__("sqlalchemy").Date) <= date_to
+            )
+        return int(self.db.execute(stmt).scalar_one())
 
     # ------------------------------------------------------------------
     # RPT-07  Vendor Return Report  (T213)
@@ -640,6 +745,35 @@ class ReportService:
             for r in rows
         ]
 
+    def count_vendor_returns(
+        self,
+        company_id: UUID,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        supplier_id: UUID | None = None,
+    ) -> int:
+        """Epic 11 Reports additive seam — cheap SQL-level count mirroring
+        ``vendor_return_report``'s filter."""
+        stmt = select(func.count(VendorReturn.id)).where(
+            and_(
+                VendorReturn.company_id == company_id,
+                VendorReturn.deleted_at.is_(None),
+            )
+        )
+        if supplier_id:
+            stmt = stmt.where(VendorReturn.supplier_id == str(supplier_id))
+        if date_from:
+            stmt = stmt.where(
+                cast(VendorReturn.created_at, __import__("sqlalchemy").Date)
+                >= date_from
+            )
+        if date_to:
+            stmt = stmt.where(
+                cast(VendorReturn.created_at, __import__("sqlalchemy").Date) <= date_to
+            )
+        return int(self.db.execute(stmt).scalar_one())
+
     # ------------------------------------------------------------------
     # RPT-08  Purchase by Supplier  (T214)
     # ------------------------------------------------------------------
@@ -691,6 +825,27 @@ class ReportService:
             }
             for r in rows
         ]
+
+    def count_purchase_by_supplier(
+        self,
+        company_id: UUID,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+    ) -> int:
+        """Epic 11 Reports additive seam — cheap SQL-level count of the
+        distinct-supplier population behind ``purchase_by_supplier``."""
+        stmt = select(func.count(func.distinct(PurchaseCostEntry.supplier_id))).where(
+            and_(
+                PurchaseCostEntry.company_id == company_id,
+                PurchaseCostEntry.deleted_at.is_(None),
+            )
+        )
+        if date_from:
+            stmt = stmt.where(PurchaseCostEntry.cost_date >= date_from)
+        if date_to:
+            stmt = stmt.where(PurchaseCostEntry.cost_date <= date_to)
+        return int(self.db.execute(stmt).scalar_one())
 
     # ------------------------------------------------------------------
     # RPT-09  Purchase by Category  (T215)
@@ -855,10 +1010,14 @@ class ReportService:
         company_id: UUID,
         *,
         supplier_id: UUID | None = None,
+        branch_id: UUID | None = None,
         skip: int = 0,
         limit: int = 200,
     ) -> list[dict[str, Any]]:
-        """Open value per PO line (ordered − received) for APPROVED/PARTIALLY_RECEIVED POs."""
+        """Open value per PO line (ordered − received) for
+        APPROVED/PARTIALLY_RECEIVED POs. ``branch_id`` (Epic 11 Reports
+        additive seam, FR-RPT-160) is a plain data filter — never an
+        authorization boundary."""
         stmt = (
             select(
                 POLine.id.label("po_line_id"),
@@ -902,6 +1061,8 @@ class ReportService:
         )
         if supplier_id:
             stmt = stmt.where(PurchaseOrder.supplier_id == str(supplier_id))
+        if branch_id:
+            stmt = stmt.where(PurchaseOrder.branch_id == str(branch_id))
 
         rows = self.db.execute(stmt).mappings().all()
         return [
@@ -925,6 +1086,45 @@ class ReportService:
             }
             for r in rows
         ]
+
+    def count_open_purchase_commitments(
+        self,
+        company_id: UUID,
+        *,
+        supplier_id: UUID | None = None,
+        branch_id: UUID | None = None,
+    ) -> int:
+        """Epic 11 Reports additive seam — cheap SQL-level count mirroring
+        ``open_purchase_commitments``'s filter."""
+        stmt = (
+            select(func.count(POLine.id))
+            .join(
+                PurchaseOrder,
+                and_(
+                    PurchaseOrder.id
+                    == __import__("sqlalchemy").cast(
+                        POLine.po_id,
+                        __import__(
+                            "sqlalchemy.dialects.postgresql", fromlist=["UUID"]
+                        ).UUID(as_uuid=True),
+                    ),
+                ),
+            )
+            .where(
+                and_(
+                    PurchaseOrder.company_id == company_id,
+                    PurchaseOrder.deleted_at.is_(None),
+                    PurchaseOrder.status.in_(["APPROVED", "PARTIALLY_RECEIVED"]),
+                    POLine.deleted_at.is_(None),
+                    POLine.open_quantity > 0,
+                )
+            )
+        )
+        if supplier_id:
+            stmt = stmt.where(PurchaseOrder.supplier_id == str(supplier_id))
+        if branch_id:
+            stmt = stmt.where(PurchaseOrder.branch_id == str(branch_id))
+        return int(self.db.execute(stmt).scalar_one())
 
     # ------------------------------------------------------------------
     # RPT-12  Purchase Trend Analysis  (T218)

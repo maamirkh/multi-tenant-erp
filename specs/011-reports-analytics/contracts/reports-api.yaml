@@ -1,0 +1,229 @@
+openapi: 3.0.3
+info:
+  title: Reports & Analytics API (Epic 11) — Planning-Stage Contract Sketch
+  version: "0.1.0-planning"
+  description: >
+    Conceptual endpoint contract for /sp.tasks decomposition. Not an implementation
+    artifact — schemas are named/shaped, not exhaustively typed. Mounted under the
+    platform's existing /api/v1/companies/{company_id}/reports prefix. Every
+    response uses the platform's existing StandardResponse/PaginatedResponse/
+    ErrorResponse envelopes (see core/schemas/response.py, core/schemas/pagination.py) —
+    not redefined here, except CursorPage<T> which is a documented, report-local
+    exception for accounting.gl only (plan.md §19).
+servers:
+  - url: /api/v1/companies/{company_id}/reports
+    variables:
+      company_id:
+        default: ""
+
+security:
+  - bearerAuth: []
+
+paths:
+  /discovery:
+    get:
+      summary: List Report Definitions the current user may currently reach
+      x-permission: none (self-filtering — every entry already passed its own gate)
+      x-operation-class: READ
+      responses:
+        "200": { description: StandardResponse<ReportDiscoveryResponse> }
+
+  /dashboard:
+    get:
+      summary: Executive Dashboard — curated cross-module KPI composition
+      x-permission: reports.executive.view
+      x-operation-class: READ
+      parameters:
+        - { name: period, in: query, schema: { type: string } }
+        - { name: compare, in: query, schema: { type: string } }
+      responses:
+        "200": { description: StandardResponse<ExecutiveDashboardResponse> }
+
+  /customer-360/{customer_id}:
+    get:
+      summary: Customer 360 composite read model
+      x-permission: reports.customer_360.view (plus per-section domain permission, evaluated independently)
+      x-operation-class: READ
+      parameters:
+        - { name: customer_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: StandardResponse<Customer360Response> }
+        "404": { description: customer not found OR not authorized to view the customer master record (indistinguishable, IDOR-safe) }
+
+  /{report_key}:
+    get:
+      summary: Execute any registered "Now" report by its stable key
+      x-permission: "resolved per report_key from the Report Registry (reports.<domain>.view or reports.executive.view)"
+      x-operation-class: READ
+      parameters:
+        - { name: report_key, in: path, required: true, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: page_size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { name: cursor, in: query, schema: { type: string }, description: "accounting.gl only" }
+        - { name: sort, in: query, schema: { type: string } }
+        - { name: compare, in: query, schema: { type: string } }
+        - name: filters
+          in: query
+          style: deepObject
+          schema: { type: object }
+          description: validated against the report's declared supported_filters schema; extra fields rejected
+      responses:
+        "200": { description: "PaginatedResponse<T> | CursorPage<T> (accounting.gl only) | StandardResponse<T> (aggregate reports)" }
+        "403": { description: REPORT_NOT_ENTITLED | REPORT_PERMISSION_DENIED }
+        "404": { description: REPORT_NOT_FOUND (unregistered or deferred report_key — indistinguishable) }
+        "409": { description: REPORT_UNAVAILABLE (unconfigured prerequisite, e.g. no chart of accounts yet) }
+        "422": { description: REPORT_INVALID_FILTER | REPORT_UNSUPPORTED_SORT }
+
+  /{report_key}/export:
+    get:
+      summary: Export a report in the exact filter scope of the equivalent online view
+      x-permission: "resolved per report_key (reports.<domain>.export — distinct from .view)"
+      x-operation-class: READ
+      parameters:
+        - { name: report_key, in: path, required: true, schema: { type: string } }
+        - { name: format, in: query, required: true, schema: { type: string, enum: [csv, xlsx, pdf] } }
+        - name: filters
+          in: query
+          style: deepObject
+          schema: { type: object }
+      responses:
+        "200":
+          description: file download (Content-Disposition attachment); audited on success
+          content:
+            text/csv: {}
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet: {}
+            application/pdf: {}
+        "422": { description: "EXPORT_TOO_LARGE (\"narrow your filters\") | REPORT_INVALID_FILTER" }
+
+  /saved-views:
+    get:
+      summary: List the current user's own saved report views for this tenant
+      x-permission: reports.saved_view.manage
+      x-operation-class: READ
+      responses: { "200": { description: PaginatedResponse<SavedReportViewRead> } }
+    post:
+      summary: Save a new private, named report view
+      x-permission: reports.saved_view.manage
+      x-operation-class: SERVICING
+      x-idempotent: false
+      responses:
+        "201": { description: StandardResponse<SavedReportViewRead> }
+        "422": { description: filter_config fails validation against the report's current supported_filters schema }
+
+  /saved-views/{view_id}:
+    get:
+      summary: Load a saved view — re-validated against current registry/permissions/entitlements
+      x-permission: reports.saved_view.manage (owner-only)
+      x-operation-class: READ
+      parameters:
+        - { name: view_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: StandardResponse<SavedReportViewRead> }
+        "403": { description: "the loading user's current permissions/entitlements no longer satisfy the referenced report" }
+        "404": { description: "SAVED_VIEW_NOT_FOUND — includes both \"doesn't exist\" and \"belongs to another user/tenant\", indistinguishable" }
+        "410": { description: "SAVED_VIEW_REPORT_RETIRED — referenced report_key no longer exists in the registry" }
+    patch:
+      summary: Update a saved view's name/filters/grouping/sorting/columns
+      x-permission: reports.saved_view.manage (owner-only)
+      x-operation-class: SERVICING
+      responses: { "200": { description: StandardResponse<SavedReportViewRead> } }
+    delete:
+      summary: Delete (soft-delete) a saved view
+      x-permission: reports.saved_view.manage (owner-only)
+      x-operation-class: SERVICING
+      responses: { "204": { description: deleted } }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  schemas:
+    ReportDiscoveryResponse:
+      type: object
+      properties:
+        reports:
+          type: array
+          items: { $ref: "#/components/schemas/ReportDiscoveryItem" }
+
+    ReportDiscoveryItem:
+      type: object
+      description: A permission- and entitlement-filtered summary of one ReportDefinition (plan.md §7)
+      properties:
+        key: { type: string }
+        name: { type: string }
+        domain: { type: string }
+        description: { type: string }
+        exportable: { type: boolean }
+        export_formats: { type: array, items: { type: string, enum: [csv, xlsx, pdf] } }
+        branch_filterable: { type: boolean }
+        drill_down_targets: { type: array, items: { type: string } }
+
+    ReportEnvelopeMeta:
+      type: object
+      description: >
+        Embedded in every report response's data payload (plan.md §18) — resolved report_key, applied
+        filters, resolved period (with timezone-derived boundaries), returned measures/dimensions,
+        comparison data (where requested), freshness classification, drill-down references.
+      properties:
+        report_key: { type: string }
+        applied_filters: { type: object }
+        period: { type: object }
+        freshness: { type: string, enum: [transactional_live] }
+        drill_down: { type: array, items: { type: object } }
+
+    ExecutiveDashboardResponse:
+      type: object
+      properties:
+        widgets:
+          type: array
+          items:
+            type: object
+            properties:
+              metric_id: { type: string }
+              state: { type: string, enum: [present, omitted] }
+              read_only_servicing_continuity: { type: boolean, description: "Installments widget only, Case B" }
+              value: { type: object, nullable: true }
+              comparison: { type: object, nullable: true }
+              drill_down: { type: object, nullable: true }
+
+    Customer360Response:
+      type: object
+      properties:
+        customer: { type: object, description: "identity/master-data section — always present if the request itself succeeded" }
+        sales: { $ref: "#/components/schemas/SectionResult" }
+        accounting_ar: { $ref: "#/components/schemas/SectionResult" }
+        crm: { $ref: "#/components/schemas/SectionResult" }
+        installments: { $ref: "#/components/schemas/SectionResult" }
+
+    SectionResult:
+      type: object
+      description: Discriminated on `state` (plan.md §14/R5) — present | omitted | unavailable
+      properties:
+        state: { type: string, enum: [present, omitted, unavailable] }
+        reason: { type: string, enum: [not_entitled, not_permitted, not_configured, no_data_source], nullable: true }
+        data: { type: object, nullable: true }
+
+    SavedReportViewRead:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        report_key: { type: string }
+        name: { type: string }
+        schema_version: { type: integer }
+        filter_config: { type: object }
+        grouping: { type: array, items: { type: string }, nullable: true }
+        sorting: { type: string, nullable: true }
+        visible_columns: { type: array, items: { type: string }, nullable: true }
+        date_preset: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CursorPage:
+      type: object
+      description: "accounting.gl exception only (plan.md §19) — not used by any other report"
+      properties:
+        items: { type: array, items: { type: object } }
+        has_more: { type: boolean }
+        next_cursor: { type: string, nullable: true }

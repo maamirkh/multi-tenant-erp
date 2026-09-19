@@ -553,3 +553,37 @@ class CashAccountService:
             "transactions": transactions,
             "closing_balance": closing_balance,
         }
+
+    def count_cash_transactions(
+        self,
+        company_id: UUID,
+        cash_account_id: UUID,
+        *,
+        from_date: date | None = None,
+        to_date: date | None = None,
+    ) -> int:
+        """Epic 11 Reports additive seam — service-layer passthrough."""
+        return self._transactions.count_cash_transactions(
+            company_id, cash_account_id, from_date=from_date, to_date=to_date
+        )
+
+    def get_cash_transactions_page(
+        self,
+        company_id: UUID,
+        cash_account_id: UUID,
+        *,
+        from_date: date | None = None,
+        to_date: date | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[CashTransaction]:
+        """Epic 11 Reports additive seam — SQL-bounded page, service-layer
+        passthrough."""
+        return self._transactions.find_by_cash_account(
+            company_id,
+            cash_account_id,
+            from_date=from_date,
+            to_date=to_date,
+            limit=limit,
+            offset=offset,
+        )

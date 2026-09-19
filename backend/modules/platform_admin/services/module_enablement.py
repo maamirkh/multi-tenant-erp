@@ -36,6 +36,8 @@ from modules.installments.repositories.feature_flag import (
 from modules.installments.services.feature_flag_service import (
     InstallmentsFeatureFlagService,
 )
+from modules.reports.repositories.feature_flag import ReportsFeatureFlagRepository
+from modules.reports.services.feature_flag_service import ReportsFeatureFlagService
 
 
 class ModuleEnablementProvider(Protocol):
@@ -76,6 +78,22 @@ class InstallmentsModuleEnablementProvider:
         return self._service.is_enabled(company_id)
 
 
+class ReportsModuleEnablementProvider:
+    """Reports has exactly one module-wide master flag
+    (``feature_flag_service.REPORTS_ENABLED_FLAG_KEY``), defaulting to
+    **disabled** (spec §18/FR-RPT-255, plan.md §12) — read via the
+    existing ``ReportsFeatureFlagService`` (the same one
+    ``require_reports_enabled`` uses). Never writes."""
+
+    def __init__(self, db: Session) -> None:
+        self._service = ReportsFeatureFlagService(
+            flag_repo=ReportsFeatureFlagRepository(db)
+        )
+
+    def is_enabled(self, company_id: UUID) -> bool:
+        return self._service.is_enabled(company_id)
+
+
 class DefaultAlwaysEnabledModuleProvider:
     """Applies plan.md §40's documented default rule for a module with no
     module-grain master toggle: Inventory, Sales, Purchase, and Accounting
@@ -105,6 +123,8 @@ def get_module_enablement_provider(
         return CrmModuleEnablementProvider(db)
     if capability_key == "installments":
         return InstallmentsModuleEnablementProvider(db)
+    if capability_key == "reports":
+        return ReportsModuleEnablementProvider(db)
     if capability_key in _DEFAULT_RULE_MODULES:
         return _DEFAULT_PROVIDER
     raise ValueError(f"No ModuleEnablementProvider registered for {capability_key!r}.")

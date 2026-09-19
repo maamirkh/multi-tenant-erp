@@ -496,6 +496,42 @@ class BankAccountService:
             "closing_balance": closing_balance,
         }
 
+    def count_bank_transactions(
+        self,
+        company_id: UUID,
+        bank_account_id: UUID,
+        *,
+        from_date: date | None = None,
+        to_date: date | None = None,
+    ) -> int:
+        """Epic 11 Reports additive seam — service-layer passthrough so
+        Reports' ``AccountingAdapter`` never imports
+        ``repositories/banking.py`` directly."""
+        return self._transactions.count_bank_transactions(
+            company_id, bank_account_id, from_date=from_date, to_date=to_date
+        )
+
+    def get_bank_transactions_page(
+        self,
+        company_id: UUID,
+        bank_account_id: UUID,
+        *,
+        from_date: date | None = None,
+        to_date: date | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[BankTransaction]:
+        """Epic 11 Reports additive seam — SQL-bounded page, service-layer
+        passthrough."""
+        return self._transactions.find_by_bank_account(
+            company_id,
+            bank_account_id,
+            from_date=from_date,
+            to_date=to_date,
+            limit=limit,
+            offset=offset,
+        )
+
 
 class BankReconciliationService:
     """Application service for the statement-first bank reconciliation workflow."""
