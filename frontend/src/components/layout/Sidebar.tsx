@@ -15,6 +15,7 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { BuildingIcon, ShieldIcon, LayoutDashboardIcon } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
+import ReportsNavSection from './ReportsNavSection';
 
 interface NavLinkProps {
   href: string;
@@ -97,6 +98,9 @@ export default function Sidebar() {
             )}
           </ul>
         </div>
+
+        {/* Reports & Analytics (Epic 11) — discovery-driven, signed-in users only */}
+        {user && <ReportsNavSection />}
       </nav>
     </aside>
   );
