@@ -110,6 +110,9 @@ class CrmAdapter:
             )
         raise ReportNotFoundError(report_key)
 
+    def export_row_model(self, report_key: str) -> type[BaseModel]:
+        raise ValueError(f"'{report_key}' has no export-row iteration seam.")
+
     def count_export_rows(
         self, db: Session, company_id: UUID, report_key: str, filters: BaseModel
     ) -> int:

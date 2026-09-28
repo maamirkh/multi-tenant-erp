@@ -5,7 +5,9 @@ Report View **persistence** endpoints (list/create/update/delete). Phase
 3 adds discovery, the unified ``GET /{report_key}`` execution endpoint,
 and saved-view ``load()`` — every route dispatches only through
 ``ReportExecutionService``/``SavedViewService``/``registry_service``,
-never ``ADAPTER_REGISTRY`` directly (T129).
+never ``ADAPTER_REGISTRY`` directly (T129). Phase 6 adds
+``GET /{report_key}/export``, which dispatches only through
+``ReportExportService`` (T212).
 """
 
 from __future__ import annotations
@@ -13,7 +15,7 @@ from __future__ import annotations
 import re
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Path, Query, Request, status
+from fastapi import APIRouter, Depends, Path, Query, Request, Response, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -31,6 +33,7 @@ from modules.reports.exceptions import (
     FilterValidationError,
     ReportPermissionDeniedError,
 )
+from modules.reports.registry.definitions import ExportFormat
 from modules.reports.repositories.saved_report_view import SavedReportViewRepository
 from modules.reports.schemas.common import (
     ComparisonRequest,
@@ -64,6 +67,7 @@ from modules.reports.services.customer_360_service import get_customer_360
 from modules.reports.services.dashboard_service import get_dashboard
 from modules.reports.services.date_range_service import resolve_period
 from modules.reports.services.execution_service import ReportExecutionService
+from modules.reports.services.export_service import ReportExportService
 from modules.reports.services.permission_check import user_has_reports_permission
 
 router = APIRouter(tags=["reports"])
@@ -71,6 +75,7 @@ router = APIRouter(tags=["reports"])
 _SAVED_VIEW_MANAGE_PERMISSION = "reports.saved_view.manage"
 _DASHBOARD_PERMISSION = "reports.executive.view"
 _execution_service = ReportExecutionService()
+_export_service = ReportExportService(execution_service=_execution_service)
 _DEEP_OBJECT_FILTER_KEY = re.compile(r"^filters\[(?P<field>[^\]]+)\]$")
 
 
@@ -345,6 +350,55 @@ async def get_dashboard_route(
         data=data,
         message="Executive dashboard rendered.",
         meta=_meta(),
+    )
+
+
+@router.get(
+    "/{report_key}/export",
+    summary="Export a report in the exact filter scope of its online view",
+    response_class=Response,
+    responses={
+        200: {
+            "description": "File download (Content-Disposition: attachment)",
+            "content": {
+                "text/csv": {},
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {},
+                "application/pdf": {},
+            },
+        }
+    },
+)
+async def export_report(
+    request: Request,
+    report_key: str = Path(..., description="Stable report key"),
+    company_id: UUID = Path(..., description="Company identifier"),
+    export_format: ExportFormat = Query(..., alias="format"),
+    sort: str | None = Query(None),
+    current_user: CurrentUser = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+) -> Response:
+    """The file bytes reach this handler only after
+    ``ReportExportService`` has durably committed the export's audit row
+    (§21.8) — any failure before that point surfaces as a typed error
+    envelope, never a partial file."""
+    result = _export_service.export(
+        db,
+        company_id=company_id,
+        user_id=require_user_id(current_user),
+        report_key=report_key,
+        raw_filters=_parse_deep_object_filters(request),
+        sort=sort,
+        export_format=export_format,
+        user_roles=current_user.roles,
+    )
+    return Response(
+        content=result.content,
+        media_type=result.content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{result.filename}"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 

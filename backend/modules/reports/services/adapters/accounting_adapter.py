@@ -272,6 +272,17 @@ class AccountingAdapter:
             )
         raise ReportNotFoundError(report_key)
 
+    def export_row_model(self, report_key: str) -> type[BaseModel]:
+        if report_key == "accounting.ar_aging":
+            return ARAgingRow
+        if report_key == "accounting.ap_aging":
+            return APAgingRow
+        if report_key == "accounting.bank_cash_book":
+            return BankCashBookRow
+        if report_key == "accounting.gl":
+            return GLReportRow
+        raise ValueError(f"'{report_key}' has no export-row iteration seam.")
+
     def count_export_rows(
         self, db: Session, company_id: UUID, report_key: str, filters: BaseModel
     ) -> int:

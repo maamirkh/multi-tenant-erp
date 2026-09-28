@@ -190,7 +190,13 @@ register(
         supported_dimensions=("customer",),
         supported_measures=("current", "days_1_30", "total"),
         sortable_fields=(),
-        export_formats=(ExportFormat.PDF, ExportFormat.XLSX),
+        # CSV/XLSX, not PDF (Phase 6 correction): AccountingAdapter's
+        # _PDF_ELIGIBLE_KEYS deliberately excludes AR/AP aging (no
+        # aging-shaped template exists in report_export.py — see that
+        # adapter's module note), so advertising PDF here let a PDF export
+        # request pass format validation only to fail inside the adapter.
+        # Category A per tasks.md's Final Export Category Matrix.
+        export_formats=(ExportFormat.CSV, ExportFormat.XLSX),
         drill_down_targets=(
             DrillDownTarget(
                 label="View customer invoices",
@@ -224,7 +230,13 @@ register(
         supported_dimensions=("supplier",),
         supported_measures=("current", "days_1_30", "total"),
         sortable_fields=(),
-        export_formats=(ExportFormat.PDF, ExportFormat.XLSX),
+        # CSV/XLSX, not PDF (Phase 6 correction): AccountingAdapter's
+        # _PDF_ELIGIBLE_KEYS deliberately excludes AR/AP aging (no
+        # aging-shaped template exists in report_export.py — see that
+        # adapter's module note), so advertising PDF here let a PDF export
+        # request pass format validation only to fail inside the adapter.
+        # Category A per tasks.md's Final Export Category Matrix.
+        export_formats=(ExportFormat.CSV, ExportFormat.XLSX),
         drill_down_targets=(
             DrillDownTarget(
                 label="View supplier bills",

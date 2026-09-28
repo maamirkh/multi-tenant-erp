@@ -101,6 +101,14 @@ class ReportAdapter(Protocol[ReportResultT_co]):
         batch_size: int,
     ) -> Iterator[list[BaseModel]]: ...
 
+    def export_row_model(self, report_key: str) -> type[BaseModel]:
+        """The row schema ``iter_export_rows()`` yields for *report_key*
+        (Phase 6). Lets an export whose filter scope matches zero rows
+        still write that schema's column headers (FR-RPT-219) without
+        fetching a row to learn its shape. Raises ``ValueError`` for a key
+        with no row-export seam, like its two siblings above."""
+        ...
+
 
 # One adapter per ``ReportDomain`` — populated incrementally through
 # Phase 2 as each domain's adapter is implemented. Empty and importable

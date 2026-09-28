@@ -169,6 +169,13 @@ class SalesAdapter:
             )
         raise ReportNotFoundError(report_key)
 
+    def export_row_model(self, report_key: str) -> type[BaseModel]:
+        if report_key in _ROW_MODEL_BY_KEY:
+            return _ROW_MODEL_BY_KEY[report_key]
+        if report_key == "sales.returns":
+            return SalesReturnRow
+        raise ValueError(f"'{report_key}' has no export-row iteration seam.")
+
     def count_export_rows(
         self, db: Session, company_id: UUID, report_key: str, filters: BaseModel
     ) -> int:

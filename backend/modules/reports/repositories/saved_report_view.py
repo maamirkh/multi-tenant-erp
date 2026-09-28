@@ -64,6 +64,26 @@ class SavedReportViewRepository(BaseRepository[SavedReportView]):
         items: list[SavedReportView] = list(self.db.execute(rows_stmt).scalars().all())
         return items, total
 
+    def stage(self, entity: SavedReportView) -> SavedReportView:
+        """Stage an insert/update (``add()`` + ``flush()``) without
+        committing — lets the service stage its audit row (Phase 6, T184)
+        in the same transaction before a single ``commit_and_refresh()``."""
+        self.db.add(entity)
+        self.db.flush()
+        return entity
+
+    def stage_soft_delete(self, entity: SavedReportView) -> SavedReportView:
+        """Mark *entity* soft-deleted and flush, without committing (T184)."""
+        entity.is_deleted = True
+        entity.deleted_at = utcnow()
+        self.db.flush()
+        return entity
+
+    def commit_and_refresh(self, entity: SavedReportView) -> SavedReportView:
+        self.db.commit()
+        self.db.refresh(entity)
+        return entity
+
     def soft_delete_for_owner(
         self, view_id: UUID, company_id: UUID, user_id: UUID
     ) -> bool:

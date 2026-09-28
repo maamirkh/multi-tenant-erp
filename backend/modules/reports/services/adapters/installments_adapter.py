@@ -192,6 +192,11 @@ class InstallmentsAdapter:
             total=total,
         )
 
+    def export_row_model(self, report_key: str) -> type[BaseModel]:
+        if report_key not in _LIST_REPORT_KEYS:
+            raise ValueError(f"'{report_key}' has no export-row iteration seam.")
+        return InstallmentReportRow
+
     def count_export_rows(
         self, db: Session, company_id: UUID, report_key: str, filters: BaseModel
     ) -> int:

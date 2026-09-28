@@ -8,6 +8,12 @@ user's **current** state, never the state at save time (FR-RPT-203). Phase
 1 deliberately didn't implement this until ``_authorize_and_validate()``
 existed (Phase 3) — exposing "load without re-validation" would itself
 have been insecure.
+
+Phase 6 (T184) wires ``ReportsAuditService.record()`` into ``save()``/
+``update()``/``delete()``: each stages its persistence write and its
+audit row, then commits both **once**, in the same transaction — an
+audit failure and a persistence failure are the same failure by
+construction.
 """
 
 from __future__ import annotations
@@ -25,13 +31,49 @@ from modules.reports.exceptions import (
 )
 from modules.reports.models.saved_report_view import SavedReportView
 from modules.reports.registry.definitions import REPORT_REGISTRY, ReportStatus
+from modules.reports.repositories.reports_audit_repository import (
+    ReportsAuditRepository,
+)
 from modules.reports.repositories.saved_report_view import SavedReportViewRepository
 from modules.reports.schemas.common import JsonValue
 from modules.reports.schemas.saved_view import (
     SavedReportViewCreate,
     SavedReportViewUpdate,
 )
+from modules.reports.services.audit_service import (
+    AuditEntityType,
+    ReportsAuditService,
+)
 from modules.reports.services.execution_service import ReportExecutionService
+
+_AUDIT_ENTITY_TYPE: AuditEntityType = "SavedReportView"
+
+
+def _audit_service(repo: SavedReportViewRepository) -> ReportsAuditService:
+    """Bound to the saved-view repository's own session, so the audit row
+    and the persistence write it documents share one transaction."""
+    return ReportsAuditService(ReportsAuditRepository(repo.db))
+
+
+def _snapshot(entity: SavedReportView) -> dict[str, JsonValue]:
+    """The user-editable state of a view — the ``before``/``after`` audit
+    payload. Never includes another user's data (a view is owner-private)."""
+    grouping: list[JsonValue] | None = (
+        list(entity.grouping) if entity.grouping is not None else None
+    )
+    visible_columns: list[JsonValue] | None = (
+        list(entity.visible_columns) if entity.visible_columns is not None else None
+    )
+    return {
+        "report_key": entity.report_key,
+        "name": entity.name,
+        "schema_version": entity.schema_version,
+        "filter_config": dict(entity.filter_config),
+        "grouping": grouping,
+        "sorting": entity.sorting,
+        "visible_columns": visible_columns,
+        "date_preset": entity.date_preset,
+    }
 
 
 def _resolve_and_validate_filters(
@@ -77,7 +119,17 @@ def save(
         visible_columns=payload.visible_columns,
         date_preset=payload.date_preset,
     )
-    return repo.create(entity)
+    repo.stage(entity)
+    _audit_service(repo).record(
+        company_id=company_id,
+        entity_type=_AUDIT_ENTITY_TYPE,
+        entity_id=entity.id,
+        action="CREATED",
+        actor_id=user_id,
+        after=_snapshot(entity),
+        report_key=entity.report_key,
+    )
+    return repo.commit_and_refresh(entity)
 
 
 def update(
@@ -99,6 +151,7 @@ def update(
     )
     validated_filters = _resolve_and_validate_filters(new_report_key, new_filter_config)
 
+    before = _snapshot(entity)
     entity.report_key = new_report_key
     entity.filter_config = validated_filters
     if payload.name is not None:
@@ -112,17 +165,39 @@ def update(
     if payload.date_preset is not None:
         entity.date_preset = payload.date_preset
 
-    return repo.update(entity)
+    repo.stage(entity)
+    _audit_service(repo).record(
+        company_id=company_id,
+        entity_type=_AUDIT_ENTITY_TYPE,
+        entity_id=entity.id,
+        action="UPDATED",
+        actor_id=user_id,
+        before=before,
+        after=_snapshot(entity),
+        report_key=entity.report_key,
+    )
+    return repo.commit_and_refresh(entity)
 
 
 def delete(
     repo: SavedReportViewRepository, view_id: UUID, company_id: UUID, user_id: UUID
 ) -> None:
-    deleted = repo.soft_delete_for_owner(
-        view_id=view_id, company_id=company_id, user_id=user_id
-    )
-    if not deleted:
+    entity = repo.get_for_owner(view_id=view_id, company_id=company_id, user_id=user_id)
+    if entity is None:
         raise SavedViewNotFoundError(str(view_id))
+
+    before = _snapshot(entity)
+    repo.stage_soft_delete(entity)
+    _audit_service(repo).record(
+        company_id=company_id,
+        entity_type=_AUDIT_ENTITY_TYPE,
+        entity_id=entity.id,
+        action="DELETED",
+        actor_id=user_id,
+        before=before,
+        report_key=entity.report_key,
+    )
+    repo.db.commit()
 
 
 def list_views(

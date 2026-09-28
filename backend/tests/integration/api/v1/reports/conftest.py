@@ -6,8 +6,11 @@ split)."""
 
 from __future__ import annotations
 
+import csv
+import io
 import uuid
 from datetime import date
+from decimal import Decimal
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -41,6 +44,7 @@ from modules.platform_admin.services.capability_seed_service import (
 from modules.reports.repositories.feature_flag import ReportsFeatureFlagRepository
 from modules.reports.services.feature_flag_service import REPORTS_ENABLED_FLAG_KEY
 from modules.sales.models.customer import Customer
+from modules.sales.models.invoice import SalesInvoice
 from modules.users_roles.constants import REPORTS_PERMISSIONS
 from modules.users_roles.repositories.company_member_repository import (
     CompanyMemberRepository,
@@ -209,3 +213,80 @@ def create_sales_customer(db: Session, company_id: uuid.UUID) -> Customer:
     db.commit()
     db.refresh(customer)
     return customer
+
+
+def grant_reports_permissions(
+    db: Session, company_id: uuid.UUID, user_id: uuid.UUID, codes: set[str]
+) -> None:
+    """Assign *only* the given ``reports.*`` codes (plus whatever non-reports
+    codes the role already had) — e.g. ``.view`` without ``.export``
+    (FR-RPT-212)."""
+    member = CompanyMemberRepository(db).get_by_user_id(
+        user_id=user_id, company_id=company_id
+    )
+    assert member is not None
+    role_permission_repo = RolePermissionRepository(db)
+    current = {
+        code
+        for code in role_permission_repo.get_permission_codes_for_role(member.role_id)
+        if not code.startswith("reports.")
+    }
+    role_permission_repo.bulk_set_permissions_for_role(member.role_id, current | codes)
+    db.commit()
+
+
+def setup_company_with_user(
+    db: Session, client: TestClient
+) -> tuple[str, uuid.UUID, uuid.UUID]:
+    """Like ``setup_company`` but also returns the owner's user id.
+    Returns ``(token, company_id, user_id)``."""
+    email = f"reports-{uuid.uuid4().hex[:8]}@test.com"
+    password = "TestPass123!"
+    user, _ = create_test_user(db, email=email, password=password)
+    token = login(client, email, password)
+    company_id = create_company(client, token)
+    enable_reports(db, company_id)
+    grant_all_reports_permissions(db, company_id, user.id)
+    return token, company_id, user.id
+
+
+def seed_sales_invoice(
+    db: Session,
+    company_id: uuid.UUID,
+    *,
+    amount: str,
+    customer_id: uuid.UUID | None = None,
+    invoice_date: str = "2026-01-15",
+) -> None:
+    """One ISSUED invoice — each distinct ``customer_id`` becomes its own
+    ``sales.by_customer`` row, which lets export tests control row counts
+    exactly."""
+    db.add(
+        SalesInvoice(
+            company_id=company_id,
+            invoice_number=f"INV-{uuid.uuid4().hex[:8]}",
+            customer_id=str(customer_id or uuid.uuid4()),
+            invoice_date=invoice_date,
+            due_date="2026-02-14",
+            currency_code="USD",
+            status="ISSUED",
+            subtotal=Decimal(amount),
+            discount_amount=Decimal("0"),
+            tax_amount=Decimal("0"),
+            charges_amount=Decimal("0"),
+            total_amount=Decimal(amount),
+            version=1,
+        )
+    )
+    db.commit()
+
+
+def export_url(company_id: uuid.UUID | str, report_key: str, fmt: str) -> str:
+    return reports_url(company_id, f"/{report_key}/export?format={fmt}")
+
+
+def parse_csv(content: bytes) -> list[list[str]]:
+    text = content.decode("utf-8")
+    if text.startswith("﻿"):
+        text = text[1:]
+    return list(csv.reader(io.StringIO(text)))

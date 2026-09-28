@@ -98,6 +98,11 @@ class PurchaseAdapter:
             total=total,
         )
 
+    def export_row_model(self, report_key: str) -> type[BaseModel]:
+        if report_key not in _ROW_MODEL_BY_KEY:
+            raise ValueError(f"'{report_key}' has no export-row iteration seam.")
+        return _ROW_MODEL_BY_KEY[report_key]
+
     def count_export_rows(
         self, db: Session, company_id: UUID, report_key: str, filters: BaseModel
     ) -> int:
