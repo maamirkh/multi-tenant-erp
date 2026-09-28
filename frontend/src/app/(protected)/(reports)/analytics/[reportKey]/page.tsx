@@ -1,17 +1,19 @@
 "use client";
 
 /**
- * `/analytics/[reportKey]` — generic detail route for any discoverable
- * report key (Epic 11, T239). Routing scaffold only: it resolves the key
- * against discovery (so an unknown, deferred or unauthorized key never
- * renders anything but a not-available state) and shows the report's
- * identity. Phase 8 renders the report data here.
+ * `/analytics/[reportKey]` — generic detail view for any discoverable
+ * report key (Epic 11, T248), e.g. a drill-down target outside the six
+ * domain hubs. The key is resolved against discovery first, so an unknown,
+ * deferred or unauthorized key only ever renders a not-available state —
+ * never a request for a report the user can't see. Filters come from the
+ * report's own code-defined config (`reportConfigs.ts`).
  */
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useReportDiscovery } from "@/hooks/reports/useReportDiscovery";
 import { ReportsPageHeader } from "@/components/reports/PageHeader";
+import { ReportView } from "@/components/reports/ReportView";
 import { EmptyState, ReportErrorState } from "@/components/reports/states";
 import { LoadingState } from "@/components/reports/states/LoadingState";
 import { ANALYTICS_BASE_PATH } from "@/components/reports/domains";
@@ -26,7 +28,8 @@ export default function ReportDetailPage() {
   if (discovery.isError) {
     return <ReportErrorState error={discovery.error} onRetry={() => void discovery.refetch()} />;
   }
-  if (!report) {
+  if (!report || report.domain === "executive" || report.domain === "crossmodule") {
+    // Composite reports have their own dedicated pages (Overview, Customer 360).
     return (
       <EmptyState
         title="Report not available"
@@ -36,12 +39,16 @@ export default function ReportDetailPage() {
   }
   return (
     <div>
-      <ReportsPageHeader title={report.name} description={report.description} />
-      <p className="text-sm text-muted-foreground">
-        <Link href={ANALYTICS_BASE_PATH} className="underline underline-offset-4">
-          Back to Reports &amp; Analytics
-        </Link>
-      </p>
+      <ReportsPageHeader
+        title={report.name}
+        description={report.description}
+        actions={
+          <Link href={ANALYTICS_BASE_PATH} className="text-sm underline underline-offset-4">
+            Back to Reports &amp; Analytics
+          </Link>
+        }
+      />
+      <ReportView report={report} />
     </div>
   );
 }

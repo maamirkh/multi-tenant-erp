@@ -62,8 +62,8 @@ export interface DataTableProps {
   caption: string;
   rows: ReportRow[];
   /** Omit to derive text columns from the first row's fields. */
-  columns?: DataTableColumn[];
-  pagination?: OffsetPagination | CursorPagination;
+  columns?: DataTableColumn[] | undefined;
+  pagination?: OffsetPagination | CursorPagination | undefined;
   sortField?: string | null;
   onSortChange?: (field: string | null) => void;
   toolbar?: ReactNode;

@@ -1,11 +1,11 @@
 "use client";
 
-import { DomainReportsShell } from "@/components/reports/DomainReportsShell";
+import { DomainReportsHub } from "@/components/reports/DomainReportsHub";
 import { sectionForSegment } from "@/components/reports/domains";
 
-/** `/analytics/inventory` — domain section shell (Epic 11, T239). */
+/** `/analytics/inventory` — Inventory report hub (Epic 11, Phase 8). */
 export default function InventoryAnalyticsPage() {
   const section = sectionForSegment("inventory");
   if (!section) throw new Error("Unknown reports section: inventory");
-  return <DomainReportsShell section={section} />;
+  return <DomainReportsHub section={section} />;
 }

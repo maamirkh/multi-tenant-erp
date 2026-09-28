@@ -1,11 +1,11 @@
 "use client";
 
-import { DomainReportsShell } from "@/components/reports/DomainReportsShell";
+import { DomainReportsHub } from "@/components/reports/DomainReportsHub";
 import { sectionForSegment } from "@/components/reports/domains";
 
-/** `/analytics/finance` — domain section shell (Epic 11, T239). */
+/** `/analytics/finance` — Finance report hub (Epic 11, Phase 8). */
 export default function FinanceAnalyticsPage() {
   const section = sectionForSegment("finance");
   if (!section) throw new Error("Unknown reports section: finance");
-  return <DomainReportsShell section={section} />;
+  return <DomainReportsHub section={section} />;
 }
