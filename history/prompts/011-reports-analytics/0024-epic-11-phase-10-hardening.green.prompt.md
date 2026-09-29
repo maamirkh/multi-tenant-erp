@@ -535,3 +535,12 @@ Implemented Phase 10 (T261–T273, T275). T274 and the Gate 10 repo-wide coverag
 - Graders run and results (PASS/FAIL): targeted suites PASS; mypy/ruff PASS; repo-wide coverage PENDING (CI).
 - Prompt variant (if applicable): compact master prompt, PHASE_TO_IMPLEMENT=10.
 - Next experiment (smallest change to try): add a workflow_dispatch trigger to backend CI so feature branches can run the gate without a PR.
+
+## Follow-up (2026-09-29) — CI run 36543402035 triage
+
+CI Tests & Coverage: 5 failed / 7090 passed / 14 skipped. Root causes (systematic-debugging):
+1. `test_reports_capability_is_seeded` — order-dependent `created > 0` (T144 flake; capability rows leak across the shared SQLite engine). Fixed: assert row exists + re-seed returns 0.
+2–3. T116/T094 platform_admin — CI job never ran `alembic upgrade head` on `ci_test_db` (pre-existing since 0fc6e5d); reproduced locally on an empty throwaway DB, 2/2 pass after migrating. Fixed: migration step added to backend.yml.
+4. Installments page-10 timing (1.69 s) — environmental; local A/B with/without T270 tiebreakers identical (~0.2–0.5 s). Not changed.
+5. Argon2 median 41 ms < 50 ms — CI runner CPU speed, pre-existing Epic 2 threshold. Not changed (security threshold = user decision).
+Commit d28273a pushed; CI re-run pending. T274/T276 remain open until CI evidence.
