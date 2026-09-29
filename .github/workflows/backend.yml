@@ -121,6 +121,12 @@ jobs:
 
     env:
       DATABASE_URL: "postgresql://ci_test:ci_test_password@localhost:5432/ci_test_db"
+      # Hosted runners hash ~2x faster than the 50 ms floor in
+      # tests/security/test_argon2_params.py assumes (41 ms at t=3);
+      # t=6 keeps that floor meaningful. Stricter than production's
+      # default (3), never weaker; the rest of the suite pins its own
+      # cheap params in tests/conftest.py.
+      ARGON2_TIME_COST: "6"
 
     steps:
       - name: Checkout
