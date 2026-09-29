@@ -77,10 +77,14 @@ def _entitlement_service(db: Session) -> PlatformEntitlementService:
 
 class TestReportsCapabilityRegistration:
     def test_reports_capability_is_seeded(self, db_session: Session) -> None:
-        created = CapabilitySeedService(
-            db_session, CapabilityRepository(db_session)
-        ).seed_capabilities()
-        assert created > 0
+        # The seed is idempotent and the shared SQLite session engine can
+        # already hold capability rows committed by an earlier test, so the
+        # first call's created-count depends on test order; assert the
+        # order-independent outcome instead: the row exists after seeding
+        # and a re-run is a no-op.
+        seeder = CapabilitySeedService(db_session, CapabilityRepository(db_session))
+        seeder.seed_capabilities()
+        assert seeder.seed_capabilities() == 0
 
         capability = CapabilityRepository(db_session).get("reports")
         assert capability is not None

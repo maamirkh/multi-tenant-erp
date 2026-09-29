@@ -100,8 +100,9 @@ jobs:
     # bypass the SQLite-backed db_session fixture — see
     # tests/integration/migrations/conftest.py's module docstring. Each
     # such test creates and drops its OWN uniquely-named throwaway
-    # database via pg_test_db; nothing ever writes to a shared/persistent
-    # database. The credentials below are ephemeral, CI-only, and scoped
+    # database via pg_test_db, except T094/T116, which use the job
+    # database itself (migrated below) and delete their own rows. The
+    # credentials below are ephemeral, CI-only, and scoped
     # to this single job run — not a real secret.
     services:
       postgres:
@@ -146,6 +147,12 @@ jobs:
       - name: Install dependencies
         if: steps.cache-venv.outputs.cache-hit != 'true'
         run: poetry install --no-root
+
+      - name: Run Alembic migrations
+        # A few real-Postgres tests (T094, T116) open core.database.session
+        # .SessionLocal against DATABASE_URL itself rather than a throwaway
+        # pg_test_db, so the job database must be at head before pytest.
+        run: poetry run alembic upgrade head
 
       - name: Run all tests with coverage
         run: |
