@@ -222,13 +222,15 @@ jobs:
 
       - name: Bandit — static security analysis
         # -ll = report only MEDIUM and above; -r = recursive; exit non-zero on any finding
-        run: poetry run bandit -r modules/ core/ -ll --exit-zero
+        run: poetry run bandit -r modules/ core/ -ll
 
       - name: pip-audit — dependency vulnerability scan
-        # Only audit production deps; exit non-zero on HIGH+ vulnerabilities
+        # Audits the locked production deps only (hashed, no resolution);
+        # exits non-zero on any known vulnerability — pip-audit has no
+        # severity filter, so accepted advisories need --ignore-vuln <ID>.
         run: |
-          poetry export --without dev --without-hashes -f requirements.txt | \
-          poetry run pip-audit --require-hashes=false -r /dev/stdin --severity HIGH
+          poetry export --only main -f requirements.txt -o audit-requirements.txt
+          poetry run pip-audit -r audit-requirements.txt --require-hashes --disable-pip
 
   # ---------------------------------------------------------------------------
   # Job 4: Migration Validation

@@ -1967,7 +1967,8 @@ async def upload_image(
     # Build a deterministic S3 key (storage is mocked in dev/test)
     import hashlib
 
-    content_hash = hashlib.md5(content).hexdigest()[:12]
+    # A storage-key fingerprint, not a security hash.
+    content_hash = hashlib.md5(content, usedforsecurity=False).hexdigest()[:12]
     s3_key = f"products/{company_id}/{product_id}/{content_hash}-{filename}"
     url = f"/static/uploads/{s3_key}"  # placeholder URL
 
