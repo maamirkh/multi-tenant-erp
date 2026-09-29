@@ -124,6 +124,25 @@ describe('Executive Dashboard', () => {
     expect(widget).toHaveTextContent('Overdue: 100.00');
   });
 
+  it('links a widget to its drill-down report under /analytics (FR-RPT-180)', async () => {
+    const data = payload();
+    data.net_sales = {
+      ...data.net_sales,
+      drill_down: {
+        label: 'View sales KPIs',
+        target_route: '/reports/sales.kpis',
+        required_permission: 'reports.sales.view',
+      },
+    };
+    dashboardMock.mockResolvedValue({ data, message: 'ok', meta: META });
+    renderPage();
+    const link = await screen.findByTestId('dashboard-drilldown-net_sales');
+    expect(link).toHaveTextContent('View sales KPIs');
+    expect(link).toHaveAttribute('href', '/analytics/sales.kpis');
+    // No drill-down reference → no link.
+    expect(screen.queryByTestId('dashboard-drilldown-gross_sales')).not.toBeInTheDocument();
+  });
+
   it('renders an empty state when every widget is omitted', async () => {
     const data = payload();
     for (const key of Object.keys(data) as (keyof ExecutiveDashboardResponse)[]) {

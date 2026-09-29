@@ -16,14 +16,17 @@
  */
 
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 import { CircleSlashIcon } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type {
   ComparisonResult,
+  DrillDownRef,
   ExecutiveDashboardResponse,
   WidgetState,
 } from '@/lib/api/reports';
 import { formatMoney, formatPercent } from '@/lib/format/money';
+import { drillDownHref } from './domains';
 import { KpiCard } from './KpiCard';
 
 interface WidgetView {
@@ -32,6 +35,7 @@ interface WidgetView {
   state: WidgetState;
   value: string;
   comparison: ComparisonResult | null;
+  drillDown: DrillDownRef | null;
   footnote?: ReactNode;
   badge?: ReactNode;
 }
@@ -57,6 +61,7 @@ export function dashboardWidgetViews(data: ExecutiveDashboardResponse): WidgetVi
       state: data.net_sales.state,
       value: formatMoney(data.net_sales.value),
       comparison: data.net_sales.comparison,
+      drillDown: data.net_sales.drill_down,
     },
     {
       key: 'gross_sales',
@@ -64,6 +69,7 @@ export function dashboardWidgetViews(data: ExecutiveDashboardResponse): WidgetVi
       state: data.gross_sales.state,
       value: formatMoney(data.gross_sales.value),
       comparison: data.gross_sales.comparison,
+      drillDown: data.gross_sales.drill_down,
     },
     {
       key: 'purchase_spend',
@@ -71,6 +77,7 @@ export function dashboardWidgetViews(data: ExecutiveDashboardResponse): WidgetVi
       state: data.purchase_spend.state,
       value: formatMoney(data.purchase_spend.value),
       comparison: data.purchase_spend.comparison,
+      drillDown: data.purchase_spend.drill_down,
     },
     {
       key: 'ar',
@@ -78,6 +85,7 @@ export function dashboardWidgetViews(data: ExecutiveDashboardResponse): WidgetVi
       state: ar.state,
       value: formatMoney(ar.balance),
       comparison: ar.comparison,
+      drillDown: ar.drill_down,
       footnote: `Overdue: ${formatMoney(ar.overdue)}`,
     },
     {
@@ -86,6 +94,7 @@ export function dashboardWidgetViews(data: ExecutiveDashboardResponse): WidgetVi
       state: data.ap.state,
       value: formatMoney(data.ap.value),
       comparison: data.ap.comparison,
+      drillDown: data.ap.drill_down,
     },
     {
       key: 'cash_position',
@@ -93,6 +102,7 @@ export function dashboardWidgetViews(data: ExecutiveDashboardResponse): WidgetVi
       state: data.cash_position.state,
       value: formatMoney(data.cash_position.value),
       comparison: data.cash_position.comparison,
+      drillDown: data.cash_position.drill_down,
     },
     {
       key: 'operational_inventory_value',
@@ -100,6 +110,7 @@ export function dashboardWidgetViews(data: ExecutiveDashboardResponse): WidgetVi
       state: inv.state,
       value: formatMoney(inv.value),
       comparison: inv.comparison,
+      drillDown: inv.drill_down,
       footnote: 'Weighted average cost — not a reconciled accounting balance.',
     },
     {
@@ -108,6 +119,7 @@ export function dashboardWidgetViews(data: ExecutiveDashboardResponse): WidgetVi
       state: crm.state,
       value: formatMoney(crm.pipeline_value),
       comparison: crm.comparison,
+      drillDown: crm.drill_down,
       footnote: `Win rate: ${formatPercent(crm.win_rate)}`,
     },
     {
@@ -116,6 +128,7 @@ export function dashboardWidgetViews(data: ExecutiveDashboardResponse): WidgetVi
       state: inst.state,
       value: formatMoney(inst.outstanding_principal),
       comparison: inst.comparison,
+      drillDown: inst.drill_down,
       footnote: `Overdue: ${formatMoney(inst.overdue)}`,
       ...(inst.read_only_servicing_continuity ? { badge: <ServicingBadge /> } : {}),
     },
@@ -125,6 +138,7 @@ export function dashboardWidgetViews(data: ExecutiveDashboardResponse): WidgetVi
       state: data.gross_profit_margin.state,
       value: formatPercent(data.gross_profit_margin.value),
       comparison: data.gross_profit_margin.comparison,
+      drillDown: data.gross_profit_margin.drill_down,
     },
   ];
 }
@@ -148,17 +162,37 @@ export function DashboardWidgets({ data }: { data: ExecutiveDashboardResponse })
   return (
     <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" role="list" aria-label="Key figures">
       {visible.map((widget) => (
-        <li key={widget.key} data-testid={`dashboard-widget-${widget.key}`} data-state={widget.state}>
+        <li
+          key={widget.key}
+          data-testid={`dashboard-widget-${widget.key}`}
+          data-state={widget.state}
+          className="flex flex-col gap-2"
+        >
           {widget.state === 'unavailable' ? (
             <UnavailableCard label={widget.label} />
           ) : (
-            <KpiCard
-              label={widget.label}
-              value={widget.value}
-              comparison={widget.comparison}
-              footnote={widget.footnote}
-              badge={widget.badge}
-            />
+            <>
+              <div className="flex-1">
+                <KpiCard
+                  label={widget.label}
+                  value={widget.value}
+                  comparison={widget.comparison}
+                  footnote={widget.footnote}
+                  badge={widget.badge}
+                />
+              </div>
+              {widget.drillDown && (
+                // FR-RPT-180: aggregate → its contributing report. The target
+                // page re-resolves the key against discovery (FR-RPT-181).
+                <Link
+                  href={drillDownHref(widget.drillDown.target_route)}
+                  data-testid={`dashboard-drilldown-${widget.key}`}
+                  className="self-start text-sm underline underline-offset-4"
+                >
+                  {widget.drillDown.label}
+                </Link>
+              )}
+            </>
           )}
         </li>
       ))}

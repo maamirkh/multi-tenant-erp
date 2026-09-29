@@ -37,3 +37,18 @@ export function sectionForSegment(segment: string): ReportsDomainSection | undef
 export function reportHref(reportKey: string): string {
   return `${ANALYTICS_BASE_PATH}/${encodeURIComponent(reportKey)}`;
 }
+
+/**
+ * Maps a backend drill-down `target_route` onto a UI route. The backend
+ * addresses reports as `/reports/<key>`; the UI serves them under
+ * `/analytics/<key>` (see the note above). Any other route is a record page
+ * that already exists in the app as-is. A query string is kept unchanged.
+ */
+export function drillDownHref(targetRoute: string): string {
+  const prefix = '/reports/';
+  if (!targetRoute.startsWith(prefix)) return targetRoute;
+  const rest = targetRoute.slice(prefix.length);
+  const q = rest.indexOf('?');
+  const key = q === -1 ? rest : rest.slice(0, q);
+  return reportHref(decodeURIComponent(key)) + (q === -1 ? '' : rest.slice(q));
+}
