@@ -34,7 +34,7 @@ from tests.integration.migrations.conftest import (  # noqa: F401
 @pytest.fixture
 def pg_engine(request: pytest.FixtureRequest) -> Generator[Engine, None, None]:
     pg_url = request.getfixturevalue("pg_test_db")
-    alembic_upgrade(pg_url, "077")
+    alembic_upgrade(pg_url, "078")
     engine = db_engine(pg_url)
     try:
         yield engine

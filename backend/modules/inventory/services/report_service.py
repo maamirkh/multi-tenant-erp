@@ -146,7 +146,10 @@ class ReportQueryService:
 
         total_rows = q.count()
         rows_raw = (
-            q.order_by(StockMovement.performed_at.desc())
+            q.order_by(
+                StockMovement.performed_at.desc(),
+                StockMovement.id,  # unique tiebreaker (Epic 11 T270)
+            )
             .offset(offset)
             .limit(limit)
             .all()
@@ -565,7 +568,17 @@ class ReportQueryService:
                 }
             )
 
-        rows.sort(key=lambda r: r["days_without_movement"], reverse=True)
+        # (product_id, warehouse_id) breaks ties deterministically (Epic 11
+        # T270): the source query has no ORDER BY, so equal keys would
+        # otherwise land in a different order on each paged re-fetch.
+        rows.sort(
+            key=lambda r: (
+                r["days_without_movement"],
+                r["product_id"],
+                r["warehouse_id"],
+            ),
+            reverse=True,
+        )
         return rows, total_dead_value
 
     def dead_stock(
@@ -661,7 +674,10 @@ class ReportQueryService:
                 }
             )
 
-        all_rows.sort(key=lambda r: r["total_movements"], reverse=True)
+        # product_id breaks ties deterministically (Epic 11 T270).
+        all_rows.sort(
+            key=lambda r: (r["total_movements"], str(r["product_id"])), reverse=True
+        )
         return all_rows, period_days
 
     def movement_velocity(
@@ -789,7 +805,11 @@ class ReportQueryService:
                 }
             )
 
-        rows.sort(key=lambda r: r["age_days"] or 0, reverse=True)
+        # (product_id, warehouse_id) breaks ties deterministically (Epic 11 T270).
+        rows.sort(
+            key=lambda r: (r["age_days"] or 0, r["product_id"], r["warehouse_id"]),
+            reverse=True,
+        )
         return rows, now
 
     def stock_aging(

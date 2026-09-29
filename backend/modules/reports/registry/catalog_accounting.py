@@ -41,6 +41,7 @@ _JOURNAL_DRILL_DOWN = DrillDownTarget(
 
 register(
     ReportDefinition(
+        # group-by cardinality: one row per account (<= chart-of-accounts size); one statement
         key="accounting.trial_balance",
         name="Trial Balance",
         description="Debit=Credit control per account.",
@@ -68,6 +69,7 @@ register(
 
 register(
     ReportDefinition(
+        # group-by cardinality: account/source <= chart-of-accounts size; lines cursor-paged
         key="accounting.gl",
         name="General Ledger",
         description="Account/journal detail, cursor-paginated.",
@@ -94,6 +96,7 @@ register(
 
 register(
     ReportDefinition(
+        # group-by cardinality: cost_center <= tenant cost centers (typically tens); one statement
         key="accounting.profit_loss",
         name="Profit & Loss",
         description="Income statement.",
@@ -175,6 +178,7 @@ register(
 
 register(
     ReportDefinition(
+        # group-by cardinality: one row per customer with open AR (<= tenant customers); offset-paged
         key="accounting.ar_aging",
         name="AR Aging & Customer Statement",
         description="Receivable exposure by aging bucket.",
@@ -215,6 +219,7 @@ register(
 
 register(
     ReportDefinition(
+        # group-by cardinality: one row per supplier with open AP (<= tenant suppliers); offset-paged
         key="accounting.ap_aging",
         name="AP Aging & Supplier Statement",
         description="Payable exposure by aging bucket.",
@@ -255,6 +260,7 @@ register(
 
 register(
     ReportDefinition(
+        # group-by cardinality: one account per request (account_id required); rows offset-paged
         key="accounting.bank_cash_book",
         name="Bank Book / Cash Book",
         description="Bank/cash transaction detail with running balance.",

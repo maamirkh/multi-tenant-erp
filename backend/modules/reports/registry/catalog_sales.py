@@ -78,6 +78,7 @@ def _sales_list_report(
 
 register(
     _sales_list_report(
+        # group-by cardinality: one row per invoice date (<= days in the filtered range); offset-paged
         key="sales.summary",
         name="Sales Summary",
         description="Orders/invoices/revenue overview.",
@@ -92,6 +93,7 @@ register(
 
 register(
     _sales_list_report(
+        # group-by cardinality: one row per customer (<= tenant customers); offset-paged
         key="sales.by_customer",
         name="Sales by Customer",
         description="Revenue/volume per customer.",
@@ -106,6 +108,7 @@ register(
 
 register(
     _sales_list_report(
+        # group-by cardinality: one row per product (<= tenant products); offset-paged
         key="sales.by_product",
         name="Sales by Product",
         description="Revenue/volume per product.",
@@ -120,6 +123,7 @@ register(
 
 register(
     _sales_list_report(
+        # group-by cardinality: one row per customer, capped by its own limit filter; offset-paged
         key="sales.top_customers",
         name="Top Customers",
         description="Ranked customer value.",
@@ -134,6 +138,7 @@ register(
 
 register(
     _sales_list_report(
+        # group-by cardinality: one row per invoice date (<= days in the filtered range); offset-paged
         key="sales.trend",
         name="Sales Trend",
         description="Period-over-period trend.",
@@ -148,6 +153,7 @@ register(
 
 register(
     _sales_list_report(
+        # group-by cardinality: status (fixed set), one row per open quotation; offset-paged
         key="sales.quotation_pipeline",
         name="Quotation Pipeline / Conversion",
         description="Quote-to-order funnel.",
@@ -162,6 +168,7 @@ register(
 
 register(
     _sales_list_report(
+        # group-by cardinality: status (fixed set), one row per return; offset-paged
         key="sales.returns",
         name="Sales Returns",
         description="Return/credit-note activity.",

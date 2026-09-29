@@ -54,6 +54,7 @@ class Customer360Filter(BaseModel):
 
 register(
     ReportDefinition(
+        # group-by cardinality: exactly one customer per request; four fixed sections
         key="crossmodule.customer_360",
         name="Customer 360 Financial View",
         description=(

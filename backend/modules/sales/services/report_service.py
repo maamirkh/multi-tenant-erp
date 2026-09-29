@@ -174,7 +174,10 @@ class ReportService:
         )
         q = self._apply_invoice_date_filter(q, SalesInvoice, params)
         q = q.group_by(SalesInvoice.customer_id).order_by(
-            func.sum(SalesInvoice.total_amount).desc()
+            func.sum(SalesInvoice.total_amount).desc(),
+            # Unique tiebreaker (Epic 11 T270): equal totals otherwise come
+            # back in unspecified order, so offset pages overlap/skip.
+            SalesInvoice.customer_id,
         )
         total_q = q.subquery()
         total = self._db.query(func.count()).select_from(total_q).scalar() or 0
@@ -216,7 +219,10 @@ class ReportService:
         if params.customer_id:
             q = q.filter(SalesOrder.customer_id == params.customer_id)
         q = q.group_by(OrderLine.product_id, OrderLine.description).order_by(
-            func.sum(OrderLine.extended_amount).desc()
+            func.sum(OrderLine.extended_amount).desc(),
+            # Unique tiebreaker (Epic 11 T270) — the group key.
+            OrderLine.product_id,
+            OrderLine.description,
         )
         total_q = q.subquery()
         total = self._db.query(func.count()).select_from(total_q).scalar() or 0
@@ -578,7 +584,10 @@ class ReportService:
             q = q.filter(SalesQuotation.customer_id == params.customer_id)
         total = q.count()
         results = (
-            q.order_by(SalesQuotation.quotation_date.desc())
+            q.order_by(
+                SalesQuotation.quotation_date.desc(),
+                SalesQuotation.id,  # unique tiebreaker (Epic 11 T270)
+            )
             .limit(params.limit)
             .offset(params.offset)
             .all()

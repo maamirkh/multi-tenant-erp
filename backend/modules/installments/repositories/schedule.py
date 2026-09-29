@@ -171,7 +171,10 @@ class InstallmentScheduleRepository:
         total: int = self.db.execute(count_stmt).scalar_one()
 
         rows_stmt = (
-            base_stmt.order_by(InstallmentScheduleLine.due_date)
+            base_stmt.order_by(
+                InstallmentScheduleLine.due_date,
+                InstallmentScheduleLine.id,  # unique tiebreaker (Epic 11 T270)
+            )
             .offset(skip)
             .limit(limit)
         )

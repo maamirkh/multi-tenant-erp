@@ -142,6 +142,7 @@ register(
 
 register(
     _inventory_list_report(
+        # group-by cardinality: warehouse x product per movement; offset-paged
         key="inventory.stock_position",
         name="Stock Position",
         description="On-hand by location.",
@@ -156,6 +157,7 @@ register(
 
 register(
     _inventory_list_report(
+        # group-by cardinality: one row per product/warehouse (<= products x warehouses); offset-paged
         key="inventory.dead_stock",
         name="Dead Stock",
         description="Products with zero movement in the last N days.",
@@ -170,6 +172,7 @@ register(
 
 register(
     _inventory_list_report(
+        # group-by cardinality: one row per product (<= tenant products); offset-paged
         key="inventory.movement_velocity",
         name="Movement Velocity",
         description="Fast/slow moving products by movement count over period.",
@@ -185,6 +188,7 @@ register(
 
 register(
     _inventory_list_report(
+        # group-by cardinality: warehouse x product (<= warehouses x products); offset-paged
         key="inventory.stock_aging",
         name="Stock Aging",
         description="Age of current stock by first-receipt date.",
@@ -199,6 +203,7 @@ register(
 
 register(
     _inventory_list_report(
+        # group-by cardinality: warehouse x product (<= warehouses x products); offset-paged
         key="inventory.low_stock",
         name="Low Stock Alerts",
         description="Open low-stock/out-of-stock/overstock alerts.",

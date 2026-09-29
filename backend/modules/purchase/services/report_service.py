@@ -104,7 +104,9 @@ class ReportService:
                     PurchaseOrder.deleted_at.is_(None),
                 )
             )
-            .order_by(PurchaseOrder.created_at.desc())
+            .order_by(
+                PurchaseOrder.created_at.desc(), PurchaseOrder.id
+            )  # unique tiebreaker (Epic 11 T270)
             .offset(skip)
             .limit(limit)
         )
@@ -268,7 +270,9 @@ class ReportService:
                     PurchaseOrder.expected_delivery_date < cutoff,
                 )
             )
-            .order_by(PurchaseOrder.expected_delivery_date.asc())
+            .order_by(
+                PurchaseOrder.expected_delivery_date.asc(), PurchaseOrder.id
+            )  # unique tiebreaker (Epic 11 T270)
             .offset(skip)
             .limit(limit)
         )
@@ -708,7 +712,9 @@ class ReportService:
                     VendorReturn.deleted_at.is_(None),
                 )
             )
-            .order_by(VendorReturn.created_at.desc())
+            .order_by(
+                VendorReturn.created_at.desc(), VendorReturn.id
+            )  # unique tiebreaker (Epic 11 T270)
             .offset(skip)
             .limit(limit)
         )
@@ -804,7 +810,10 @@ class ReportService:
                 )
             )
             .group_by(PurchaseCostEntry.supplier_id)
-            .order_by(func.sum(PurchaseCostEntry.total).desc())
+            .order_by(
+                func.sum(PurchaseCostEntry.total).desc(),
+                PurchaseCostEntry.supplier_id,  # unique tiebreaker (Epic 11 T270) — the group key
+            )
             .offset(skip)
             .limit(limit)
         )

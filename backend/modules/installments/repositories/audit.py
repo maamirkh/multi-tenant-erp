@@ -66,7 +66,10 @@ class InstallmentAuditLogRepository:
         total: int = self.db.execute(count_stmt).scalar_one()
 
         rows_stmt = (
-            base_stmt.order_by(InstallmentAuditLog.occurred_at.desc())
+            base_stmt.order_by(
+                InstallmentAuditLog.occurred_at.desc(),
+                InstallmentAuditLog.id,  # unique tiebreaker (Epic 11 T270)
+            )
             .offset(skip)
             .limit(limit)
         )

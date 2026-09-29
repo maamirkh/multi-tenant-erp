@@ -19,6 +19,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -96,6 +97,9 @@ class InstallmentScheduleLine(Base):
             "scheduled_amount > 0",
             name="ck_installment_schedule_lines_positive_amount",
         ),
+        # Epic 11 T268 (migration 078): tenant-scoped line reads filter by
+        # company_id; without this they scan every tenant's lines.
+        Index("ix_installment_schedule_lines_company_id", "company_id"),
         {
             "comment": (
                 "Append-only contractual due obligations — no UPDATE path "

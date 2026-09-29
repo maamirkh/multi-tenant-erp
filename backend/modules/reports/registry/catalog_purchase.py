@@ -78,6 +78,7 @@ def _purchase_list_report(
 
 register(
     _purchase_list_report(
+        # group-by cardinality: status (fixed set) x supplier (<= tenant suppliers); offset-paged
         key="purchase.summary",
         name="Purchase Summary",
         description="PO/spend overview.",
@@ -93,6 +94,7 @@ register(
 
 register(
     _purchase_list_report(
+        # group-by cardinality: one row per supplier (<= tenant suppliers); offset-paged
         key="purchase.by_supplier",
         name="Purchase by Supplier",
         description="Spend per supplier.",
@@ -107,6 +109,7 @@ register(
 
 register(
     _purchase_list_report(
+        # group-by cardinality: one row per supplier (<= tenant suppliers); offset-paged
         key="purchase.supplier_performance",
         name="Supplier Performance",
         description="On-time %, rejection %, PPV.",
@@ -121,6 +124,7 @@ register(
 
 register(
     _purchase_list_report(
+        # group-by cardinality: supplier (<= tenant suppliers), one row per open PO line; offset-paged
         key="purchase.open_commitments",
         name="Open Purchase Commitments",
         description="Outstanding PO value.",
@@ -137,6 +141,7 @@ register(
 
 register(
     _purchase_list_report(
+        # group-by cardinality: supplier (<= tenant suppliers), one row per PO; offset-paged
         key="purchase.pending_deliveries",
         name="Pending / Overdue Deliveries",
         description="POs awaiting receipt.",
@@ -152,6 +157,7 @@ register(
 
 register(
     _purchase_list_report(
+        # group-by cardinality: supplier (<= tenant suppliers), one row per RMA; offset-paged
         key="purchase.vendor_returns",
         name="Vendor Return Report",
         description="RMA activity.",

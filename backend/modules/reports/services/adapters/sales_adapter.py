@@ -82,36 +82,67 @@ def _meta(report_key: str, filters: BaseModel) -> ReportEnvelopeMeta:
     )
 
 
+def _parse_customer_uuid(customer_id: str | None) -> UUID | None:
+    if not customer_id:
+        return None
+    try:
+        return UUID(customer_id)
+    except ValueError:
+        return None
+
+
+def _customer_names(
+    db: Session, company_id: UUID, customer_ids: list[str | None]
+) -> dict[str, str]:
+    """Display name per raw ``customer_id`` for a whole page in **one**
+    query (T269 — previously one lookup per row, an N+1). FR-RPT-053:
+    Sales carries no DB-level FK on ``customer_id``, so a dangling,
+    malformed, soft-deleted or other-tenant reference is a real, expected
+    case — it maps to ``"[unavailable reference]"``, never an error."""
+    from modules.sales.dependencies import get_customer_repo
+
+    parsed = {raw: _parse_customer_uuid(raw) for raw in customer_ids if raw}
+    wanted = {uid for uid in parsed.values() if uid is not None}
+    found = get_customer_repo(db).get_names_by_ids(company_id, wanted)
+    return {
+        raw: found.get(uid, _UNAVAILABLE_REFERENCE) if uid else _UNAVAILABLE_REFERENCE
+        for raw, uid in parsed.items()
+    }
+
+
 def _resolve_customer_name(
     db: Session, company_id: UUID, customer_id: str | None
 ) -> str:
-    """FR-RPT-053: Sales carries no DB-level FK on ``customer_id`` — a
-    dangling reference is a real, expected case, never an error. Returns
-    the literal ``"[unavailable reference]"`` rather than raising."""
-    if not customer_id:
+    """Single-reference form of ``_customer_names`` (same semantics)."""
+    if _parse_customer_uuid(customer_id) is None:
         return _UNAVAILABLE_REFERENCE
-    try:
-        customer_uuid = UUID(customer_id)
-    except ValueError:
-        return _UNAVAILABLE_REFERENCE
-
-    from modules.sales.dependencies import get_customer_repo
-
-    customer = get_customer_repo(db).get_by_id_or_none(customer_uuid, company_id)
-    return customer.legal_name if customer is not None else _UNAVAILABLE_REFERENCE
+    return _customer_names(db, company_id, [customer_id]).get(
+        customer_id or "", _UNAVAILABLE_REFERENCE
+    )
 
 
-def _enrich_row(
-    row_model: type[BaseModel], raw_row: dict[str, Any], db: Session, company_id: UUID
-) -> BaseModel:
-    if row_model is SalesByCustomerRow:
-        raw_row = {
-            **raw_row,
-            "customer_name": _resolve_customer_name(
-                db, company_id, raw_row.get("customer_id")
-            ),
-        }
-    return row_model.model_validate(raw_row)
+def _enrich_rows(
+    row_model: type[BaseModel],
+    raw_rows: list[dict[str, Any]],
+    db: Session,
+    company_id: UUID,
+) -> list[BaseModel]:
+    """Validate a page of rows; ``SalesByCustomerRow`` pages get their
+    customer names from one batched lookup."""
+    if row_model is not SalesByCustomerRow:
+        return [row_model.model_validate(r) for r in raw_rows]
+    names = _customer_names(db, company_id, [r.get("customer_id") for r in raw_rows])
+    return [
+        row_model.model_validate(
+            {
+                **r,
+                "customer_name": names.get(
+                    r.get("customer_id") or "", _UNAVAILABLE_REFERENCE
+                ),
+            }
+        )
+        for r in raw_rows
+    ]
 
 
 class SalesAdapter:
@@ -135,7 +166,7 @@ class SalesAdapter:
             row_model = _ROW_MODEL_BY_KEY[report_key]
             return PaginatedReportResult[BaseModel](
                 meta=_meta(report_key, filters),
-                items=[_enrich_row(row_model, r, db, company_id) for r in rows],
+                items=_enrich_rows(row_model, rows, db, company_id),
                 total=total,
             )
         if report_key == "sales.returns":
@@ -222,9 +253,7 @@ class SalesAdapter:
                 )
                 if not rows:
                     return
-                batch: list[BaseModel] = [
-                    _enrich_row(row_model, r, db, company_id) for r in rows
-                ]
+                batch: list[BaseModel] = _enrich_rows(row_model, rows, db, company_id)
                 yield batch
                 offset += batch_size
                 if offset >= total:

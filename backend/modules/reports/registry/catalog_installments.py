@@ -77,6 +77,7 @@ def _installments_list_report(
 
 register(
     _installments_list_report(
+        # group-by cardinality: status (8 fixed values) x customer (<= tenant customers); offset-paged
         key="installments.register",
         name="Installment Contract Register",
         description="Full contract listing.",
@@ -92,6 +93,7 @@ register(
 
 register(
     _installments_list_report(
+        # group-by cardinality: period = bounded date range; offset-paged
         key="installments.collections",
         name="Installment Collection Report",
         description="Payments collected.",
@@ -107,6 +109,7 @@ register(
 
 register(
     _installments_list_report(
+        # group-by cardinality: single as_of_date; population capped at 50,000; offset-paged
         key="installments.due_overdue",
         name="Due / Overdue Report",
         description="Upcoming/overdue installments.",
@@ -122,6 +125,7 @@ register(
 
 register(
     _installments_list_report(
+        # group-by cardinality: single as_of_date, fixed buckets; population capped at 50,000; offset-paged
         key="installments.aging",
         name="Installment Aging",
         description="Delinquency buckets.",
@@ -137,6 +141,7 @@ register(
 
 register(
     _installments_list_report(
+        # group-by cardinality: period x status (fixed set); population capped at 50,000; offset-paged
         key="installments.settlement_writeoff",
         name="Settlement / Default / Write-off Report",
         description="Early payoff, default, write-off activity.",
@@ -152,6 +157,7 @@ register(
 
 register(
     ReportDefinition(
+        # group-by cardinality: one row per plan template (typically tens); one aggregate
         key="installments.plan_performance",
         name="Plan/Template Performance",
         description="Adoption by plan template.",

@@ -146,7 +146,10 @@ class InstallmentAllocationReferenceRepository:
         total: int = self.db.execute(count_stmt).scalar_one()
 
         rows_stmt = (
-            base_stmt.order_by(InstallmentAllocationReference.allocated_at.desc())
+            base_stmt.order_by(
+                InstallmentAllocationReference.allocated_at.desc(),
+                InstallmentAllocationReference.id,  # unique tiebreaker (Epic 11 T270)
+            )
             .offset(skip)
             .limit(limit)
         )

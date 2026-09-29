@@ -78,7 +78,9 @@ class BankTransactionRepository(BaseAccountingRepository[BankTransaction]):
             stmt = stmt.where(BankTransaction.transaction_date >= from_date)
         if to_date is not None:
             stmt = stmt.where(BankTransaction.transaction_date <= to_date)
-        stmt = stmt.order_by(BankTransaction.transaction_date)
+        # BankTransaction.id: unique tiebreaker (Epic 11 T270) — same-day rows would
+        # otherwise come back in unspecified order across offset pages.
+        stmt = stmt.order_by(BankTransaction.transaction_date, BankTransaction.id)
         if limit is not None:
             stmt = stmt.offset(offset).limit(limit)
         return list(self.db.execute(stmt).scalars().all())

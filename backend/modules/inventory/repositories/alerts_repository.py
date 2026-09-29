@@ -154,7 +154,10 @@ class LowStockAlertRepository(BaseRepository[LowStockAlert]):
             select(LowStockAlert)
             .where(LowStockAlert.company_id == company_id)
             .where(LowStockAlert.is_deleted == False)  # noqa: E712
-            .order_by(LowStockAlert.created_at.desc())
+            .order_by(
+                LowStockAlert.created_at.desc(),
+                LowStockAlert.id,  # unique tiebreaker (Epic 11 T270)
+            )
             .limit(limit)
             .offset(offset)
         )

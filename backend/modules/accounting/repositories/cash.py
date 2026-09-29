@@ -81,7 +81,9 @@ class CashTransactionRepository(BaseAccountingRepository[CashTransaction]):
             stmt = stmt.where(CashTransaction.transaction_date >= from_date)
         if to_date is not None:
             stmt = stmt.where(CashTransaction.transaction_date <= to_date)
-        stmt = stmt.order_by(CashTransaction.transaction_date)
+        # CashTransaction.id: unique tiebreaker (Epic 11 T270) — same-day rows would
+        # otherwise come back in unspecified order across offset pages.
+        stmt = stmt.order_by(CashTransaction.transaction_date, CashTransaction.id)
         if limit is not None:
             stmt = stmt.offset(offset).limit(limit)
         return list(self.db.execute(stmt).scalars().all())
