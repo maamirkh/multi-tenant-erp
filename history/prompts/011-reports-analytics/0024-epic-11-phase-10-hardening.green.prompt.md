@@ -544,3 +544,7 @@ CI Tests & Coverage: 5 failed / 7090 passed / 14 skipped. Root causes (systemati
 4. Installments page-10 timing (1.69 s) — environmental; local A/B with/without T270 tiebreakers identical (~0.2–0.5 s). Not changed.
 5. Argon2 median 41 ms < 50 ms — CI runner CPU speed, pre-existing Epic 2 threshold. Not changed (security threshold = user decision).
 Commit d28273a pushed; CI re-run pending. T274/T276 remain open until CI evidence.
+
+## Follow-up (2026-09-29) — Argon2 (user chose option a) + final CI
+
+User: "option a karo, phir push karke CI ka result batao". Added `ARGON2_TIME_COST: "6"` to the CI test job env (commit 5b7c289; production default 3 unchanged). CI run 36567160552: Tests & Coverage SUCCESS (incl. cov ≥ 80% and auth ≥ 90%), Lint/Type-Check, Migration Validation, Jest, Next build, npm audit, PR Summary all success; Security Scans failure (pre-existing). T274 and T276 marked [x]. Gate 10: PASS.
