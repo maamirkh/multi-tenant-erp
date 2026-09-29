@@ -292,6 +292,30 @@ class InstallmentReportingService:
         ]
         return matching[skip : skip + limit], len(matching)
 
+    def get_due_overdue_report(
+        self, company_id: UUID, *, skip: int = 0, limit: int = 20
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Due rows followed by overdue rows — exactly
+        ``get_due_report()`` + ``get_overdue_report()`` — from ONE
+        classification pass over the company's lines instead of two."""
+        self._authorize_read(company_id)
+        business_date = get_business_date()
+        triples = self._classified_lines_for_company(
+            company_id, business_date=business_date
+        )
+        due = [
+            self._due_row("due", line, contract, due_state)
+            for line, contract, due_state in triples
+            if due_state.state in ("DUE", "PARTIALLY_PAID")
+        ]
+        overdue = [
+            self._due_row("overdue", line, contract, due_state)
+            for line, contract, due_state in triples
+            if due_state.state == "OVERDUE"
+        ]
+        combined = due + overdue
+        return combined[skip : skip + limit], len(combined)
+
     @staticmethod
     def _due_row(
         report_type: str, line: Any, contract: Any, due_state: Any

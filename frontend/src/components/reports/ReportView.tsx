@@ -13,14 +13,18 @@
  *   read-only banner from `report_meta`.
  * - A required filter that isn't filled yet shows a prompt instead of
  *   sending a request the backend would reject.
+ * - Drill-down (`meta.drill_down`): row-level links in the table, and
+ *   report-level links (no per-row id) once above it.
  */
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { InfoIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   isCursorPage,
   isPaginatedData,
+  type DrillDownRef,
   type JsonValue,
   type ReportDiscoveryItem,
   type ReportRow,
@@ -29,6 +33,7 @@ import { useCursorReport, useReport } from '@/hooks/reports/useReport';
 import { useFilterLookups } from '@/hooks/reports/useFilterLookups';
 import { AggregateView } from './AggregateView';
 import { DataTable } from './DataTable';
+import { splitDrillDowns } from './drillDown';
 import { ExportButton } from './ExportButton';
 import { FilterBar, toReportFilters, type FilterField, type FilterValues } from './FilterBar';
 import { configFor, missingRequiredFilters, type FilterLookup } from './reportConfigs';
@@ -64,6 +69,19 @@ function Disclaimer({ text }: { text: string }): React.JSX.Element {
       <InfoIcon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
       {text}
     </p>
+  );
+}
+
+function ReportLinks({ links }: { links: DrillDownRef[] }): React.JSX.Element | null {
+  if (links.length === 0) return null;
+  return (
+    <nav aria-label="Related records" className="flex flex-wrap gap-3 text-sm">
+      {links.map((ref) => (
+        <Link key={ref.target_route} href={ref.target_route} className="underline underline-offset-4">
+          {ref.label}
+        </Link>
+      ))}
+    </nav>
   );
 }
 
@@ -126,12 +144,15 @@ function OffsetOrAggregate({
   const { data, report_meta: meta } = query.data;
   const timeZone = meta.period.timezone;
   const banner = onMeta(meta.read_only_servicing_continuity);
+  const { rowLinks, reportLinks } = splitDrillDowns(meta.drill_down);
 
   if (isPaginatedData(data)) {
     return (
       <div className="space-y-3">
         {banner}
+        <ReportLinks links={reportLinks} />
         <DataTable
+          rowLinks={rowLinks}
           caption={caption}
           rows={data.items}
           columns={columns}
@@ -179,9 +200,12 @@ function CursorTable({
   if (query.isLoading) return <LoadingState />;
   if (query.isError) return <ReportErrorState error={query.error} onRetry={() => void query.refetch()} />;
   const rows: ReportRow[] = (query.data?.pages ?? []).flatMap((p) => (isCursorPage(p.data) ? p.data.items : []));
+  const { rowLinks, reportLinks } = splitDrillDowns(query.data?.pages[0]?.report_meta.drill_down);
   return (
     <div className="space-y-3">
+      <ReportLinks links={reportLinks} />
       <DataTable
+        rowLinks={rowLinks}
         caption={caption}
         rows={rows}
         columns={columns}

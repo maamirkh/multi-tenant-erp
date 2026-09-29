@@ -36,7 +36,7 @@ ADAPTER_REGISTRY[ReportDomain.SALES] = SalesAdapter()
 _INVOICE_DRILL_DOWN = (
     DrillDownTarget(
         label="View invoices",
-        target_route="/sales/invoices",
+        target_route="/invoices",
         required_permission="sales.invoices.read",
         preserves_filters=("date_from", "date_to"),
     ),

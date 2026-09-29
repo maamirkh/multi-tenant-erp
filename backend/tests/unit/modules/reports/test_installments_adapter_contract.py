@@ -111,15 +111,22 @@ def test_single_source_list_reports_return_paginated(
     assert len(result.items) == 1
 
 
-def test_due_overdue_combines_both_sources(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_due_overdue_uses_one_combined_classification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     service = _patch_service(monkeypatch)
-    service.get_due_report.return_value = ([{"schedule_line_id": "d-1"}], 1)
-    service.get_overdue_report.return_value = ([{"schedule_line_id": "o-1"}], 1)
+    service.get_due_overdue_report.return_value = (
+        [{"schedule_line_id": "d-1"}, {"schedule_line_id": "o-1"}],
+        2,
+    )
 
     result = _run(MagicMock(), DueOverdueFilter(), "installments.due_overdue")
     assert isinstance(result, PaginatedReportResult)
     assert result.total == 2
     assert len(result.items) == 2
+    service.get_due_overdue_report.assert_called_once()
+    service.get_due_report.assert_not_called()
+    service.get_overdue_report.assert_not_called()
 
 
 def test_aging_uses_bounded_population_then_slice(

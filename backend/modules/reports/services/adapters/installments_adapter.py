@@ -271,14 +271,10 @@ class InstallmentsAdapter:
             )
         if report_key == "installments.due_overdue":
             assert isinstance(filters, DueOverdueFilter)
-            due_rows, _due_total = service.get_due_report(
-                company_id, skip=0, limit=_POPULATION_BOUND
+            # One classification pass for both states (not one each).
+            return service.get_due_overdue_report(
+                company_id, skip=skip, limit=page_size
             )
-            overdue_rows, _overdue_total = service.get_overdue_report(
-                company_id, skip=0, limit=_POPULATION_BOUND
-            )
-            combined = due_rows + overdue_rows
-            return combined[skip : skip + page_size], len(combined)
         if report_key == "installments.aging":
             assert isinstance(filters, InstallmentAgingFilter)
             rows, total = service.get_aging_report(

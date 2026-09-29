@@ -13,6 +13,8 @@
  * - **Formatting**: per-column `money`/`percent`/`date`/`number`/`text`,
  *   display-only via `lib/format` (values stay the backend's strings).
  * - **Export**: `toolbar` is the integration point for `<ExportButton>`.
+ * - **Drill-down**: `rowLinks` adds a trailing column linking each row to
+ *   its record page (FR-RPT-180); rows missing the needed id get none.
  *
  * Keyboard: every interactive control is a native `<button>`, so the table
  * is fully operable with Tab/Enter/Space; the `<caption>` names the table
@@ -20,12 +22,14 @@
  */
 
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 import { ArrowDownIcon, ArrowUpDownIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/format/date';
 import { formatMoney, formatPercent, isNegativeAmount, MISSING_VALUE } from '@/lib/format/money';
-import type { JsonValue, ReportRow } from '@/lib/api/reports';
+import type { DrillDownRef, JsonValue, ReportRow } from '@/lib/api/reports';
 import { cn } from '@/lib/utils';
+import { rowDrillDownHref } from './drillDown';
 
 export type ColumnFormat = 'text' | 'number' | 'money' | 'percent' | 'date';
 
@@ -70,6 +74,8 @@ export interface DataTableProps {
   isFetching?: boolean | undefined;
   timeZone?: string | undefined;
   emptyState?: ReactNode;
+  /** Row-level drill-down refs (`{field}` routes), from `meta.drill_down`. */
+  rowLinks?: DrillDownRef[] | undefined;
 }
 
 function humanize(key: string): string {
@@ -216,6 +222,7 @@ export function DataTable({
   isFetching,
   timeZone,
   emptyState,
+  rowLinks = [],
 }: DataTableProps): React.JSX.Element {
   const resolvedColumns = columns ?? deriveColumns(rows);
 
@@ -247,6 +254,11 @@ export function DataTable({
                     </th>
                   );
                 })}
+                {rowLinks.length > 0 && (
+                  <th scope="col" className="px-3 py-2">
+                    <span className="sr-only">Details</span>
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -268,6 +280,22 @@ export function DataTable({
                       </td>
                     );
                   })}
+                  {rowLinks.length > 0 && (
+                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                      {rowLinks.map((ref) => {
+                        const href = rowDrillDownHref(ref, row);
+                        return href ? (
+                          <Link
+                            key={ref.target_route}
+                            href={href}
+                            className="text-primary underline underline-offset-4"
+                          >
+                            {ref.label}
+                          </Link>
+                        ) : null;
+                      })}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

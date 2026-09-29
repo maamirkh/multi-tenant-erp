@@ -35,7 +35,7 @@ ADAPTER_REGISTRY[ReportDomain.INSTALLMENTS] = InstallmentsAdapter()
 _CONTRACT_DRILL_DOWN = (
     DrillDownTarget(
         label="View contract",
-        target_route="/installments/contracts/{contract_id}",
+        target_route="/contracts/{contract_id}",
         required_permission="installments.contracts.read",
         preserves_filters=(),
     ),
@@ -115,7 +115,7 @@ register(
         description="Upcoming/overdue installments.",
         authoritative_source=(
             "modules.installments.services.reporting_service."
-            "InstallmentReportingService.get_due_report"
+            "InstallmentReportingService.get_due_overdue_report"
         ),
         supported_filters=DueOverdueFilter,
         supported_dimensions=("as_of_date",),

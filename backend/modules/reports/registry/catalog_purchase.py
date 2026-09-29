@@ -35,7 +35,7 @@ ADAPTER_REGISTRY[ReportDomain.PURCHASE] = PurchaseAdapter()
 _PO_DRILL_DOWN = (
     DrillDownTarget(
         label="View purchase order",
-        target_route="/purchase/orders/{po_id}",
+        target_route="/purchase-orders/{po_id}",
         required_permission="purchase.orders.read",
         preserves_filters=("supplier_id",),
     ),

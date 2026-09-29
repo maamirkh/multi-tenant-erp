@@ -223,28 +223,22 @@ def test_category_b_count_and_iterate_fetch_population_independently(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Real ``InstallmentsAdapter`` over a mocked reporting service: the
-    count call and the iteration each perform their own bounded-population
-    fetch (capped at the population bound) — the count-time rows are never
-    reused for the file."""
-    fetches: list[tuple[str, int]] = []
-    due = [{"line_id": f"d{i}", "amount": "1.00"} for i in range(3)]
-    overdue = [{"line_id": f"o{i}", "amount": "2.00"} for i in range(2)]
+    count call and the iteration each perform their own fetch — the
+    count-time rows are never reused for the file. The 50,000 population
+    cap is applied inside ``get_due_overdue_report()`` itself."""
+    fetches: list[tuple[str, int, int]] = []
+    rows = [{"line_id": f"d{i}", "amount": "1.00"} for i in range(3)] + [
+        {"line_id": f"o{i}", "amount": "2.00"} for i in range(2)
+    ]
     service = MagicMock()
 
-    def get_due_report(
+    def get_due_overdue_report(
         company_id: UUID, *, skip: int, limit: int
     ) -> tuple[list[dict[str, str]], int]:
-        fetches.append(("due", limit))
-        return list(due), len(due)
+        fetches.append(("due_overdue", skip, limit))
+        return rows[skip : skip + limit], len(rows)
 
-    def get_overdue_report(
-        company_id: UUID, *, skip: int, limit: int
-    ) -> tuple[list[dict[str, str]], int]:
-        fetches.append(("overdue", limit))
-        return list(overdue), len(overdue)
-
-    service.get_due_report.side_effect = get_due_report
-    service.get_overdue_report.side_effect = get_overdue_report
+    service.get_due_overdue_report.side_effect = get_due_overdue_report
     monkeypatch.setattr(inst_mod, "_build_reporting_service", lambda db: service)
 
     adapter = InstallmentsAdapter()
@@ -260,6 +254,6 @@ def test_category_b_count_and_iterate_fetch_population_independently(
     )
 
     assert count == 5
-    assert count_fetches == [("due", 50_000), ("overdue", 50_000)]
-    assert fetches[len(count_fetches) :] == [("due", 50_000), ("overdue", 50_000)]
+    assert count_fetches == [("due_overdue", 0, 1)]
+    assert fetches[len(count_fetches) :] == [("due_overdue", 0, 1_000)]
     assert sum(len(b) for b in batches) == 5

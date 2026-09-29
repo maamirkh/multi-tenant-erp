@@ -32,9 +32,11 @@ from modules.reports.services.adapters.base import ADAPTER_REGISTRY
 
 ADAPTER_REGISTRY[ReportDomain.ACCOUNTING] = AccountingAdapter()
 
+# The UI has a journal list page but no per-entry page, so this links the
+# report to the list rather than each row to an entry.
 _JOURNAL_DRILL_DOWN = DrillDownTarget(
-    label="View journal entry",
-    target_route="/accounting/journal-entries/{journal_entry_id}",
+    label="View journal entries",
+    target_route="/journals",
     required_permission="accounting.journal.view",
     preserves_filters=(),
 )
@@ -204,7 +206,7 @@ register(
         drill_down_targets=(
             DrillDownTarget(
                 label="View customer invoices",
-                target_route="/accounting/ar/customers/{customer_id}",
+                target_route="/receivables/customers/{customer_id}",
                 required_permission="accounting.ar.view",
                 preserves_filters=("as_of_date",),
             ),
@@ -245,7 +247,7 @@ register(
         drill_down_targets=(
             DrillDownTarget(
                 label="View supplier bills",
-                target_route="/accounting/ap/suppliers/{supplier_id}",
+                target_route="/payables/suppliers/{supplier_id}",
                 required_permission="accounting.ap.view",
                 preserves_filters=("as_of_date",),
             ),

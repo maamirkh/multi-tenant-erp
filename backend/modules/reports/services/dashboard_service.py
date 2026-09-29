@@ -271,7 +271,7 @@ def _net_sales_widget(
         comparison=comparison_result,
         drill_down=DrillDownRef(
             label="View sales KPIs",
-            target_route="/reports/sales.kpis",
+            target_route="/analytics/sales.kpis",
             required_permission="reports.sales.view",
         ),
     )
@@ -312,7 +312,7 @@ def _gross_sales_widget(
         comparison=comparison_result,
         drill_down=DrillDownRef(
             label="View sales summary",
-            target_route="/reports/sales.summary",
+            target_route="/analytics/sales.summary",
             required_permission="reports.sales.view",
         ),
     )
@@ -370,7 +370,7 @@ def _purchase_spend_widget(
         comparison=comparison_result,
         drill_down=DrillDownRef(
             label="View purchase KPIs",
-            target_route="/reports/purchase.kpis",
+            target_route="/analytics/purchase.kpis",
             required_permission="reports.purchase.view",
         ),
     )
@@ -443,7 +443,7 @@ def _ar_widget(
         comparison=comparison_result,
         drill_down=DrillDownRef(
             label="View AR aging",
-            target_route="/reports/accounting.ar_aging",
+            target_route="/analytics/accounting.ar_aging",
             required_permission="reports.accounting.view",
         ),
     )
@@ -488,7 +488,7 @@ def _ap_widget(
         comparison=comparison_result,
         drill_down=DrillDownRef(
             label="View AP aging",
-            target_route="/reports/accounting.ap_aging",
+            target_route="/analytics/accounting.ap_aging",
             required_permission="reports.accounting.view",
         ),
     )
@@ -533,7 +533,7 @@ def _cash_position_widget(
         comparison=comparison_result,
         drill_down=DrillDownRef(
             label="View bank/cash book",
-            target_route="/reports/accounting.bank_cash_book",
+            target_route="/analytics/accounting.bank_cash_book",
             required_permission="reports.accounting.view",
         ),
     )
@@ -578,7 +578,7 @@ def _gross_profit_margin_widget(
         comparison=comparison_result,
         drill_down=DrillDownRef(
             label="View financial KPI dashboard",
-            target_route="/reports/accounting.kpis",
+            target_route="/analytics/accounting.kpis",
             required_permission="reports.accounting.view",
         ),
     )
@@ -627,7 +627,7 @@ def _inventory_widget(
         comparison=None,
         drill_down=DrillDownRef(
             label="View inventory valuation",
-            target_route="/reports/inventory.valuation",
+            target_route="/analytics/inventory.valuation",
             required_permission="reports.inventory.view",
         ),
     )
@@ -669,7 +669,7 @@ def _crm_widget(
         comparison=None,
         drill_down=DrillDownRef(
             label="View CRM pipeline",
-            target_route="/reports/crm.pipeline",
+            target_route="/analytics/crm.pipeline",
             required_permission="reports.crm.view",
         ),
     )
@@ -746,7 +746,7 @@ def _installments_widget(
         comparison=None,
         drill_down=DrillDownRef(
             label="View installment aging",
-            target_route="/reports/installments.aging",
+            target_route="/analytics/installments.aging",
             required_permission="reports.installments.view",
         ),
     )
