@@ -171,6 +171,16 @@ export interface GetReportParams {
 
 export type WidgetState = 'present' | 'omitted' | 'unavailable';
 
+/**
+ * One currency's own figure (FR-RPT-152). A multi-currency aggregate is a
+ * list of these — never one sum; its single value field is then `null`.
+ */
+export interface CurrencyAmount {
+  currency_code: string | null;
+  amount: string;
+  comparison?: ComparisonResult | null;
+}
+
 interface WidgetBase {
   state: WidgetState;
   comparison: ComparisonResult | null;
@@ -179,6 +189,8 @@ interface WidgetBase {
 
 export interface ValueWidget extends WidgetBase {
   value: string | null;
+  /** Present on Sales/Purchase/Inventory widgets; Accounting ones have none. */
+  by_currency?: CurrencyAmount[];
 }
 
 export interface ArWidget extends WidgetBase {
@@ -192,12 +204,15 @@ export interface OperationalInventoryValueWidget extends ValueWidget {
 
 export interface CrmPipelineWidget extends WidgetBase {
   pipeline_value: string | null;
+  pipeline_value_by_currency?: CurrencyAmount[];
   win_rate: string | null;
 }
 
 export interface InstallmentExposureWidget extends WidgetBase {
   outstanding_principal: string | null;
   overdue: string | null;
+  outstanding_principal_by_currency?: CurrencyAmount[];
+  overdue_by_currency?: CurrencyAmount[];
   read_only_servicing_continuity: boolean;
 }
 
@@ -238,7 +253,8 @@ export interface UnavailableSection {
 
 export interface PresentSalesSection {
   state: 'present';
-  total_revenue: string;
+  total_revenue: string | null;
+  total_revenue_by_currency?: CurrencyAmount[];
   invoice_count: number;
 }
 
@@ -250,12 +266,14 @@ export interface PresentAccountingArSection {
 export interface PresentCrmSection {
   state: 'present';
   open_opportunity_count: number;
-  open_opportunity_value: string;
+  open_opportunity_value: string | null;
+  open_opportunity_value_by_currency?: CurrencyAmount[];
 }
 
 export interface PresentInstallmentsSection {
   state: 'present';
-  outstanding_principal: string;
+  outstanding_principal: string | null;
+  outstanding_principal_by_currency?: CurrencyAmount[];
   contract_count: number;
   read_only_servicing_continuity: boolean;
 }

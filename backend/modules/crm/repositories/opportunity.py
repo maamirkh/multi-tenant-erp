@@ -15,14 +15,23 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from core.repositories.base import BaseRepository
 from modules.crm.models.lead import Lead
 from modules.crm.models.opportunity import Opportunity
+
+
+def _in_currency[S: Select[Any]](stmt: S, currency_code: str | None) -> S:
+    """Restrict an aggregate to one currency when ``currency_code`` is set
+    (Epic 11 FR-RPT-152) — otherwise unchanged."""
+    if currency_code is None:
+        return stmt
+    return stmt.where(Opportunity.currency_code == currency_code)
 
 
 class OpportunityRepository(BaseRepository[Opportunity]):
@@ -87,8 +96,22 @@ class OpportunityRepository(BaseRepository[Opportunity]):
     # Phase 9's CrmReportingService; kept here per T045's own scope.
     # ------------------------------------------------------------------
 
-    def sum_value_by_stage(self, company_id: UUID) -> list[tuple[UUID, Decimal]]:
-        """Sum of OPEN Opportunity ``value`` grouped by ``stage_id``."""
+    def currency_codes(self, company_id: UUID) -> list[str]:
+        """Distinct currency codes of the company's (non-deleted)
+        Opportunities, sorted (Epic 11 FR-RPT-152)."""
+        stmt = (
+            select(Opportunity.currency_code)
+            .where(Opportunity.company_id == company_id)
+            .where(Opportunity.is_deleted == False)  # noqa: E712
+            .distinct()
+        )
+        return sorted(code for code in self.db.execute(stmt).scalars() if code)
+
+    def sum_value_by_stage(
+        self, company_id: UUID, *, currency_code: str | None = None
+    ) -> list[tuple[UUID, Decimal]]:
+        """Sum of OPEN Opportunity ``value`` grouped by ``stage_id``.
+        ``currency_code`` (optional) restricts it to one currency."""
         stmt = (
             select(Opportunity.stage_id, func.sum(Opportunity.value))
             .where(Opportunity.company_id == company_id)
@@ -96,9 +119,16 @@ class OpportunityRepository(BaseRepository[Opportunity]):
             .where(Opportunity.status == "OPEN")
             .group_by(Opportunity.stage_id)
         )
+        stmt = _in_currency(stmt, currency_code)
         return [(row[0], row[1]) for row in self.db.execute(stmt).all()]
 
-    def sum_weighted_value(self, company_id: UUID, *, status: str = "OPEN") -> Decimal:
+    def sum_weighted_value(
+        self,
+        company_id: UUID,
+        *,
+        status: str = "OPEN",
+        currency_code: str | None = None,
+    ) -> Decimal:
         """Sum of ``value * probability / 100`` across matching Opportunities,
         computed in SQL (never a stored column — BR-010)."""
         stmt = (
@@ -107,6 +137,7 @@ class OpportunityRepository(BaseRepository[Opportunity]):
             .where(Opportunity.is_deleted == False)  # noqa: E712
             .where(Opportunity.status == status)
         )
+        stmt = _in_currency(stmt, currency_code)
         result = self.db.execute(stmt).scalar_one_or_none()
         return Decimal(result) if result is not None else Decimal("0")
 
@@ -120,7 +151,9 @@ class OpportunityRepository(BaseRepository[Opportunity]):
         )
         return {row[0]: row[1] for row in self.db.execute(stmt).all()}
 
-    def sum_value_by_owner(self, company_id: UUID) -> list[tuple[str, Decimal]]:
+    def sum_value_by_owner(
+        self, company_id: UUID, *, currency_code: str | None = None
+    ) -> list[tuple[str, Decimal]]:
         """Sum of OPEN Opportunity ``value`` grouped by ``owner_id``
         (spec.md §40.1's "pipeline value by salesperson")."""
         stmt = (
@@ -130,10 +163,11 @@ class OpportunityRepository(BaseRepository[Opportunity]):
             .where(Opportunity.status == "OPEN")
             .group_by(Opportunity.owner_id)
         )
+        stmt = _in_currency(stmt, currency_code)
         return [(row[0], row[1]) for row in self.db.execute(stmt).all()]
 
     def sum_value_by_source(
-        self, company_id: UUID
+        self, company_id: UUID, *, currency_code: str | None = None
     ) -> list[tuple[UUID | None, Decimal]]:
         """Sum of OPEN Opportunity ``value`` grouped by the originating
         Lead's ``source_id`` (spec.md §40.1's "pipeline value by lead
@@ -149,6 +183,7 @@ class OpportunityRepository(BaseRepository[Opportunity]):
             .where(Opportunity.status == "OPEN")
             .group_by(Lead.source_id)
         )
+        stmt = _in_currency(stmt, currency_code)
         return [(row[0], row[1]) for row in self.db.execute(stmt).all()]
 
     def sum_value_by_status_in_period(
@@ -158,6 +193,8 @@ class OpportunityRepository(BaseRepository[Opportunity]):
         date_field: str,
         date_from: date | None,
         date_to: date | None,
+        *,
+        currency_code: str | None = None,
     ) -> Decimal:
         """Sum of ``value`` for Opportunities in ``status``, filtered by
         ``date_field`` (``"won_at"`` or ``"lost_at"``) within
@@ -175,11 +212,17 @@ class OpportunityRepository(BaseRepository[Opportunity]):
             )
         if date_to is not None:
             stmt = stmt.where(column <= datetime.combine(date_to, datetime.max.time()))
+        stmt = _in_currency(stmt, currency_code)
         result = self.db.execute(stmt).scalar_one_or_none()
         return Decimal(result) if result is not None else Decimal("0")
 
     def count_won_lost_in_period(
-        self, company_id: UUID, date_from: date | None, date_to: date | None
+        self,
+        company_id: UUID,
+        date_from: date | None,
+        date_to: date | None,
+        *,
+        currency_code: str | None = None,
     ) -> tuple[int, int]:
         """Return ``(won_count, lost_count)`` for the period, using each
         row's own terminal timestamp (``won_at``/``lost_at``) — spec.md
@@ -210,12 +253,19 @@ class OpportunityRepository(BaseRepository[Opportunity]):
             lost_stmt = lost_stmt.where(
                 Opportunity.lost_at <= datetime.combine(date_to, datetime.max.time())
             )
+        won_stmt = _in_currency(won_stmt, currency_code)
+        lost_stmt = _in_currency(lost_stmt, currency_code)
         won = self.db.execute(won_stmt).scalar_one()
         lost = self.db.execute(lost_stmt).scalar_one()
         return won, lost
 
     def list_won_in_period(
-        self, company_id: UUID, date_from: date | None, date_to: date | None
+        self,
+        company_id: UUID,
+        date_from: date | None,
+        date_to: date | None,
+        *,
+        currency_code: str | None = None,
     ) -> list[Opportunity]:
         """Return WON Opportunities in the period — a small, already-
         filtered result set used by the reporting service to compute
@@ -237,4 +287,5 @@ class OpportunityRepository(BaseRepository[Opportunity]):
             stmt = stmt.where(
                 Opportunity.won_at <= datetime.combine(date_to, datetime.max.time())
             )
+        stmt = _in_currency(stmt, currency_code)
         return list(self.db.execute(stmt).scalars().all())

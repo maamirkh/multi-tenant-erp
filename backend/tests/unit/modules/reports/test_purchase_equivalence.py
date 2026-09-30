@@ -15,7 +15,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from modules.purchase.models.purchase_order import PurchaseOrder
-from modules.purchase.services.kpi_service import KPIService
+from modules.purchase.services.kpi_service import MONEY_KPI_KEYS, KPIService
 from modules.purchase.services.report_service import ReportService
 from modules.reports.schemas.purchase import (
     PendingDeliveriesFilter,
@@ -94,8 +94,28 @@ def test_purchase_kpis_equivalence(db_session: Session) -> None:
     )
     assert isinstance(result, AggregateReportResult)
     dumped = result.data.model_dump()
+    # Every non-money KPI passes through unchanged; the two money KPIs are
+    # replaced by their per-currency figures (FR-RPT-152).
     for key, value in direct.items():
-        assert dumped[key] == value
+        if key in MONEY_KPI_KEYS:
+            assert key not in dumped
+        else:
+            assert dumped[key] == value
+    assert dumped["by_currency"] == [
+        {
+            "currency_code": code,
+            "open_commitments_value": kpis.open_commitments_value_by_currency(
+                company_id
+            ).get(code, Decimal("0")),
+            "total_purchase_value": kpis.total_purchase_value_by_currency(
+                company_id
+            ).get(code, Decimal("0")),
+        }
+        for code in sorted(
+            kpis.open_commitments_value_by_currency(company_id).keys()
+            | kpis.total_purchase_value_by_currency(company_id).keys()
+        )
+    ]
 
 
 def test_pending_deliveries_paginated_union_matches_full_population(

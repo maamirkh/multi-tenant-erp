@@ -274,6 +274,17 @@ _PER_ROW_ALLOWED = {
     "_alert_row",  # column-attribute mapping of an already-loaded ORM row
     "_parse_customer_uuid",  # pure string parsing
     "get",  # dict lookups on already-fetched data
+    "Decimal",  # value constructor
+    # FR-RPT-152 per-currency blocks: one entry per currency present in the
+    # period (a handful), never per row.
+    "PurchaseCurrencyAmounts",  # Pydantic constructor
+    "SalesCurrencyKpis",  # Pydantic constructor
+    "get_money_kpis",  # Sales money KPIs — one call per currency, not per row
+    "CrmPipelineCurrency",  # Pydantic constructor
+    "CrmPipelineValues",  # Pydantic constructor
+    "CurrencyAmount",  # Pydantic constructor
+    "get_pipeline_report",  # CRM pipeline — one call per currency, not per row
+    "get_pipeline_values",  # CRM pipeline values — one call per currency
 }
 
 

@@ -470,6 +470,34 @@ Full before/after detail for every item above is embedded inline at its task, ma
 
 ---
 
+## Phase 12 — Post-release follow-ups (T294–T307)
+
+User-approved on 2026-09-30 after release sign-off. The source is the open items in `release-signoff.md`. For FR-RPT-152 the user chose option (a): currency-grouped aggregates. Conversion to base currency (option b) is out of scope.
+
+**Rules for every source-module change:**
+- It is **additive**: a new optional parameter or a new sibling method, and the default keeps today's behavior. Each module's own screens and endpoints are unchanged.
+- Reports never sums across currency codes and never converts between them.
+
+### Already done (commit `74ae78d`)
+- [x] T294 Row-level drill-down links in report tables. Drill-down routes now point at real UI pages. `test_drill_down_routes_exist.py` checks every route against `frontend/src/app`.
+- [x] T295 `installments.due_overdue`: new `InstallmentReportingService.get_due_overdue_report()` classifies the line population once instead of twice. T270 scale: 63.0 s → 28.3 s for 20 pages. Output is identical to due + overdue (integration test).
+- [x] T296 GitHub actions moved to their first Node 24 majors.
+
+### FR-RPT-152 — currency-grouped aggregates
+- [x] T297 **Sales list reports.** `ReportParams.group_by_currency` (default `False`) adds `SalesInvoice.currency_code` (and `SalesOrder.currency_code` for by-product) to select, group and order in summary, by_customer and by_product; trend and top_customers delegate. Reports passes `True`; the rows gain `currency_code`. Backward-compat test: the default output is unchanged. **(Done 2026-09-30: `test_reports_group_by_currency.py` — default output unchanged; grouped output keeps USD and PKR in separate rows for all 5 aggregates.)**
+- [x] T298 **Sales KPIs.** `KPIService.get_dashboard(currency_code=None)` threads an optional currency filter into its document queries. A sibling method lists the currencies present in the period. `sales.kpis` returns one KPI dashboard per currency. **(Done: `MONEY_KPI_IDS`, `currencies_in_period()`, `get_money_kpis()` (unit = currency; a return takes its source invoice's or order's currency). Found and left in place: `get_dashboard()` hard-codes `unit="USD"` on its money KPIs.)**
+- [x] T299 **Purchase.** `purchase_by_supplier(group_by_currency=False)` groups by `PurchaseCostEntry.currency_code`. `get_all_kpis(currency_code=None)` applies the filter to its money KPIs. `purchase.by_supplier` rows gain `currency_code`; `purchase.kpis` returns one block per currency. **(Done: `MONEY_KPI_KEYS`, `*_by_currency()` KPI siblings, `group_by_currency` on by_supplier and its count.)**
+- [x] T300 **Inventory valuation.** `inventory_valuation()` adds a `grand_totals_by_currency` key; the existing keys are unchanged. `inventory.valuation` exposes per-currency totals and never a cross-currency grand total. **(Done: `grand_totals_by_currency`; Reports sets `grand_total_value` only for one currency (a real zero when there is no stock). Unit test `test_inventory_valuation_currency.py`.)**
+- [x] T301 **CRM.** The pipeline report and dashboard add per-currency open-pipeline values (from `Opportunity.currency_code`) next to the existing fields. `crm.pipeline` and `crm.dashboard` expose them. **(Done: optional `currency_code` on 7 `OpportunityRepository` aggregates plus `currency_codes()`; service `get_pipeline_report(currency_code=)`, `get_pipeline_values()`. `crm.pipeline`/`crm.dashboard` now return per-currency shapes; the equivalence test is rewritten.)**
+- [x] T302 **Executive Dashboard.** The net sales, gross sales, purchase spend, operational inventory value and CRM pipeline widgets gain `by_currency: [{currency_code, value, comparison}]`. The single `value` is set only when exactly one currency is present (otherwise `null`). **(Done: net sales, gross sales, purchase spend, inventory, CRM pipeline and **installment exposure** (added to scope — Installments rows had no currency) all per currency, each with its own comparison. Single values follow one rule: one currency → its figure; no data → zero; several → null.)**
+- [x] T303 **Customer 360.** Sales revenue and CRM open value gain `by_currency`, using the same single-currency rule as T302. **(Done: sales revenue, CRM open value and installments principal are per currency. Installments report rows now carry the contract's `currency_code`; its own API uses a `RootModel[dict]` row, so this is additive.)**
+- [x] T304 **Frontend.** Currency column in the affected tables, per-currency KPI blocks, and per-currency lines on the dashboard widgets and Customer 360 sections. Jest and axe tests. **(Done: `formatMoneyByCurrency`, a Currency column (per-row currency formatting) in the sales and purchase aggregate tables, and per-currency widget and Customer 360 figures. Jest 49 suites / 292 tests; lint 0 errors; build green; Playwright smoke 2/2.)**
+- [x] T305 **Tests.** Multi-currency fixtures (a USD + PKR tenant) prove no report, widget or export sums across currencies. Equivalence tests: each Reports figure equals the source's own per-currency figure. Existing tests updated. **(Done: `test_multi_currency.py` (USD+PKR tenant end to end: dashboard, sales.summary, sales.kpis, purchase.by_supplier/kpis, crm.pipeline, Customer 360 — no cross-currency sum anywhere); updated equivalence, contract and no-leak tests; N+1 guard allowlist extended for per-currency calls. Reports and domain report suites: 1,117 passed, 0 failed.)**
+- [x] T306 **Docs.** Update `multi_currency_findings.md`, `release-signoff.md`, `contracts/reports-api.yaml` and the module README; write a PHR; surface the ADR suggestion (response shape for multi-currency aggregates). **(Done: `multi_currency_findings.md` rewritten (including a correction to the earlier Installments claim), the README, `release-signoff.md`, `contracts/reports-api.yaml` (`CurrencyAmount`), and PHR 0027. ADR suggestion surfaced to the user, not created.)**
+- [ ] T307 **Gate 12.** `mypy .` = 0; ruff/format clean; targeted backend, frontend and security suites green; full backend suite green in CI.
+
+---
+
 ## Requirement Coverage Matrix (FR-RPT-* families) — corrected task IDs
 
 | Requirement range | Task IDs |

@@ -112,6 +112,14 @@ class ReportParams(BaseModel):
     currency_code: str | None = Field(
         default=None, description="Filter by currency code (e.g. USD)"
     )
+    group_by_currency: bool = Field(
+        default=False,
+        description=(
+            "Also group revenue aggregates by currency code, so amounts in "
+            "different currencies are never summed together (Epic 11 "
+            "FR-RPT-152). Off by default."
+        ),
+    )
     limit: int = Field(default=100, ge=1, le=1000, description="Max rows to return")
     offset: int = Field(default=0, ge=0, description="Pagination offset")
 

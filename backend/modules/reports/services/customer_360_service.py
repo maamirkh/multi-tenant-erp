@@ -64,6 +64,7 @@ from modules.platform_admin.services.entitlement_service import (
 )
 from modules.reports.exceptions import ReportPermissionDeniedError
 from modules.reports.registry.definitions import ReportDomain
+from modules.reports.schemas.common import CurrencyAmount
 from modules.reports.schemas.customer_360 import (
     AccountingArSection,
     CrmSection,
@@ -86,6 +87,7 @@ from modules.reports.services.installments_continuity_gate import (
     InstallmentsAccessState,
     InstallmentsServicingContinuityGate,
 )
+from modules.reports.services.money_normalization import normalize_amount
 from modules.reports.services.permission_check import user_has_reports_permission
 from modules.sales.dependencies import get_customer_service
 
@@ -147,6 +149,21 @@ def _permitted(
     )
 
 
+def _by_currency(
+    totals: dict[str | None, Decimal],
+) -> tuple[Decimal | None, list[CurrencyAmount]]:
+    """Each currency's own total, plus the single figure: that total when
+    one currency is present, a real zero when none, and ``None`` when
+    several — never a sum across currencies (FR-RPT-152)."""
+    amounts = [
+        CurrencyAmount(currency_code=code, amount=normalize_amount(value))
+        for code, value in sorted(totals.items(), key=lambda item: item[0] or "")
+    ]
+    if len(amounts) > 1:
+        return None, amounts
+    return (amounts[0].amount if amounts else Decimal("0")), amounts
+
+
 def _sales_section(
     db: Session,
     entitlement_service: PlatformEntitlementService,
@@ -171,13 +188,20 @@ def _sales_section(
         db, company_id, "sales.summary", filters, 1, probe.total, None, None
     )
     assert isinstance(full, PaginatedReportResult)
-    total_revenue = Decimal("0")
+    revenue: dict[str | None, Decimal] = {}
     invoice_count = 0
     for row in full.items:
         assert isinstance(row, SalesSummaryRow)
-        total_revenue += row.revenue
+        revenue[row.currency_code] = (
+            revenue.get(row.currency_code, Decimal("0")) + row.revenue
+        )
         invoice_count += row.invoice_count
-    return PresentSalesSection(total_revenue=total_revenue, invoice_count=invoice_count)
+    total_revenue, by_currency = _by_currency(revenue)
+    return PresentSalesSection(
+        total_revenue=total_revenue,
+        total_revenue_by_currency=by_currency,
+        invoice_count=invoice_count,
+    )
 
 
 def _accounting_ar_section(
@@ -234,9 +258,16 @@ def _crm_section(
     items, _total = repo.list_filtered(
         company_id, customer_id=customer_id, status="OPEN", page=1, page_size=total
     )
-    open_value = sum((o.value for o in items), Decimal("0"))
+    values: dict[str | None, Decimal] = {}
+    for opportunity in items:
+        values[opportunity.currency_code] = (
+            values.get(opportunity.currency_code, Decimal("0")) + opportunity.value
+        )
+    open_value, by_currency = _by_currency(values)
     return PresentCrmSection(
-        open_opportunity_count=total, open_opportunity_value=open_value
+        open_opportunity_count=total,
+        open_opportunity_value=open_value,
+        open_opportunity_value_by_currency=by_currency,
     )
 
 
@@ -273,16 +304,17 @@ def _installments_section(
         skip=0,
         limit=_INSTALLMENTS_POPULATION_BOUND,
     )
-    outstanding_principal = sum(
-        (
-            Decimal(str(r["outstanding_amount"]))
-            for r in aging_rows
-            if r["customer_id"] == str(customer_id)
-        ),
-        Decimal("0"),
-    )
+    principal: dict[str | None, Decimal] = {}
+    for r in aging_rows:
+        if r["customer_id"] == str(customer_id):
+            code = r.get("currency_code")
+            principal[code] = principal.get(code, Decimal("0")) + Decimal(
+                str(r["outstanding_amount"])
+            )
+    outstanding_principal, by_currency = _by_currency(principal)
     return PresentInstallmentsSection(
         outstanding_principal=outstanding_principal,
+        outstanding_principal_by_currency=by_currency,
         contract_count=contract_count,
         read_only_servicing_continuity=state
         is InstallmentsAccessState.SERVICING_CONTINUITY,

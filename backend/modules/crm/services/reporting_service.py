@@ -84,33 +84,50 @@ class CrmReportingService:
         company_id: UUID,
         date_from: date | None = None,
         date_to: date | None = None,
+        *,
+        currency_code: str | None = None,
     ) -> PipelineReport:
+        """``currency_code`` (optional, Epic 11 FR-RPT-152) restricts every
+        figure to Opportunities in that one currency; omitted, the report is
+        exactly as before."""
+        opps = self._opportunities
         value_by_stage = [
             PipelineStageValue(stage_id=stage_id, value=value)
-            for stage_id, value in self._opportunities.sum_value_by_stage(company_id)
+            for stage_id, value in opps.sum_value_by_stage(
+                company_id, currency_code=currency_code
+            )
         ]
         value_by_owner = [
             PipelineOwnerValue(owner_id=UUID(owner_id), value=value)
-            for owner_id, value in self._opportunities.sum_value_by_owner(company_id)
+            for owner_id, value in opps.sum_value_by_owner(
+                company_id, currency_code=currency_code
+            )
         ]
         value_by_source = [
             PipelineSourceValue(source_id=source_id, value=value)
-            for source_id, value in self._opportunities.sum_value_by_source(company_id)
+            for source_id, value in opps.sum_value_by_source(
+                company_id, currency_code=currency_code
+            )
         ]
 
-        won_value = self._opportunities.sum_value_by_status_in_period(
-            company_id, "WON", "won_at", date_from, date_to
+        won_value = opps.sum_value_by_status_in_period(
+            company_id, "WON", "won_at", date_from, date_to, currency_code=currency_code
         )
-        lost_value = self._opportunities.sum_value_by_status_in_period(
-            company_id, "LOST", "lost_at", date_from, date_to
+        lost_value = opps.sum_value_by_status_in_period(
+            company_id,
+            "LOST",
+            "lost_at",
+            date_from,
+            date_to,
+            currency_code=currency_code,
         )
-        won_count, lost_count = self._opportunities.count_won_lost_in_period(
-            company_id, date_from, date_to
+        won_count, lost_count = opps.count_won_lost_in_period(
+            company_id, date_from, date_to, currency_code=currency_code
         )
         win_rate = _pct(won_count, won_count + lost_count)
 
-        won_opportunities = self._opportunities.list_won_in_period(
-            company_id, date_from, date_to
+        won_opportunities = opps.list_won_in_period(
+            company_id, date_from, date_to, currency_code=currency_code
         )
         if won_opportunities:
             avg_deal_size = (
@@ -145,6 +162,30 @@ class CrmReportingService:
             date_from=date_from,
             date_to=date_to,
         )
+
+    def currency_codes(self, company_id: UUID) -> list[str]:
+        """Currencies the company's Opportunities are in (Epic 11)."""
+        return self._opportunities.currency_codes(company_id)
+
+    def get_pipeline_values(
+        self, company_id: UUID, currency_code: str
+    ) -> tuple[Decimal, Decimal]:
+        """``(open_pipeline_value, weighted_pipeline_value)`` for one
+        currency — the dashboard's two money figures without summing across
+        currencies (Epic 11 FR-RPT-152)."""
+        open_value = sum(
+            (
+                value
+                for _, value in self._opportunities.sum_value_by_stage(
+                    company_id, currency_code=currency_code
+                )
+            ),
+            Decimal("0"),
+        )
+        weighted = self._opportunities.sum_weighted_value(
+            company_id, status="OPEN", currency_code=currency_code
+        )
+        return open_value, weighted
 
     # ------------------------------------------------------------------
     # Lead report (spec.md §40.2)

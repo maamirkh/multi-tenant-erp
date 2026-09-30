@@ -75,6 +75,7 @@ def test_missing_permission_and_disabled_module_produce_identical_crm_widget(
         == {
             "state": "omitted",
             "pipeline_value": None,
+            "pipeline_value_by_currency": [],
             "win_rate": None,
             "comparison": None,
             "drill_down": None,

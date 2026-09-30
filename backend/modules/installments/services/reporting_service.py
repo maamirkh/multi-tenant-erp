@@ -324,6 +324,7 @@ class InstallmentReportingService:
             "report_type": report_type,
             "contract_id": str(contract.id),
             "contract_number": contract.contract_number,
+            "currency_code": contract.currency_code,
             "customer_id": str(contract.customer_id),
             "schedule_line_id": str(line.id),
             "due_date": line.due_date.isoformat(),
@@ -372,6 +373,7 @@ class InstallmentReportingService:
                     "report_type": "aging",
                     "contract_id": str(contract.id),
                     "contract_number": contract.contract_number,
+                    "currency_code": contract.currency_code,
                     "customer_id": str(contract.customer_id),
                     "schedule_line_id": str(line.id),
                     "due_date": line.due_date.isoformat(),
@@ -459,6 +461,7 @@ class InstallmentReportingService:
                     "report_type": "default-writeoff",
                     "contract_id": str(contract.id),
                     "contract_number": contract.contract_number,
+                    "currency_code": contract.currency_code,
                     "customer_id": str(contract.customer_id),
                     "defaulted_at": (
                         contract.defaulted_at.isoformat()

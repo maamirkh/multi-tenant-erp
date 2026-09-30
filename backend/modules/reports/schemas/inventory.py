@@ -17,6 +17,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
+from modules.reports.schemas.common import CurrencyAmount
+
 
 class InventorySummaryFilter(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -104,7 +106,10 @@ class InventorySummaryResponse(BaseModel):
 
 class InventoryValuationResponse(BaseModel):
     rows: list[InventoryReportRow]
-    grand_total_value: Decimal
+    grand_totals_by_currency: list[CurrencyAmount]
+    """Each currency's own total (FR-RPT-152) — never one sum across them."""
+    grand_total_value: Decimal | None = None
+    """Set only when every position is in one currency; else ``None``."""
     currency_code: str | None = None
     as_of: datetime
     valuation_basis: Literal["operational_wac"]

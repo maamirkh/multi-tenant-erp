@@ -222,9 +222,15 @@ class ReportQueryService:
         rows = []
         grand_total = Decimal("0")
         currency = None
+        # Epic 11 FR-RPT-152 (additive): each currency's own total, so a
+        # consumer never has to sum values across currencies.
+        by_currency: dict[str | None, Decimal] = {}
         for row in q.all():
             total_value = _dec(row.total_value)
             grand_total += total_value
+            by_currency[row.currency_code] = (
+                by_currency.get(row.currency_code, Decimal("0")) + total_value
+            )
             if row.currency_code:
                 currency = row.currency_code
             rows.append(
@@ -243,6 +249,12 @@ class ReportQueryService:
             "rows": rows,
             "grand_total_value": grand_total,
             "currency_code": currency,
+            "grand_totals_by_currency": [
+                {"currency_code": code, "total_value": value}
+                for code, value in sorted(
+                    by_currency.items(), key=lambda item: item[0] or ""
+                )
+            ],
             "as_of": utcnow(),
         }
 

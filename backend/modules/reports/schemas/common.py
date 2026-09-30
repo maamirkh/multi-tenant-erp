@@ -11,6 +11,7 @@ Spec ref: specs/011-reports-analytics/{spec.md §22/§23/§27, plan.md
 
 from __future__ import annotations
 
+from decimal import Decimal
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
@@ -113,6 +114,22 @@ class ComparisonResult(BaseModel):
 # Drill-down (runtime payload — distinct from the registry-time
 # ``DrillDownTarget`` dataclass, T019/registry/definitions.py)
 # ---------------------------------------------------------------------------
+
+
+class CurrencyAmount(BaseModel):
+    """One currency's own figure (FR-RPT-152). Aggregates that span several
+    currencies are reported as a list of these — never summed together.
+    ``currency_code`` is ``None`` only where the source record has none."""
+
+    currency_code: str | None
+    amount: Decimal
+    comparison: ComparisonResult | None = None
+
+
+def single_currency_amount(amounts: list[CurrencyAmount]) -> CurrencyAmount | None:
+    """The one entry when exactly one currency is present, else ``None`` —
+    the rule for every legacy single-value field (FR-RPT-152)."""
+    return amounts[0] if len(amounts) == 1 else None
 
 
 class DrillDownRef(BaseModel):

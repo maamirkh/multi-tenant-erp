@@ -21,6 +21,13 @@ Purchase Spend, AR balance + Overdue Receivables, AP balance, Cash
 Position, Operational Inventory Value (WAC), CRM Pipeline Value + Win
 Rate, Outstanding Installment Principal + Overdue Installments, Recognized
 Gross Profit Margin. AR and AP are separate widgets, not combined.
+
+FR-RPT-152: every widget whose source spans several currencies carries a
+``*by_currency`` list of each currency's own figure. Its single value field
+is set only when exactly one currency is present (a genuine zero when there
+is no data) and is ``None`` when there are several — it is never a sum
+across currencies. AR, AP, cash and margin are Accounting base-currency
+figures and need no split.
 """
 
 from __future__ import annotations
@@ -29,10 +36,11 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from modules.reports.schemas.common import (
     ComparisonResult,
+    CurrencyAmount,
     DrillDownRef,
     PeriodResolution,
 )
@@ -58,6 +66,7 @@ class WidgetState(StrEnum):
 class NetSalesWidget(BaseModel):
     state: WidgetState
     value: Decimal | None = None
+    by_currency: list[CurrencyAmount] = Field(default_factory=list)
     comparison: ComparisonResult | None = None
     drill_down: DrillDownRef | None = None
 
@@ -65,6 +74,7 @@ class NetSalesWidget(BaseModel):
 class GrossSalesWidget(BaseModel):
     state: WidgetState
     value: Decimal | None = None
+    by_currency: list[CurrencyAmount] = Field(default_factory=list)
     comparison: ComparisonResult | None = None
     drill_down: DrillDownRef | None = None
 
@@ -72,6 +82,7 @@ class GrossSalesWidget(BaseModel):
 class PurchaseSpendWidget(BaseModel):
     state: WidgetState
     value: Decimal | None = None
+    by_currency: list[CurrencyAmount] = Field(default_factory=list)
     comparison: ComparisonResult | None = None
     drill_down: DrillDownRef | None = None
 
@@ -107,6 +118,7 @@ class OperationalInventoryValueWidget(BaseModel):
 
     state: WidgetState
     value: Decimal | None = None
+    by_currency: list[CurrencyAmount] = Field(default_factory=list)
     valuation_basis: Literal["operational_wac"] | None = None
     comparison: ComparisonResult | None = None
     drill_down: DrillDownRef | None = None
@@ -118,6 +130,7 @@ class CrmPipelineWidget(BaseModel):
 
     state: WidgetState
     pipeline_value: Decimal | None = None
+    pipeline_value_by_currency: list[CurrencyAmount] = Field(default_factory=list)
     win_rate: Decimal | None = None
     comparison: ComparisonResult | None = None
     drill_down: DrillDownRef | None = None
@@ -136,6 +149,10 @@ class InstallmentExposureWidget(BaseModel):
     state: WidgetState
     outstanding_principal: Decimal | None = None
     overdue: Decimal | None = None
+    outstanding_principal_by_currency: list[CurrencyAmount] = Field(
+        default_factory=list
+    )
+    overdue_by_currency: list[CurrencyAmount] = Field(default_factory=list)
     read_only_servicing_continuity: bool = False
     comparison: ComparisonResult | None = None
     drill_down: DrillDownRef | None = None

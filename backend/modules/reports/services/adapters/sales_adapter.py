@@ -26,7 +26,9 @@ from modules.reports.schemas.sales import (
     SalesByCustomerRow,
     SalesByProductFilter,
     SalesByProductRow,
+    SalesCurrencyKpis,
     SalesKpiFilter,
+    SalesKpiReport,
     SalesReturnRow,
     SalesReturnsFilter,
     SalesSummaryFilter,
@@ -44,7 +46,8 @@ from modules.sales.dependencies import (
     get_report_service,
     get_return_service,
 )
-from modules.sales.schemas.reports import KPIDashboard, ReportParams, ReportType
+from modules.sales.schemas.reports import ReportParams, ReportType
+from modules.sales.services.kpi_service import MONEY_KPI_IDS
 
 _UNAVAILABLE_REFERENCE = "[unavailable reference]"
 
@@ -190,13 +193,29 @@ class SalesAdapter:
         if report_key == "sales.kpis":
             assert isinstance(filters, SalesKpiFilter)
             kpis = get_kpi_service(db)
+            date_from = filters.date_from.isoformat() if filters.date_from else None
+            date_to = filters.date_to.isoformat() if filters.date_to else None
             dashboard = kpis.get_dashboard(
-                company_id,
-                date_from=filters.date_from.isoformat() if filters.date_from else None,
-                date_to=filters.date_to.isoformat() if filters.date_to else None,
+                company_id, date_from=date_from, date_to=date_to
             )
-            return AggregateReportResult[KPIDashboard](
-                meta=_meta(report_key, filters), data=dashboard
+            report = SalesKpiReport(
+                company_id=dashboard.company_id,
+                period_label=dashboard.period_label,
+                kpis=[k for k in dashboard.kpis if k.kpi_id not in MONEY_KPI_IDS],
+                by_currency=[
+                    SalesCurrencyKpis(
+                        currency_code=code,
+                        kpis=kpis.get_money_kpis(
+                            company_id, code, date_from=date_from, date_to=date_to
+                        ),
+                    )
+                    for code in kpis.currencies_in_period(
+                        company_id, date_from=date_from, date_to=date_to
+                    )
+                ],
+            )
+            return AggregateReportResult[SalesKpiReport](
+                meta=_meta(report_key, filters), data=report
             )
         raise ReportNotFoundError(report_key)
 
@@ -318,6 +337,9 @@ class SalesAdapter:
             | TopCustomersFilter
             | SalesTrendFilter,
         ):
+            # Revenue aggregates are split per currency, never summed
+            # across currencies (FR-RPT-152).
+            params_kwargs["group_by_currency"] = True
             if filters.date_from is not None:
                 params_kwargs["date_from"] = filters.date_from.isoformat()
             if filters.date_to is not None:

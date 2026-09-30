@@ -14,7 +14,7 @@ import type { ReactNode } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ApiClientError } from '@/lib/api/client';
 import type { Customer360Response } from '@/lib/api/reports';
-import { formatMoney } from '@/lib/format/money';
+import { formatMoney, formatMoneyByCurrency } from '@/lib/format/money';
 
 /** 404 NOT_FOUND (missing *or* cross-tenant — indistinguishable by design,
  * IDOR-safe) or 422 for an id that isn't even a UUID → standard not-found. */
@@ -73,7 +73,7 @@ export function Customer360Sections({ data }: { data: Customer360Response }): Re
       <SectionCard key="sales" sectionKey="sales" title="Sales">
         {data.sales.state === 'present' ? (
           <dl className="grid grid-cols-2 gap-3">
-            <Figure label="Total revenue" value={formatMoney(data.sales.total_revenue)} />
+            <Figure label="Total revenue" value={formatMoneyByCurrency(data.sales.total_revenue, data.sales.total_revenue_by_currency)} />
             <Figure label="Invoices" value={String(data.sales.invoice_count)} />
           </dl>
         ) : (
@@ -103,7 +103,7 @@ export function Customer360Sections({ data }: { data: Customer360Response }): Re
         {data.crm.state === 'present' ? (
           <dl className="grid grid-cols-2 gap-3">
             <Figure label="Open opportunities" value={String(data.crm.open_opportunity_count)} />
-            <Figure label="Open value" value={formatMoney(data.crm.open_opportunity_value)} />
+            <Figure label="Open value" value={formatMoneyByCurrency(data.crm.open_opportunity_value, data.crm.open_opportunity_value_by_currency)} />
           </dl>
         ) : (
           <NotConfigured />
@@ -132,7 +132,7 @@ export function Customer360Sections({ data }: { data: Customer360Response }): Re
       >
         {inst.state === 'present' ? (
           <dl className="grid grid-cols-2 gap-3">
-            <Figure label="Outstanding principal" value={formatMoney(inst.outstanding_principal)} />
+            <Figure label="Outstanding principal" value={formatMoneyByCurrency(inst.outstanding_principal, inst.outstanding_principal_by_currency)} />
             <Figure label="Contracts" value={String(inst.contract_count)} />
           </dl>
         ) : (

@@ -9,9 +9,11 @@
  * - `unavailable` → a neutral "currently unavailable" card — a prerequisite
  *                   isn't set up (e.g. no chart of accounts). Never a zero.
  *
- * Values are backend Decimal strings, display-formatted only. The company's
- * base currency isn't part of this payload, so money renders without a
- * symbol rather than guessing one. `win_rate`/`gross_profit_margin` are
+ * Values are backend Decimal strings, display-formatted only. Sales,
+ * Purchase, Inventory, CRM and Installments figures carry their currencies
+ * (FR-RPT-152): one currency renders with its code, several render side by
+ * side — never summed. Accounting figures are in the base currency, which
+ * isn't part of this payload, so they render without a symbol. `win_rate`/`gross_profit_margin` are
  * already percent units server-side.
  */
 
@@ -25,7 +27,7 @@ import type {
   ExecutiveDashboardResponse,
   WidgetState,
 } from '@/lib/api/reports';
-import { formatMoney, formatPercent } from '@/lib/format/money';
+import { formatMoney, formatMoneyByCurrency, formatPercent } from '@/lib/format/money';
 import { drillDownHref } from './domains';
 import { KpiCard } from './KpiCard';
 
@@ -59,7 +61,7 @@ export function dashboardWidgetViews(data: ExecutiveDashboardResponse): WidgetVi
       key: 'net_sales',
       label: 'Net sales',
       state: data.net_sales.state,
-      value: formatMoney(data.net_sales.value),
+      value: formatMoneyByCurrency(data.net_sales.value, data.net_sales.by_currency),
       comparison: data.net_sales.comparison,
       drillDown: data.net_sales.drill_down,
     },
@@ -67,7 +69,7 @@ export function dashboardWidgetViews(data: ExecutiveDashboardResponse): WidgetVi
       key: 'gross_sales',
       label: 'Gross sales',
       state: data.gross_sales.state,
-      value: formatMoney(data.gross_sales.value),
+      value: formatMoneyByCurrency(data.gross_sales.value, data.gross_sales.by_currency),
       comparison: data.gross_sales.comparison,
       drillDown: data.gross_sales.drill_down,
     },
@@ -75,7 +77,7 @@ export function dashboardWidgetViews(data: ExecutiveDashboardResponse): WidgetVi
       key: 'purchase_spend',
       label: 'Purchase spend',
       state: data.purchase_spend.state,
-      value: formatMoney(data.purchase_spend.value),
+      value: formatMoneyByCurrency(data.purchase_spend.value, data.purchase_spend.by_currency),
       comparison: data.purchase_spend.comparison,
       drillDown: data.purchase_spend.drill_down,
     },
@@ -108,7 +110,7 @@ export function dashboardWidgetViews(data: ExecutiveDashboardResponse): WidgetVi
       key: 'operational_inventory_value',
       label: 'Inventory value (operational)',
       state: inv.state,
-      value: formatMoney(inv.value),
+      value: formatMoneyByCurrency(inv.value, inv.by_currency),
       comparison: inv.comparison,
       drillDown: inv.drill_down,
       footnote: 'Weighted average cost — not a reconciled accounting balance.',
@@ -117,7 +119,7 @@ export function dashboardWidgetViews(data: ExecutiveDashboardResponse): WidgetVi
       key: 'crm_pipeline',
       label: 'CRM pipeline',
       state: crm.state,
-      value: formatMoney(crm.pipeline_value),
+      value: formatMoneyByCurrency(crm.pipeline_value, crm.pipeline_value_by_currency),
       comparison: crm.comparison,
       drillDown: crm.drill_down,
       footnote: `Win rate: ${formatPercent(crm.win_rate)}`,
@@ -126,10 +128,10 @@ export function dashboardWidgetViews(data: ExecutiveDashboardResponse): WidgetVi
       key: 'installment_exposure',
       label: 'Installment exposure',
       state: inst.state,
-      value: formatMoney(inst.outstanding_principal),
+      value: formatMoneyByCurrency(inst.outstanding_principal, inst.outstanding_principal_by_currency),
       comparison: inst.comparison,
       drillDown: inst.drill_down,
-      footnote: `Overdue: ${formatMoney(inst.overdue)}`,
+      footnote: `Overdue: ${formatMoneyByCurrency(inst.overdue, inst.overdue_by_currency)}`,
       ...(inst.read_only_servicing_continuity ? { badge: <ServicingBadge /> } : {}),
     },
     {

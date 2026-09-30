@@ -24,6 +24,7 @@ balance. Stateless (matches ``AccountingAdapter``'s pattern).
 from __future__ import annotations
 
 from collections.abc import Iterator
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -37,7 +38,12 @@ from modules.inventory.dependencies import (
 )
 from modules.inventory.models.alerts import LowStockAlert
 from modules.reports.exceptions import ReportNotFoundError
-from modules.reports.schemas.common import ComparisonRequest, ReportEnvelopeMeta
+from modules.reports.schemas.common import (
+    ComparisonRequest,
+    CurrencyAmount,
+    ReportEnvelopeMeta,
+    single_currency_amount,
+)
 from modules.reports.schemas.inventory import (
     DeadStockFilter,
     InventoryKpiFilter,
@@ -123,10 +129,28 @@ class InventoryAdapter:
             data = reports.inventory_valuation(
                 company_id=company_id, warehouse_id=filters.warehouse_id
             )
+            totals = [
+                CurrencyAmount(
+                    currency_code=t["currency_code"], amount=t["total_value"]
+                )
+                for t in data["grand_totals_by_currency"]
+            ]
+            single = single_currency_amount(totals)
             return AggregateReportResult[InventoryValuationResponse](
                 meta=_meta(report_key, filters),
-                data=InventoryValuationResponse.model_validate(
-                    {**data, "valuation_basis": "operational_wac"}
+                data=InventoryValuationResponse(
+                    rows=data["rows"],
+                    grand_totals_by_currency=totals,
+                    # One currency: its total; no stock: a real zero;
+                    # several currencies: none (FR-RPT-152).
+                    grand_total_value=(
+                        single.amount
+                        if single
+                        else (Decimal("0") if not totals else None)
+                    ),
+                    currency_code=single.currency_code if single else None,
+                    as_of=data["as_of"],
+                    valuation_basis="operational_wac",
                 ),
             )
         if report_key == "inventory.kpis":

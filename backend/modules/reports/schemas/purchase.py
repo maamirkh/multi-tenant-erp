@@ -93,6 +93,9 @@ class PurchaseBySupplierRow(BaseModel):
     total_subtotal: Decimal
     total_charges: Decimal
     total_discounts: Decimal
+    currency_code: str | None = None
+    """One row per supplier and currency — spend in different currencies is
+    never summed together (FR-RPT-152)."""
 
 
 class SupplierPerformanceRow(BaseModel):
@@ -130,13 +133,25 @@ class PendingDeliveryRow(BaseModel):
     days_overdue: int
 
 
+class PurchaseCurrencyAmounts(BaseModel):
+    currency_code: str
+    open_commitments_value: Decimal
+    total_purchase_value: Decimal
+
+
 class PurchaseKpiSet(BaseModel):
     """11 existing Purchase KPIs (``KPIService.get_all_kpis()``) — a
     loosely-typed pass-through wrapper, since the source returns a mix of
     numeric/string-Decimal values under 10 differently-shaped keys not
-    worth hand-declaring field-by-field for this catalog wrapper."""
+    worth hand-declaring field-by-field for this catalog wrapper.
+
+    The two money KPIs (Purchase's ``MONEY_KPI_KEYS``) are not passed
+    through, because the source sums them across currencies; ``by_currency``
+    carries them per currency instead (FR-RPT-152)."""
 
     model_config = ConfigDict(extra="allow")
+
+    by_currency: list[PurchaseCurrencyAmounts]
 
 
 class VendorReturnRow(BaseModel):

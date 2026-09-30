@@ -24,15 +24,17 @@ from modules.crm.dependencies import (
 )
 from modules.crm.schemas.reports import (
     ActivityReport,
-    CrmDashboard,
     LeadReport,
-    PipelineReport,
 )
 from modules.reports.exceptions import ReportNotFoundError
 from modules.reports.schemas.common import ComparisonRequest, ReportEnvelopeMeta
 from modules.reports.schemas.crm import (
     ActivityReportFilter,
+    CrmDashboardByCurrency,
     CrmDashboardFilter,
+    CrmPipelineByCurrency,
+    CrmPipelineCurrency,
+    CrmPipelineValues,
     LeadReportFilter,
     PipelineReportFilter,
 )
@@ -80,11 +82,29 @@ class CrmAdapter:
 
         if report_key == "crm.pipeline":
             assert isinstance(filters, PipelineReportFilter)
-            data = service.get_pipeline_report(
+            overall = service.get_pipeline_report(
                 company_id, date_from=filters.date_from, date_to=filters.date_to
             )
-            return AggregateReportResult[PipelineReport](
-                meta=_meta(report_key, filters), data=data
+            pipeline = CrmPipelineByCurrency(
+                win_rate=overall.win_rate,
+                avg_sales_cycle_days=overall.avg_sales_cycle_days,
+                date_from=overall.date_from,
+                date_to=overall.date_to,
+                by_currency=[
+                    CrmPipelineCurrency(
+                        currency_code=code,
+                        report=service.get_pipeline_report(
+                            company_id,
+                            date_from=filters.date_from,
+                            date_to=filters.date_to,
+                            currency_code=code,
+                        ),
+                    )
+                    for code in service.currency_codes(company_id)
+                ],
+            )
+            return AggregateReportResult[CrmPipelineByCurrency](
+                meta=_meta(report_key, filters), data=pipeline
             )
         if report_key == "crm.leads":
             assert isinstance(filters, LeadReportFilter)
@@ -104,8 +124,29 @@ class CrmAdapter:
             )
         if report_key == "crm.dashboard":
             assert isinstance(filters, CrmDashboardFilter)
-            data_dashboard = service.get_dashboard(company_id)
-            return AggregateReportResult[CrmDashboard](
+            dashboard = service.get_dashboard(company_id)
+            values = [
+                (code, service.get_pipeline_values(company_id, code))
+                for code in service.currency_codes(company_id)
+            ]
+            data_dashboard = CrmDashboardByCurrency(
+                lead_count=dashboard.lead_count,
+                conversion_rate=dashboard.conversion_rate,
+                win_rate=dashboard.win_rate,
+                overdue_follow_up_count=dashboard.overdue_follow_up_count,
+                activities_completed=dashboard.activities_completed,
+                period_from=dashboard.period_from,
+                period_to=dashboard.period_to,
+                by_currency=[
+                    CrmPipelineValues(
+                        currency_code=code,
+                        open_pipeline_value=open_value,
+                        weighted_pipeline_value=weighted,
+                    )
+                    for code, (open_value, weighted) in values
+                ],
+            )
+            return AggregateReportResult[CrmDashboardByCurrency](
                 meta=_meta(report_key, filters), data=data_dashboard
             )
         raise ReportNotFoundError(report_key)

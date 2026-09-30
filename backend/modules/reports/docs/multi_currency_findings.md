@@ -1,58 +1,66 @@
-# Multi-currency verification (Epic 11, Phase 10 — T273, Assumption A5)
+# Multi-currency in Reports (FR-RPT-152)
 
-Verified 2026-09-29 against the code on branch `011-reports-analytics`.
-The question A5 left open: do Sales / Purchase / Inventory / CRM carry a
-genuine multi-currency model, and does Reports honour FR-RPT-152
-("every monetary figure carries its currency code; never sum across
-currency codes without an Accounting-sourced exchange-rate conversion")?
+**Status (2026-09-30): resolved with currency-grouped aggregates.** The
+user chose option (a) on 2026-09-30 (tasks.md Phase 12, T297–T307).
+Reports never sums across currency codes and never converts between them.
+Conversion to base currency (option b) is out of scope.
 
-## Per-module currency model
+## Findings (T273, 2026-09-29)
 
-| Module | Where currency lives | Conversion to base currency | Source aggregations group by currency? |
+The first check, against the Phase 10 code, found this:
+
+| Module | Where currency lives | Conversion | Aggregates summed across currencies? |
 |---|---|---|---|
-| Accounting | `base_currency_code` on `AccountingConfiguration`; per-entry `exchange_rate`, `amount_foreign`/`amount_base` | Yes — `CurrencyService` (CLOSING for BS, AVERAGE for P&L) | Reports read base-currency figures (`amount_base`) — **compliant** |
-| Installments | One immutable `currency_code` per contract | No | Per-contract rows carry `currency_code` — compliant per row |
-| Sales | `currency_code` per invoice / order / quotation / customer | **No** (no exchange-rate field used) | **No** — `ReportService` sums `total_amount` across invoices regardless of currency |
-| Purchase | `currency_code` per PO / cost entry; `purchase_orders.exchange_rate` exists but is nullable and documented "reserved" (unused) | **No** | Per-PO/per-line rows carry `currency_code`; **`purchase_by_supplier` and KPIs sum across currencies** |
-| Inventory | Nullable `currency_code` per stock position / movement / transfer | **No** | **Valuation `grand_total_value` sums positions across currencies** |
-| CRM | `currency_code` per opportunity | **No** | **Pipeline value sums opportunities across currencies** |
+| Accounting | Base currency; per-entry `exchange_rate`, `amount_foreign`/`amount_base` | Yes (`CurrencyService`) | No — Reports reads base-currency figures |
+| Sales | `currency_code` per invoice / order / quotation | No | **Yes** — summary, trend, by_customer, top_customers, by_product and all KPIs |
+| Purchase | `currency_code` per PO / cost entry | No | **Yes** — by_supplier; KPI 06 and 07 |
+| Inventory | Nullable `currency_code` per stock position | No | **Yes** — valuation `grand_total_value` |
+| CRM | `currency_code` per opportunity | No | **Yes** — every pipeline value and the dashboard |
+| Installments | One `currency_code` per contract | No | **Yes, in Reports** — the report rows had no currency field, and the Dashboard and Customer 360 summed them |
 
-## Epic 11 response shapes vs. FR-RPT-152
+The T273 note said Installments rows "carry `currency_code`". That was
+wrong: the aging, due/overdue and default/write-off rows did not. This is
+corrected by T303.
 
-Reports never recomputes a domain metric (one metric → one authoritative
-definition), so each of these passes the source module's own
-cross-currency sum through unchanged:
+## Resolution
 
-| Report / figure | Carries currency code? | Sums across currencies? |
-|---|---|---|
-| `sales.summary`, `sales.trend`, `sales.by_customer`, `sales.top_customers`, `sales.by_product`, `sales.kpis` | No | Yes (source `ReportService`/`KPIService`) |
-| `sales.quotation_pipeline` (per-quotation rows) | No | No (per row) |
-| `purchase.summary`, `open_commitments`, `pending_deliveries` | **Yes** (`currency_code` per row) | No |
-| `purchase.by_supplier`, `purchase.kpis` | No | Yes |
-| `inventory.valuation` | One nullable top-level `currency_code` | Yes (positions of different currencies) |
-| `crm.pipeline`, `crm.dashboard` | No | Yes |
-| Dashboard: net sales, gross sales, purchase spend, inventory value, CRM pipeline | No | Yes (inherits the above) |
-| Dashboard: AR, AP, cash position, gross profit margin | No code in payload | No — Accounting base currency |
-| Customer 360: sales revenue, CRM open value | No | Yes (inherits the above) |
-| Customer 360: AR balance | No code in payload | No — Accounting base currency |
-| Accounting statements / aging / GL / bank-cash | Base currency | No — compliant |
-| Installments list reports | Yes (per-contract `currency_code` in row) | No |
+Each source module gained an **additive** seam. Its default keeps today's
+output, so each module's own screens are unchanged:
 
-## Conclusion
+| Module | Seam |
+|---|---|
+| Sales | `ReportParams.group_by_currency`; `KPIService.currencies_in_period()`, `get_money_kpis()` and `MONEY_KPI_IDS` |
+| Purchase | `purchase_by_supplier(group_by_currency=)`, and the same on `count_purchase_by_supplier`; `open_commitments_value_by_currency()`, `total_purchase_value_by_currency()` and `MONEY_KPI_KEYS` |
+| Inventory | `inventory_valuation()` returns `grand_totals_by_currency` |
+| CRM | Optional `currency_code` on every opportunity aggregate; `currency_codes()`, `get_pipeline_values()` |
+| Installments | Report rows carry the contract's `currency_code` |
 
-- **Single-currency tenants** (every record in the tenant's base currency —
-  the only case the domain modules' own report screens handle today):
-  every figure is correct; the omission of a currency code is cosmetic.
-- **Multi-currency tenants**: FR-RPT-152 is **not met** for the Sales,
-  Purchase-aggregate, Inventory-valuation and CRM figures above and for
-  the dashboard/Customer 360 figures derived from them — they would sum
-  different currencies as if they were one. This is inherited from each
-  domain's existing (pre-Epic-11) aggregation, which Reports passes
-  through by design; plan.md §20's statement that "response schemas group
-  amounts by currency rather than pre-summing them" does not match the
-  implemented schemas.
-- Fixing it needs either currency-grouped aggregations in the four source
-  modules (their own report services) or conversion via Accounting's
-  `CurrencyService` — a cross-module change outside Phase 10's scope and
-  a decision for the product owner (tracked as an open finding in the
-  Phase 10 report / tasks.md T273).
+What Reports returns now:
+
+| Report / figure | Shape |
+|---|---|
+| Sales list aggregates, `purchase.by_supplier` | One row per group and currency, with `currency_code` |
+| `sales.kpis` | Count, rate and time KPIs once; money KPIs in `by_currency` blocks (unit = currency) |
+| `purchase.kpis` | Non-money KPIs as before; KPI 06/07 replaced by `by_currency` |
+| `inventory.valuation` | `grand_totals_by_currency`; `grand_total_value` only when one currency is present |
+| `crm.pipeline` | Win rate and sales cycle overall; CRM's pipeline report per currency in `by_currency` |
+| `crm.dashboard` | Counts and rates as before; pipeline values in `by_currency` |
+| Dashboard: net sales, gross sales, purchase spend, inventory, CRM pipeline, installment exposure | `*by_currency` lists, each with its own comparison |
+| Customer 360: sales revenue, CRM open value, installments principal | `*_by_currency` lists |
+| Accounting (statements, AR/AP, cash, margin) | Unchanged — base currency |
+
+**Single-value rule.** Every legacy single-value field follows one rule:
+- one currency present → that currency's figure;
+- no data at all → a real zero;
+- several currencies → `null`.
+
+It is never a sum across currencies.
+
+**UI.** Tables show a Currency column and format each row's amounts in
+that row's currency. Widgets and Customer 360 figures show each currency
+side by side (for example `$100.00 · PKR 5,000`).
+
+Tests: `tests/integration/repositories/sales/test_reports_group_by_currency.py`,
+`tests/unit/modules/reports/test_sales_equivalence.py`,
+`tests/integration/api/v1/reports/test_multi_currency.py`, and the frontend
+`dashboard.test.tsx` / `customer-360.test.tsx`.

@@ -26,6 +26,11 @@ widget calls its adapter method twice (current + comparison period, via
 ``date_range_service.resolve_comparison_period``) and feeds both values
 into ``comparison_service.compute_comparison`` (T024) — never its own
 locally recomputed trend.
+
+**Currencies (FR-RPT-152)**: Sales, Purchase, Inventory, CRM and
+Installments figures are gathered per currency and reported per currency
+(each with its own comparison). A widget's single value field is set only
+when exactly one currency is present — never a sum across currencies.
 """
 
 from __future__ import annotations
@@ -42,7 +47,6 @@ from modules.accounting.dependencies import (
     build_payment_service,
 )
 from modules.accounting.schemas.dashboard import FinancialKPIResponse
-from modules.crm.schemas.reports import CrmDashboard
 from modules.installments.repositories.allocation_reference import (
     InstallmentAllocationReferenceRepository,
 )
@@ -71,10 +75,12 @@ from modules.reports.registry.definitions import ReportDomain
 from modules.reports.schemas.accounting import AccountingKpiFilter
 from modules.reports.schemas.common import (
     ComparisonRequest,
+    ComparisonResult,
+    CurrencyAmount,
     DrillDownRef,
     PeriodResolution,
 )
-from modules.reports.schemas.crm import CrmDashboardFilter
+from modules.reports.schemas.crm import CrmDashboardByCurrency, CrmDashboardFilter
 from modules.reports.schemas.dashboard import (
     ApWidget,
     ArWidget,
@@ -100,6 +106,7 @@ from modules.reports.schemas.inventory import (
 from modules.reports.schemas.purchase import PurchaseKpiFilter, PurchaseKpiSet
 from modules.reports.schemas.sales import (
     SalesKpiFilter,
+    SalesKpiReport,
     SalesSummaryFilter,
     SalesSummaryRow,
 )
@@ -116,9 +123,66 @@ from modules.reports.services.installments_continuity_gate import (
 )
 from modules.reports.services.money_normalization import normalize_amount
 from modules.reports.services.permission_check import user_has_reports_permission
-from modules.sales.schemas.reports import KPIDashboard, KPIType
+from modules.sales.schemas.reports import KPIType
 
 _ZERO = Decimal("0")
+
+#: One figure per currency code (``None`` only where the source has none).
+type _Amounts = dict[str | None, Decimal]
+
+
+def _add(amounts: _Amounts, code: str | None, value: Decimal) -> None:
+    amounts[code] = amounts.get(code, _ZERO) + value
+
+
+def _currency_amounts(
+    current: _Amounts,
+    prior: _Amounts | None = None,
+    period: PeriodResolution | None = None,
+) -> list[CurrencyAmount]:
+    """Each currency's own figure, with its own comparison against the
+    same currency in the prior period when one is given (FR-RPT-152)."""
+    assert prior is None or period is not None
+    codes = sorted(set(current) | set(prior or {}), key=lambda code: code or "")
+    return [
+        CurrencyAmount(
+            currency_code=code,
+            amount=normalize_amount(current.get(code, _ZERO)),
+            comparison=(
+                compute_comparison(
+                    current.get(code, _ZERO),
+                    prior.get(code, _ZERO),
+                    is_current_period_partial=period.is_partial_current_period,
+                )
+                if prior is not None and period is not None
+                else None
+            ),
+        )
+        for code in codes
+    ]
+
+
+def _single_value(
+    amounts: list[CurrencyAmount],
+    period: PeriodResolution | None = None,
+    *,
+    compared: bool = False,
+) -> tuple[Decimal | None, ComparisonResult | None]:
+    """The widget's single ``value``/``comparison``: the one currency's
+    figures; a genuine zero when there is no data at all; ``None`` when
+    several currencies are present — never a cross-currency sum."""
+    if len(amounts) == 1:
+        return amounts[0].amount, amounts[0].comparison
+    if not amounts:
+        comparison = (
+            compute_comparison(
+                _ZERO, _ZERO, is_current_period_partial=period.is_partial_current_period
+            )
+            if compared and period is not None
+            else None
+        )
+        return normalize_amount(_ZERO), comparison
+    return None, None
 
 
 def _period_dates(period: PeriodResolution) -> tuple[date, date]:
@@ -200,40 +264,40 @@ def _gated(
 # ---------------------------------------------------------------------------
 
 
-def _sales_revenue(db: Session, company_id: UUID, period: PeriodResolution) -> Decimal:
+def _sales_revenue(db: Session, company_id: UUID, period: PeriodResolution) -> _Amounts:
     start, end_inclusive = _period_dates(period)
     filters = SalesKpiFilter(date_from=start, date_to=end_inclusive)
     result = ADAPTER_REGISTRY[ReportDomain.SALES].run(
         db, company_id, "sales.kpis", filters, 1, 1, None, None
     )
     assert isinstance(result, AggregateReportResult)
-    assert isinstance(result.data, KPIDashboard)
-    revenue_kpi = next(
-        (k for k in result.data.kpis if k.kpi_id == KPIType.REVENUE.value), None
-    )
-    if revenue_kpi is None or revenue_kpi.value is None:
-        return _ZERO
-    return revenue_kpi.value
+    assert isinstance(result.data, SalesKpiReport)
+    revenue: _Amounts = {}
+    for block in result.data.by_currency:
+        kpi = next((k for k in block.kpis if k.kpi_id == KPIType.REVENUE.value), None)
+        if kpi is not None and kpi.value is not None:
+            revenue[block.currency_code] = kpi.value
+    return revenue
 
 
-def _sales_gross(db: Session, company_id: UUID, period: PeriodResolution) -> Decimal:
+def _sales_gross(db: Session, company_id: UUID, period: PeriodResolution) -> _Amounts:
     start, end_inclusive = _period_dates(period)
     filters = SalesSummaryFilter(date_from=start, date_to=end_inclusive)
     probe = ADAPTER_REGISTRY[ReportDomain.SALES].run(
         db, company_id, "sales.summary", filters, 1, 1, None, None
     )
     assert isinstance(probe, PaginatedReportResult)
+    totals: _Amounts = {}
     if probe.total == 0:
-        return _ZERO
+        return totals
     full = ADAPTER_REGISTRY[ReportDomain.SALES].run(
         db, company_id, "sales.summary", filters, 1, probe.total, None, None
     )
     assert isinstance(full, PaginatedReportResult)
-    total = _ZERO
     for row in full.items:
         assert isinstance(row, SalesSummaryRow)
-        total += row.revenue
-    return total
+        _add(totals, row.currency_code, row.revenue)
+    return totals
 
 
 def _net_sales_widget(
@@ -255,19 +319,19 @@ def _net_sales_widget(
         "reports.sales.view",
     ):
         return NetSalesWidget(state=WidgetState.OMITTED)
-    value = _sales_revenue(db, company_id, period)
-    comparison_result = None
+    current = _sales_revenue(db, company_id, period)
+    prior = None
     if comparison is not None:
         prior_period = resolve_comparison_period(period, comparison.comparison_type)
-        prior_value = _sales_revenue(db, company_id, prior_period)
-        comparison_result = compute_comparison(
-            value,
-            prior_value,
-            is_current_period_partial=period.is_partial_current_period,
-        )
+        prior = _sales_revenue(db, company_id, prior_period)
+    amounts = _currency_amounts(current, prior, period)
+    value, comparison_result = _single_value(
+        amounts, period, compared=comparison is not None
+    )
     return NetSalesWidget(
         state=WidgetState.PRESENT,
-        value=normalize_amount(value),
+        value=value,
+        by_currency=amounts,
         comparison=comparison_result,
         drill_down=DrillDownRef(
             label="View sales KPIs",
@@ -296,19 +360,19 @@ def _gross_sales_widget(
         "reports.sales.view",
     ):
         return GrossSalesWidget(state=WidgetState.OMITTED)
-    value = _sales_gross(db, company_id, period)
-    comparison_result = None
+    current = _sales_gross(db, company_id, period)
+    prior = None
     if comparison is not None:
         prior_period = resolve_comparison_period(period, comparison.comparison_type)
-        prior_value = _sales_gross(db, company_id, prior_period)
-        comparison_result = compute_comparison(
-            value,
-            prior_value,
-            is_current_period_partial=period.is_partial_current_period,
-        )
+        prior = _sales_gross(db, company_id, prior_period)
+    amounts = _currency_amounts(current, prior, period)
+    value, comparison_result = _single_value(
+        amounts, period, compared=comparison is not None
+    )
     return GrossSalesWidget(
         state=WidgetState.PRESENT,
-        value=normalize_amount(value),
+        value=value,
+        by_currency=amounts,
         comparison=comparison_result,
         drill_down=DrillDownRef(
             label="View sales summary",
@@ -323,7 +387,9 @@ def _gross_sales_widget(
 # ---------------------------------------------------------------------------
 
 
-def _purchase_spend(db: Session, company_id: UUID, period: PeriodResolution) -> Decimal:
+def _purchase_spend(
+    db: Session, company_id: UUID, period: PeriodResolution
+) -> _Amounts:
     start, end_inclusive = _period_dates(period)
     filters = PurchaseKpiFilter(date_from=start, date_to=end_inclusive)
     result = ADAPTER_REGISTRY[ReportDomain.PURCHASE].run(
@@ -331,8 +397,11 @@ def _purchase_spend(db: Session, company_id: UUID, period: PeriodResolution) -> 
     )
     assert isinstance(result, AggregateReportResult)
     assert isinstance(result.data, PurchaseKpiSet)
-    raw = getattr(result.data, "kpi_07_total_purchase_value", "0")
-    return Decimal(str(raw))
+    return {
+        block.currency_code: block.total_purchase_value
+        for block in result.data.by_currency
+        if block.total_purchase_value != _ZERO
+    }
 
 
 def _purchase_spend_widget(
@@ -354,19 +423,19 @@ def _purchase_spend_widget(
         "reports.purchase.view",
     ):
         return PurchaseSpendWidget(state=WidgetState.OMITTED)
-    value = _purchase_spend(db, company_id, period)
-    comparison_result = None
+    current = _purchase_spend(db, company_id, period)
+    prior = None
     if comparison is not None:
         prior_period = resolve_comparison_period(period, comparison.comparison_type)
-        prior_value = _purchase_spend(db, company_id, prior_period)
-        comparison_result = compute_comparison(
-            value,
-            prior_value,
-            is_current_period_partial=period.is_partial_current_period,
-        )
+        prior = _purchase_spend(db, company_id, prior_period)
+    amounts = _currency_amounts(current, prior, period)
+    value, comparison_result = _single_value(
+        amounts, period, compared=comparison is not None
+    )
     return PurchaseSpendWidget(
         state=WidgetState.PRESENT,
-        value=normalize_amount(value),
+        value=value,
+        by_currency=amounts,
         comparison=comparison_result,
         drill_down=DrillDownRef(
             label="View purchase KPIs",
@@ -620,9 +689,14 @@ def _inventory_widget(
     )
     assert isinstance(result, AggregateReportResult)
     assert isinstance(result.data, InventoryValuationResponse)
+    amounts = _currency_amounts(
+        {t.currency_code: t.amount for t in result.data.grand_totals_by_currency}
+    )
+    value, _ = _single_value(amounts)
     return OperationalInventoryValueWidget(
         state=WidgetState.PRESENT,
-        value=normalize_amount(result.data.grand_total_value),
+        value=value,
+        by_currency=amounts,
         valuation_basis=result.data.valuation_basis,
         comparison=None,
         drill_down=DrillDownRef(
@@ -661,10 +735,15 @@ def _crm_widget(
         db, company_id, "crm.dashboard", CrmDashboardFilter(), 1, 1, None, None
     )
     assert isinstance(result, AggregateReportResult)
-    assert isinstance(result.data, CrmDashboard)
+    assert isinstance(result.data, CrmDashboardByCurrency)
+    amounts = _currency_amounts(
+        {v.currency_code: v.open_pipeline_value for v in result.data.by_currency}
+    )
+    value, _ = _single_value(amounts)
     return CrmPipelineWidget(
         state=WidgetState.PRESENT,
-        pipeline_value=normalize_amount(result.data.open_pipeline_value),
+        pipeline_value=value,
+        pipeline_value_by_currency=amounts,
         win_rate=result.data.win_rate,
         comparison=None,
         drill_down=DrillDownRef(
@@ -687,7 +766,8 @@ def _crm_widget(
 
 def _installments_figures(
     db: Session, company_id: UUID, as_of: date
-) -> tuple[Decimal, Decimal]:
+) -> tuple[_Amounts, _Amounts]:
+    """Outstanding principal and overdue per contract currency."""
     aging_result = ADAPTER_REGISTRY[ReportDomain.INSTALLMENTS].run(
         db,
         company_id,
@@ -699,9 +779,13 @@ def _installments_figures(
         None,
     )
     assert isinstance(aging_result, PaginatedReportResult)
-    principal = _ZERO
+    principal: _Amounts = {}
     for row in aging_result.items:
-        principal += Decimal(str(getattr(row, "outstanding_amount", "0")))
+        _add(
+            principal,
+            getattr(row, "currency_code", None),
+            Decimal(str(getattr(row, "outstanding_amount", "0"))),
+        )
 
     due_overdue_result = ADAPTER_REGISTRY[ReportDomain.INSTALLMENTS].run(
         db,
@@ -714,10 +798,14 @@ def _installments_figures(
         None,
     )
     assert isinstance(due_overdue_result, PaginatedReportResult)
-    overdue = _ZERO
+    overdue: _Amounts = {}
     for row in due_overdue_result.items:
         if getattr(row, "report_type", None) == "overdue":
-            overdue += Decimal(str(getattr(row, "outstanding_amount", "0")))
+            _add(
+                overdue,
+                getattr(row, "currency_code", None),
+                Decimal(str(getattr(row, "outstanding_amount", "0"))),
+            )
 
     return principal, overdue
 
@@ -737,10 +825,23 @@ def _installments_widget(
         return InstallmentExposureWidget(state=WidgetState.OMITTED)
     _, as_of = _period_dates(period)
     principal, overdue = _installments_figures(db, company_id, as_of)
+    principal_amounts = _currency_amounts(principal)
+    overdue_amounts = _currency_amounts(overdue)
+    codes = {a.currency_code for a in principal_amounts + overdue_amounts}
+    principal_value: Decimal | None
+    overdue_value: Decimal | None
+    if len(codes) > 1:
+        # Several currencies: neither single figure is meaningful.
+        principal_value, overdue_value = None, None
+    else:
+        principal_value, _ = _single_value(principal_amounts)
+        overdue_value, _ = _single_value(overdue_amounts)
     return InstallmentExposureWidget(
         state=WidgetState.PRESENT,
-        outstanding_principal=normalize_amount(principal),
-        overdue=normalize_amount(overdue),
+        outstanding_principal=principal_value,
+        overdue=overdue_value,
+        outstanding_principal_by_currency=principal_amounts,
+        overdue_by_currency=overdue_amounts,
         read_only_servicing_continuity=state
         is InstallmentsAccessState.SERVICING_CONTINUITY,
         comparison=None,

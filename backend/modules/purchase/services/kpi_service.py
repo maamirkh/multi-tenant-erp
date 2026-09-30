@@ -43,6 +43,14 @@ logger = logging.getLogger(__name__)
 _ZERO = Decimal("0")
 _TWO = Decimal("0.01")
 
+#: ``get_all_kpis()`` keys whose value is an amount of money summed over
+#: every currency. Their per-currency counterparts are
+#: ``open_commitments_value_by_currency()`` and
+#: ``total_purchase_value_by_currency()`` (Epic 11 FR-RPT-152).
+MONEY_KPI_KEYS: frozenset[str] = frozenset(
+    {"kpi_06_open_commitments_value", "kpi_07_total_purchase_value"}
+)
+
 
 def _d(v: Any) -> Decimal:
     if v is None:
@@ -344,6 +352,46 @@ class KPIService:
         result = self.db.execute(stmt).scalar_one_or_none()
         return _d(result)
 
+    def open_commitments_value_by_currency(
+        self,
+        company_id: UUID,
+    ) -> dict[str, Decimal]:
+        """``open_commitments_value()`` per PO currency — each currency's
+        own sum, never one total across currencies (Epic 11 FR-RPT-152)."""
+        import sqlalchemy as sa
+
+        stmt = (
+            select(
+                PurchaseOrder.currency_code,
+                func.sum(POLine.open_quantity * POLine.unit_cost).label("open_value"),
+            )
+            .join(
+                PurchaseOrder,
+                PurchaseOrder.id
+                == sa.cast(
+                    POLine.po_id,
+                    __import__(
+                        "sqlalchemy.dialects.postgresql", fromlist=["UUID"]
+                    ).UUID(as_uuid=True),
+                ),
+            )
+            .where(
+                and_(
+                    PurchaseOrder.company_id == company_id,
+                    PurchaseOrder.deleted_at.is_(None),
+                    PurchaseOrder.status.in_(["APPROVED", "PARTIALLY_RECEIVED"]),
+                    POLine.deleted_at.is_(None),
+                    POLine.open_quantity > 0,
+                )
+            )
+            .group_by(PurchaseOrder.currency_code)
+        )
+        return {
+            code: _d(value)
+            for code, value in self.db.execute(stmt).all()
+            if code is not None
+        }
+
     # ------------------------------------------------------------------
     # KPI-07  Total Purchase Value
     # ------------------------------------------------------------------
@@ -369,6 +417,38 @@ class KPIService:
 
         result = self.db.execute(stmt).scalar_one_or_none()
         return _d(result)
+
+    def total_purchase_value_by_currency(
+        self,
+        company_id: UUID,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+    ) -> dict[str, Decimal]:
+        """``total_purchase_value()`` per cost-entry currency (Epic 11
+        FR-RPT-152)."""
+        stmt = (
+            select(
+                PurchaseCostEntry.currency_code,
+                func.sum(PurchaseCostEntry.total).label("total_value"),
+            )
+            .where(
+                and_(
+                    PurchaseCostEntry.company_id == company_id,
+                    PurchaseCostEntry.deleted_at.is_(None),
+                )
+            )
+            .group_by(PurchaseCostEntry.currency_code)
+        )
+        if date_from:
+            stmt = stmt.where(PurchaseCostEntry.cost_date >= date_from)
+        if date_to:
+            stmt = stmt.where(PurchaseCostEntry.cost_date <= date_to)
+        return {
+            code: _d(value)
+            for code, value in self.db.execute(stmt).all()
+            if code is not None
+        }
 
     # ------------------------------------------------------------------
     # KPI-08  PO Processing Time

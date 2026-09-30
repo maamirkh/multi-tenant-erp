@@ -15,6 +15,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
+from modules.sales.schemas.reports import KPIResult
+
 
 class _SalesDateRangeFilter(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -64,6 +66,8 @@ class SalesKpiFilter(_SalesDateRangeFilter):
 
 # ---------------------------------------------------------------------------
 # Response row shapes — mirror ReportService's own dict keys per report type.
+# Revenue aggregates carry ``currency_code``: one row per currency, never a
+# cross-currency sum (FR-RPT-152).
 # ---------------------------------------------------------------------------
 
 
@@ -72,6 +76,7 @@ class SalesSummaryRow(BaseModel):
     invoice_count: int
     revenue: Decimal
     total_discount: Decimal
+    currency_code: str | None = None
 
 
 class SalesByCustomerRow(BaseModel):
@@ -84,6 +89,7 @@ class SalesByCustomerRow(BaseModel):
     never an error)."""
     invoice_count: int
     revenue: Decimal
+    currency_code: str | None = None
 
 
 class SalesByProductRow(BaseModel):
@@ -92,6 +98,7 @@ class SalesByProductRow(BaseModel):
     revenue: Decimal
     total_qty: Decimal
     line_count: int
+    currency_code: str | None = None
 
 
 class QuotationPipelineRow(BaseModel):
@@ -114,3 +121,19 @@ class SalesReturnRow(BaseModel):
     return_date: str
     status: str
     resolution_type: str
+
+
+class SalesCurrencyKpis(BaseModel):
+    currency_code: str
+    kpis: list[KPIResult]
+
+
+class SalesKpiReport(BaseModel):
+    """``sales.kpis`` (FR-RPT-152): the count, rate and time KPIs once, and
+    Sales' money KPIs (``MONEY_KPI_IDS``) once per currency present — never
+    one figure summed across currencies."""
+
+    company_id: str
+    period_label: str
+    kpis: list[KPIResult]
+    by_currency: list[SalesCurrencyKpis]

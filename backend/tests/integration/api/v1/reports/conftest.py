@@ -257,6 +257,7 @@ def seed_sales_invoice(
     amount: str,
     customer_id: uuid.UUID | None = None,
     invoice_date: str = "2026-01-15",
+    currency_code: str = "USD",
 ) -> None:
     """One ISSUED invoice — each distinct ``customer_id`` becomes its own
     ``sales.by_customer`` row, which lets export tests control row counts
@@ -268,7 +269,7 @@ def seed_sales_invoice(
             customer_id=str(customer_id or uuid.uuid4()),
             invoice_date=invoice_date,
             due_date="2026-02-14",
-            currency_code="USD",
+            currency_code=currency_code,
             status="ISSUED",
             subtotal=Decimal(amount),
             discount_amount=Decimal("0"),

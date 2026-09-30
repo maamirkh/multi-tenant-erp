@@ -48,7 +48,13 @@ Consumers").
   (Case B, flagged `read_only_servicing_continuity`); a tenant with none
   gets nothing (Case A). `plan_performance` is excluded under Case B.
 - **Money:** `Decimal` only, normalized to `NUMERIC(20,6)` precision and
-  rounded only at display. Multi-currency caveats:
+  rounded only at display.
+- **Currencies (FR-RPT-152):** amounts in different currencies are never
+  summed or converted. Money aggregates are reported per currency (a
+  `currency_code` on rows, `*by_currency` lists on aggregates, widgets and
+  Customer 360). A single value field is set only when one currency is
+  present, is a real zero when there is no data, and is `null` when there are
+  several currencies. See
   [`multi_currency_findings.md`](multi_currency_findings.md).
 - **Exports:** CSV cells are neutralized against formula injection; XLSX is
   written in bounded write-only mode; the audit row must commit before the
@@ -142,9 +148,8 @@ Deferred (registered, never executable, 404 like an unknown key):
 
 Not planned in Epic 11: async export jobs, caching, scheduled or shared
 saved views, a custom report builder, cross-tenant analytics and
-AI/NL-to-SQL. Multi-currency grouping for Sales, Purchase aggregates,
-Inventory valuation and CRM is an open product decision
-([`multi_currency_findings.md`](multi_currency_findings.md)).
+AI/NL-to-SQL. Converting currencies to the base currency (instead of
+reporting each separately) is not implemented.
 
 ## Test Strategy
 

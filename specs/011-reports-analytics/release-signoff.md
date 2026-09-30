@@ -68,9 +68,9 @@ The branch also carries 5 pre-Epic-11 commits that are not yet on `main` (MyPy s
 
 ## Open items (non-blocking, product decisions)
 
-1. **FR-RPT-152 multi-currency:** Sales, Purchase aggregates, Inventory valuation and CRM sum across currencies (`backend/modules/reports/docs/multi_currency_findings.md`).
+1. ~~**FR-RPT-152 multi-currency**~~ — **resolved 2026-09-30 (Phase 12, option a):** every money aggregate is reported per currency and never summed across currencies. The Installments rows now carry their contract's currency. See `backend/modules/reports/docs/multi_currency_findings.md`.
 2. ~~**CI Security Scans job** broken since before Epic 11~~ — **resolved 2026-09-30:** bandit and pip-audit added as dev dependencies; bandit now fails on findings (no `--exit-zero`); pip-audit audits the hashed, locked production dependencies.
 3. ~~**Dependency advisories**~~ — **resolved 2026-09-30:** anyio 4.15.1, cryptography 50.0.1, pyjwt 2.15.1 (a new advisory, CVE-2026-102274, surfaced once pip-audit ran), and the B324 MD5 call marked `usedforsecurity=False`. pip 26.2.1 is locked through pip-audit.
-4. **Record-level drill-down in report tables** (row → invoice/contract page) is not rendered in the UI; the metadata is in the API.
-5. **Installments `due_overdue`** takes ~4.5 s per page at 10K contracts.
+4. ~~**Record-level drill-down**~~ — **resolved 2026-09-30 (T294):** report tables link each row to its record page, and every drill-down route is checked against the frontend pages.
+5. **Installments `due_overdue`** — **improved 2026-09-30 (T295):** from 63.0 s to 28.3 s for 20 pages of 10K rows (~1.4 s per page). The rest is the cost of loading the line population.
 6. **Installments pagination timing test** can be flaky on CI runners (wall-clock based).

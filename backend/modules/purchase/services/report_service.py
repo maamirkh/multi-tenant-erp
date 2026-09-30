@@ -792,11 +792,18 @@ class ReportService:
         date_to: date | None = None,
         skip: int = 0,
         limit: int = 100,
+        group_by_currency: bool = False,
     ) -> list[dict[str, Any]]:
-        """Total spend per supplier in period (sum of confirmed GR cost entries)."""
+        """Total spend per supplier in period (sum of confirmed GR cost entries).
+
+        ``group_by_currency`` (Epic 11 FR-RPT-152, off by default) splits each
+        supplier's spend per currency so different currencies are never
+        summed together."""
+        currency = [PurchaseCostEntry.currency_code] if group_by_currency else []
         stmt = (
             select(
                 PurchaseCostEntry.supplier_id,
+                *currency,
                 func.count(PurchaseCostEntry.id).label("gr_count"),
                 func.sum(PurchaseCostEntry.total).label("total_spend"),
                 func.sum(PurchaseCostEntry.subtotal).label("total_subtotal"),
@@ -809,10 +816,11 @@ class ReportService:
                     PurchaseCostEntry.deleted_at.is_(None),
                 )
             )
-            .group_by(PurchaseCostEntry.supplier_id)
+            .group_by(PurchaseCostEntry.supplier_id, *currency)
             .order_by(
                 func.sum(PurchaseCostEntry.total).desc(),
                 PurchaseCostEntry.supplier_id,  # unique tiebreaker (Epic 11 T270) — the group key
+                *currency,
             )
             .offset(skip)
             .limit(limit)
@@ -831,6 +839,7 @@ class ReportService:
                 "total_subtotal": str(_d(r["total_subtotal"])),
                 "total_charges": str(_d(r["total_charges"])),
                 "total_discounts": str(_d(r["total_discounts"])),
+                **({"currency_code": r["currency_code"]} if group_by_currency else {}),
             }
             for r in rows
         ]
@@ -841,9 +850,30 @@ class ReportService:
         *,
         date_from: date | None = None,
         date_to: date | None = None,
+        group_by_currency: bool = False,
     ) -> int:
         """Epic 11 Reports additive seam — cheap SQL-level count of the
-        distinct-supplier population behind ``purchase_by_supplier``."""
+        distinct-supplier (or, with ``group_by_currency``, distinct
+        supplier-and-currency) population behind ``purchase_by_supplier``."""
+        if group_by_currency:
+            groups = (
+                select(PurchaseCostEntry.supplier_id, PurchaseCostEntry.currency_code)
+                .where(
+                    and_(
+                        PurchaseCostEntry.company_id == company_id,
+                        PurchaseCostEntry.deleted_at.is_(None),
+                    )
+                )
+                .group_by(
+                    PurchaseCostEntry.supplier_id, PurchaseCostEntry.currency_code
+                )
+            )
+            if date_from:
+                groups = groups.where(PurchaseCostEntry.cost_date >= date_from)
+            if date_to:
+                groups = groups.where(PurchaseCostEntry.cost_date <= date_to)
+            stmt = select(func.count()).select_from(groups.subquery())
+            return int(self.db.execute(stmt).scalar_one())
         stmt = select(func.count(func.distinct(PurchaseCostEntry.supplier_id))).where(
             and_(
                 PurchaseCostEntry.company_id == company_id,

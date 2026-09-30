@@ -60,6 +60,17 @@ def _dec(v: Any) -> str | None:
     return str(v) if v is not None else None
 
 
+def _currency_columns(params: ReportParams, column: Any) -> list[Any]:
+    """The currency column to add to an aggregate's SELECT/GROUP BY when
+    ``params.group_by_currency`` is set (Epic 11 FR-RPT-152) — so amounts
+    in different currencies are never summed into one figure."""
+    return [column] if params.group_by_currency else []
+
+
+def _currency_field(params: ReportParams, row: Any) -> dict[str, Any]:
+    return {"currency_code": row.currency_code} if params.group_by_currency else {}
+
+
 def _cid(company_id: str | UUID) -> UUID:
     """Normalise company_id to UUID for Uuid(as_uuid=True) columns."""
     return UUID(str(company_id)) if not isinstance(company_id, UUID) else company_id
@@ -129,8 +140,10 @@ class ReportService:
         self, company_id: UUID, params: ReportParams
     ) -> tuple[list[Row], int]:
         """Aggregate totals for issued invoices grouped by date."""
+        currency = _currency_columns(params, SalesInvoice.currency_code)
         q = self._db.query(
             SalesInvoice.invoice_date,
+            *currency,
             func.count(SalesInvoice.id).label("invoice_count"),
             func.sum(SalesInvoice.total_amount).label("revenue"),
             func.sum(SalesInvoice.discount_amount).label("total_discount"),
@@ -142,8 +155,8 @@ class ReportService:
         q = self._apply_invoice_date_filter(q, SalesInvoice, params)
         if params.customer_id:
             q = q.filter(SalesInvoice.customer_id == params.customer_id)
-        q = q.group_by(SalesInvoice.invoice_date).order_by(
-            SalesInvoice.invoice_date.desc()
+        q = q.group_by(SalesInvoice.invoice_date, *currency).order_by(
+            SalesInvoice.invoice_date.desc(), *currency
         )
         total_q = q.subquery()
         total = self._db.query(func.count()).select_from(total_q).scalar() or 0
@@ -154,6 +167,7 @@ class ReportService:
                 "invoice_count": r.invoice_count,
                 "revenue": _dec(r.revenue),
                 "total_discount": _dec(r.total_discount),
+                **_currency_field(params, r),
             }
             for r in results
         ]
@@ -163,8 +177,10 @@ class ReportService:
         self, company_id: UUID, params: ReportParams
     ) -> tuple[list[Row], int]:
         """Revenue grouped by customer."""
+        currency = _currency_columns(params, SalesInvoice.currency_code)
         q = self._db.query(
             SalesInvoice.customer_id,
+            *currency,
             func.count(SalesInvoice.id).label("invoice_count"),
             func.sum(SalesInvoice.total_amount).label("revenue"),
         ).filter(
@@ -173,11 +189,12 @@ class ReportService:
             SalesInvoice.status.in_(["ISSUED", "PAID"]),
         )
         q = self._apply_invoice_date_filter(q, SalesInvoice, params)
-        q = q.group_by(SalesInvoice.customer_id).order_by(
+        q = q.group_by(SalesInvoice.customer_id, *currency).order_by(
             func.sum(SalesInvoice.total_amount).desc(),
             # Unique tiebreaker (Epic 11 T270): equal totals otherwise come
             # back in unspecified order, so offset pages overlap/skip.
             SalesInvoice.customer_id,
+            *currency,
         )
         total_q = q.subquery()
         total = self._db.query(func.count()).select_from(total_q).scalar() or 0
@@ -187,6 +204,7 @@ class ReportService:
                 "customer_id": _str(r.customer_id),
                 "invoice_count": r.invoice_count,
                 "revenue": _dec(r.revenue),
+                **_currency_field(params, r),
             }
             for r in results
         ]
@@ -196,10 +214,12 @@ class ReportService:
         self, company_id: UUID, params: ReportParams
     ) -> tuple[list[Row], int]:
         """Revenue grouped by product via order lines."""
+        currency = _currency_columns(params, SalesOrder.currency_code)
         q = (
             self._db.query(
                 OrderLine.product_id,
                 OrderLine.description,
+                *currency,
                 func.sum(OrderLine.extended_amount).label("revenue"),
                 func.sum(OrderLine.quantity_ordered).label("total_qty"),
                 func.count(OrderLine.id).label("line_count"),
@@ -218,11 +238,12 @@ class ReportService:
             q = q.filter(SalesOrder.order_date <= params.date_to)
         if params.customer_id:
             q = q.filter(SalesOrder.customer_id == params.customer_id)
-        q = q.group_by(OrderLine.product_id, OrderLine.description).order_by(
+        q = q.group_by(OrderLine.product_id, OrderLine.description, *currency).order_by(
             func.sum(OrderLine.extended_amount).desc(),
             # Unique tiebreaker (Epic 11 T270) — the group key.
             OrderLine.product_id,
             OrderLine.description,
+            *currency,
         )
         total_q = q.subquery()
         total = self._db.query(func.count()).select_from(total_q).scalar() or 0
@@ -234,6 +255,7 @@ class ReportService:
                 "revenue": _dec(r.revenue),
                 "total_qty": _dec(r.total_qty),
                 "line_count": r.line_count,
+                **_currency_field(params, r),
             }
             for r in results
         ]

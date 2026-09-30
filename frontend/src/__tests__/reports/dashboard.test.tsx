@@ -143,6 +143,33 @@ describe('Executive Dashboard', () => {
     expect(screen.queryByTestId('dashboard-drilldown-gross_sales')).not.toBeInTheDocument();
   });
 
+  it('shows a multi-currency figure per currency, never summed (FR-RPT-152)', async () => {
+    const data = payload();
+    data.gross_sales = {
+      ...base,
+      state: 'present',
+      value: null,
+      by_currency: [
+        { currency_code: 'USD', amount: '100.00' },
+        { currency_code: 'PKR', amount: '5000.00' },
+      ],
+    };
+    data.purchase_spend = {
+      ...base,
+      state: 'present',
+      value: '250.00',
+      by_currency: [{ currency_code: 'USD', amount: '250.00' }],
+    };
+    dashboardMock.mockResolvedValue({ data, message: 'ok', meta: META });
+    renderPage();
+    const gross = await screen.findByTestId('dashboard-widget-gross_sales');
+    expect(gross).toHaveTextContent('$100.00');
+    expect(gross).toHaveTextContent('PKR 5,000');
+    expect(gross).not.toHaveTextContent('5,100');
+    // One currency: rendered in that currency.
+    expect(screen.getByTestId('dashboard-widget-purchase_spend')).toHaveTextContent('$250.00');
+  });
+
   it('renders an empty state when every widget is omitted', async () => {
     const data = payload();
     for (const key of Object.keys(data) as (keyof ExecutiveDashboardResponse)[]) {

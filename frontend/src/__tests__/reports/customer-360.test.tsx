@@ -115,6 +115,25 @@ describe('Customer 360 (T256)', () => {
     expect(screen.getAllByTestId(/^c360-section-/)).toHaveLength(3);
   });
 
+  it('shows each currency on its own — never one cross-currency total (FR-RPT-152)', async () => {
+    const data = partial();
+    data.sales = {
+      state: 'present',
+      total_revenue: null,
+      total_revenue_by_currency: [
+        { currency_code: 'USD', amount: '100.00' },
+        { currency_code: 'PKR', amount: '5000.00' },
+      ],
+      invoice_count: 2,
+    };
+    c360Mock.mockResolvedValue({ data, message: 'ok', meta: META });
+    renderPage();
+    const sales = await screen.findByTestId('c360-section-sales');
+    expect(sales).toHaveTextContent('$100.00');
+    expect(sales).toHaveTextContent('PKR 5,000');
+    expect(sales).not.toHaveTextContent('5,100');
+  });
+
   it('shows the read-only servicing badge on a Case B installments section', async () => {
     const data = partial();
     data.installments = {

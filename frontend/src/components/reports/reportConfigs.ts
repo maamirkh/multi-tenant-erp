@@ -79,16 +79,21 @@ const col = (key: string, label: string): DataTableColumn => ({ key, label });
 // Sales (8) — backend/modules/reports/schemas/sales.py
 // ---------------------------------------------------------------------------
 
+// Revenue aggregates come one row per currency (FR-RPT-152), so each row
+// formats its amounts in its own `currency_code`.
+const CURRENCY = 'currency_code';
 const SALES_SUMMARY_COLUMNS = [
   day('date', 'Date'),
+  col(CURRENCY, 'Currency'),
   num('invoice_count', 'Invoices'),
-  money('revenue', 'Revenue'),
-  money('total_discount', 'Discounts'),
+  money('revenue', 'Revenue', CURRENCY),
+  money('total_discount', 'Discounts', CURRENCY),
 ];
 const SALES_BY_CUSTOMER_COLUMNS = [
   col('customer_name', 'Customer'),
+  col(CURRENCY, 'Currency'),
   num('invoice_count', 'Invoices'),
-  money('revenue', 'Revenue'),
+  money('revenue', 'Revenue', CURRENCY),
 ];
 
 const SALES: Record<string, ReportConfig> = {
@@ -101,9 +106,10 @@ const SALES: Record<string, ReportConfig> = {
     filters: [...DATE_RANGE, text('customer_id', 'Customer ID')],
     columns: [
       col('description', 'Product'),
+      col(CURRENCY, 'Currency'),
       num('total_qty', 'Quantity'),
       num('line_count', 'Lines'),
-      money('revenue', 'Revenue'),
+      money('revenue', 'Revenue', CURRENCY),
     ],
   },
   'sales.top_customers': {
@@ -165,11 +171,12 @@ const PURCHASE: Record<string, ReportConfig> = {
     filters: DATE_RANGE,
     columns: [
       col('supplier_id', 'Supplier'),
+      col(CURRENCY, 'Currency'),
       num('gr_count', 'Receipts'),
-      money('total_subtotal', 'Subtotal'),
-      money('total_charges', 'Charges'),
-      money('total_discounts', 'Discounts'),
-      money('total_spend', 'Total spend'),
+      money('total_subtotal', 'Subtotal', CURRENCY),
+      money('total_charges', 'Charges', CURRENCY),
+      money('total_discounts', 'Discounts', CURRENCY),
+      money('total_spend', 'Total spend', CURRENCY),
     ],
   },
   'purchase.open_commitments': {

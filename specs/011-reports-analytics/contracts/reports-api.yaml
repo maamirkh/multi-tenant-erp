@@ -184,9 +184,21 @@ components:
               metric_id: { type: string }
               state: { type: string, enum: [present, omitted] }
               read_only_servicing_continuity: { type: boolean, description: "Installments widget only, Case B" }
-              value: { type: object, nullable: true }
+              value: { type: object, nullable: true, description: "Single figure — set only when one currency is present (null when several; FR-RPT-152)" }
+              by_currency:
+                type: array
+                description: "Sales/Purchase/Inventory/CRM/Installments money widgets — each currency's own figure, never summed (FR-RPT-152)"
+                items: { $ref: "#/components/schemas/CurrencyAmount" }
               comparison: { type: object, nullable: true }
               drill_down: { type: object, nullable: true }
+
+    CurrencyAmount:
+      type: object
+      description: "One currency's own figure (FR-RPT-152) — multi-currency aggregates are lists of these, never one sum"
+      properties:
+        currency_code: { type: string, nullable: true }
+        amount: { type: string, description: "Decimal as string" }
+        comparison: { type: object, nullable: true, description: "Against the same currency in the comparison period" }
 
     Customer360Response:
       type: object
@@ -203,7 +215,7 @@ components:
       properties:
         state: { type: string, enum: [present, omitted, unavailable] }
         reason: { type: string, enum: [not_entitled, not_permitted, not_configured, no_data_source], nullable: true }
-        data: { type: object, nullable: true }
+        data: { type: object, nullable: true, description: "Money fields (sales revenue, CRM open value, installments principal) also come as `*_by_currency` lists of CurrencyAmount; the single field is null when several currencies are present (FR-RPT-152)" }
 
     SavedReportViewRead:
       type: object

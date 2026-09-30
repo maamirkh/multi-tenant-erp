@@ -49,6 +49,21 @@ export function formatMoney(
   }).format(parsed);
 }
 
+/**
+ * A figure that may span several currencies (FR-RPT-152): with a
+ * per-currency breakdown, each currency is formatted on its own and joined —
+ * never summed. Without one (Accounting base-currency figures), `value` is
+ * formatted as before.
+ */
+export function formatMoneyByCurrency(
+  value: string | null | undefined,
+  byCurrency?: readonly { currency_code: string | null; amount: string }[],
+  locale?: string
+): string {
+  if (!byCurrency || byCurrency.length === 0) return formatMoney(value, null, locale);
+  return byCurrency.map((c) => formatMoney(c.amount, c.currency_code, locale)).join(' · ');
+}
+
 /** `formatPercent("12.5")` → `"12.5%"` (the backend already sends percent units). */
 export function formatPercent(value: string | null | undefined, locale?: string): string {
   const parsed = parseDecimalString(value);

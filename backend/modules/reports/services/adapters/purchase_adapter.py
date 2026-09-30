@@ -12,6 +12,7 @@ full-population fetch for any of them. Stateless (matches
 from __future__ import annotations
 
 from collections.abc import Iterator
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -19,6 +20,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from modules.purchase.dependencies import get_kpi_service, get_report_service
+from modules.purchase.services.kpi_service import MONEY_KPI_KEYS
 from modules.purchase.services.report_service import (
     ReportService as PurchaseReportService,
 )
@@ -31,6 +33,7 @@ from modules.reports.schemas.purchase import (
     PendingDeliveryRow,
     PurchaseBySupplierFilter,
     PurchaseBySupplierRow,
+    PurchaseCurrencyAmounts,
     PurchaseKpiFilter,
     PurchaseKpiSet,
     PurchaseOrderSummaryRow,
@@ -83,6 +86,22 @@ class PurchaseAdapter:
             data = kpis.get_all_kpis(
                 company_id, date_from=filters.date_from, date_to=filters.date_to
             )
+            # Cross-currency sums are dropped; per-currency figures replace
+            # them (FR-RPT-152).
+            for key in MONEY_KPI_KEYS:
+                data.pop(key, None)
+            open_values = kpis.open_commitments_value_by_currency(company_id)
+            spend = kpis.total_purchase_value_by_currency(
+                company_id, date_from=filters.date_from, date_to=filters.date_to
+            )
+            data["by_currency"] = [
+                PurchaseCurrencyAmounts(
+                    currency_code=code,
+                    open_commitments_value=open_values.get(code, Decimal("0")),
+                    total_purchase_value=spend.get(code, Decimal("0")),
+                )
+                for code in sorted(open_values.keys() | spend.keys())
+            ]
             return AggregateReportResult[PurchaseKpiSet](
                 meta=_meta(report_key, filters),
                 data=PurchaseKpiSet.model_validate(data),
@@ -182,9 +201,13 @@ class PurchaseAdapter:
                 date_to=filters.date_to,
                 skip=skip,
                 limit=page_size,
+                group_by_currency=True,
             )
             total = reports.count_purchase_by_supplier(
-                company_id, date_from=filters.date_from, date_to=filters.date_to
+                company_id,
+                date_from=filters.date_from,
+                date_to=filters.date_to,
+                group_by_currency=True,
             )
             return rows, total
         if report_key == "purchase.supplier_performance":
@@ -264,7 +287,10 @@ class PurchaseAdapter:
         if report_key == "purchase.by_supplier":
             assert isinstance(filters, PurchaseBySupplierFilter)
             return reports.count_purchase_by_supplier(
-                company_id, date_from=filters.date_from, date_to=filters.date_to
+                company_id,
+                date_from=filters.date_from,
+                date_to=filters.date_to,
+                group_by_currency=True,
             )
         if report_key == "purchase.supplier_performance":
             assert isinstance(filters, SupplierPerformanceFilter)

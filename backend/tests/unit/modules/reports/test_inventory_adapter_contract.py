@@ -159,6 +159,7 @@ def test_valuation_always_has_operational_wac_basis(
         "rows": [],
         "grand_total_value": "0",
         "currency_code": "USD",
+        "grand_totals_by_currency": [],
         "as_of": datetime.datetime.now(datetime.UTC),
     }
     monkeypatch.setattr(inventory_adapter_mod, "get_report_service", lambda db: reports)

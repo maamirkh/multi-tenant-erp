@@ -24,6 +24,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from modules.reports.schemas.common import CurrencyAmount
+
 
 class SectionState(StrEnum):
     PRESENT = "present"
@@ -48,7 +50,9 @@ class PresentSalesSection(BaseModel):
     concept; a real zero is a real zero (plan.md §14)."""
 
     state: Literal[SectionState.PRESENT] = SectionState.PRESENT
-    total_revenue: Decimal
+    total_revenue: Decimal | None
+    """Set only when one currency (or none) is present — FR-RPT-152."""
+    total_revenue_by_currency: list[CurrencyAmount] = Field(default_factory=list)
     invoice_count: int
 
 
@@ -71,7 +75,11 @@ class PresentCrmSection(BaseModel):
 
     state: Literal[SectionState.PRESENT] = SectionState.PRESENT
     open_opportunity_count: int
-    open_opportunity_value: Decimal
+    open_opportunity_value: Decimal | None
+    """Set only when one currency (or none) is present — FR-RPT-152."""
+    open_opportunity_value_by_currency: list[CurrencyAmount] = Field(
+        default_factory=list
+    )
 
 
 class PresentInstallmentsSection(BaseModel):
@@ -82,7 +90,11 @@ class PresentInstallmentsSection(BaseModel):
     (FR-RPT-041)."""
 
     state: Literal[SectionState.PRESENT] = SectionState.PRESENT
-    outstanding_principal: Decimal
+    outstanding_principal: Decimal | None
+    """Set only when one currency (or none) is present — FR-RPT-152."""
+    outstanding_principal_by_currency: list[CurrencyAmount] = Field(
+        default_factory=list
+    )
     contract_count: int
     read_only_servicing_continuity: bool
 
