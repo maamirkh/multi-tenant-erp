@@ -22,10 +22,18 @@ join using these same indexes — this was independently confirmed against
 a live PostgreSQL 16 instance with 500K seeded rows during this phase's
 Final Live Verification; see the verification report).
 
-So: this test is a fast SQLite regression guard at a scale where SQLite's
-planner behaves reasonably (catches a regressed missing-index bug like the
-one this test's own history found), NOT a substitute for the 500K/real-DB
-number, which is verified separately, directly, against Postgres.
+So: this test is a fast SQLite smoke test, NOT a substitute for the
+500K/real-DB number, which is verified separately, directly, against
+Postgres.
+
+**The missing-index regression is guarded structurally, not by time**
+(Epic 11 Phase 12 CI finding). On SQLite the ``account_id`` index is what
+makes the planner choose the slow nested loop: at 2K rows the Balance Sheet
+took 1.5–5s with the index and ~0.9s without it. A wall-clock guard
+therefore could not detect a lost index, and it failed CI on a slow shared
+runner (10.8s against a 5s guard) with no code change. The index is now
+asserted directly (``test_journal_line_account_index_is_defined``); the
+timings stay only as a generous sanity bound.
 
 Spec ref: specs/008-accounting-finance/tasks.md T270
 Plan ref: specs/008-accounting-finance/plan.md Phase 13 Exit Criteria
@@ -59,7 +67,7 @@ from modules.accounting.services.fiscal_service import FiscalCalendarService
 
 _SAMPLE_ENTRIES = 2_000
 _TARGET_SECONDS = (
-    5  # generous for 2K rows in SQLite; a regression guard, not the 500K SLA itself
+    30  # sanity bound only (catches a pathological blow-up); see module docstring
 )
 _ACCOUNT_POOL_SIZE = 40
 
@@ -147,6 +155,17 @@ def _seed_gl(
     db.execute(insert(JournalLine), line_rows)
     db.commit()
     return posting_date
+
+
+def test_journal_line_account_index_is_defined() -> None:
+    """The index migration 048 added (``accounting_journal_lines.account_id``
+    — Balance Sheet over 500K Postgres rows took 81.9s without it) must stay
+    declared. Deterministic, unlike a timing threshold."""
+    indexed = {
+        tuple(column.name for column in index.columns)
+        for index in JournalLine.metadata.tables[JournalLine.__tablename__].indexes
+    }
+    assert ("account_id",) in indexed
 
 
 class TestReportPerformance:
