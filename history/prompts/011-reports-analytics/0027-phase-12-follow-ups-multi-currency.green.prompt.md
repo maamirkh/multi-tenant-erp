@@ -80,3 +80,10 @@ The CI run on `2422cb7` failed Tests & Coverage. The log needs a login, so the f
 - Graders run and results (PASS/FAIL): targeted suites PASS; the full CI run is pending.
 - Prompt variant (if applicable): n/a
 - Next experiment (smallest change to try): add CI log retrieval, for example a `gh` token in the environment.
+
+## Follow-up (2026-09-30) — CI and dependency advisories
+
+User: "haan fix kardo aur push karke CI ka result batao".
+- `9a95996`: `npm audit fix` (brace-expansion HIGH advisory; fast-uri; ip-address).
+- `697555a`: next 16.3.4 → 16.3.8 (critical RCE, GHSA-vcvr-r3jv-pc5j) and urllib3 2.7.0 → 2.8.0 — both advisories were published during the run.
+- GitHub CI on `697555a`: all 11 checks green, including Tests & Coverage and Docker Build. Gate 12 (T307) PASS.
