@@ -26,6 +26,7 @@ Spec ref: specs/007-sales-management/spec.md §Sales Orders
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
@@ -43,7 +44,7 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -76,7 +77,7 @@ def _create_company(client: TestClient, token: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _create_order(
@@ -85,7 +86,7 @@ def _create_order(
     token: str,
     customer_id: str | None = None,
     sales_rep_id: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     resp = client.post(
         _url(company_id),
         json={
@@ -99,7 +100,7 @@ def _create_order(
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]
+    return dict(resp.json()["data"])
 
 
 # ---------------------------------------------------------------------------
@@ -381,6 +382,7 @@ class TestSalesOrderLifecycle:
             .filter(SalesOrder.id == _UUID(order_id))
             .first()
         )
+        assert order is not None
         order.status = "CLOSED"
         db_session.flush()
 
@@ -525,6 +527,53 @@ class TestApprovalMatrix:
         assert data["name"] == "Standard SO Approval"
         assert data["document_type"] == "SALES_ORDER"
         assert data["is_active"] is True
+
+    def test_list_approval_matrices_includes_rules(
+        self, test_client: TestClient, db_session: Session
+    ) -> None:
+        """Regression test — ``list_approval_matrices()`` built a ``result``
+        list with ``matrix_read.rules`` set to repeated copies of
+        ``SalesApprovalMatrixRead.__fields__`` (Pydantic-v1 class metadata,
+        not the actual rules), then discarded that list entirely and
+        returned a second, separately-built list that never populated
+        ``rules`` at all — so every matrix's rules came back empty
+        regardless of how many rules actually existed. Fixed by mapping
+        each fetched ``SalesMatrixRule`` to ``SalesMatrixRuleRead`` and
+        returning the list that was actually populated."""
+        user, password = create_test_user(
+            db_session, email="so_matrix_list_rules@example.com"
+        )
+        token = _login(test_client, user.email, password)
+        company_id = _create_company(test_client, token)
+
+        create_resp = test_client.post(
+            _approvals_url(company_id),
+            json={
+                "name": "Matrix With Rules",
+                "document_type": "SALES_ORDER",
+                "is_active": True,
+                "rules": [
+                    {
+                        "approval_level": 1,
+                        "min_amount": "1000.00",
+                        "max_amount": "5000.00",
+                        "approver_role": "SALES_MANAGER",
+                        "auto_approve": False,
+                    }
+                ],
+            },
+            headers=_auth(token),
+        )
+        assert create_resp.status_code == 201, create_resp.text
+
+        list_resp = test_client.get(_approvals_url(company_id), headers=_auth(token))
+        assert list_resp.status_code == 200, list_resp.text
+        matrices = list_resp.json()["data"]
+        assert len(matrices) == 1
+        rules = matrices[0]["rules"]
+        assert len(rules) == 1
+        assert rules[0]["approval_level"] == 1
+        assert rules[0]["approver_role"] == "SALES_MANAGER"
 
 
 # ---------------------------------------------------------------------------

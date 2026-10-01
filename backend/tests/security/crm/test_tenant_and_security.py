@@ -13,6 +13,7 @@ Task: T096 (tasks.md Phase 10). Spec ref: spec.md §46.
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
@@ -51,7 +52,7 @@ def _add_member_and_login(
 def _current_user_id(client: TestClient, token: str) -> str:
     resp = client.get("/api/v1/profile", headers=auth_header(token))
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _create_customer(client: TestClient, db_session: Session, company_id: str) -> str:
@@ -78,7 +79,7 @@ def _create_customer(client: TestClient, db_session: Session, company_id: str) -
 def _create_lead(
     client: TestClient, company_id: str, token: str, **overrides: object
 ) -> str:
-    payload = {
+    payload: dict[str, Any] = {
         "first_name": "Sec",
         "last_name": "Test",
         "email": f"sec-test-{uuid4().hex[:8]}@example.com",
@@ -88,7 +89,7 @@ def _create_lead(
         crm_url(company_id, "/leads"), json=payload, headers=auth_header(token)
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _qualify_lead(
@@ -134,7 +135,7 @@ def _create_opportunity(
     stage_id: str,
     **overrides: object,
 ) -> str:
-    payload = {
+    payload: dict[str, Any] = {
         "name": "Sec Test Deal",
         "customer_id": customer_id,
         "owner_id": owner_id,
@@ -148,7 +149,7 @@ def _create_opportunity(
         crm_url(company_id, "/opportunities"), json=payload, headers=auth_header(token)
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _create_activity(
@@ -165,7 +166,7 @@ def _create_activity(
         headers=auth_header(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 # ---------------------------------------------------------------------------

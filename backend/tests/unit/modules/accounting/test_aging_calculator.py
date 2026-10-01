@@ -23,10 +23,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
 
+from modules.accounting.repositories.ap import SupplierLedgerRepository
+from modules.accounting.repositories.ar import CustomerLedgerRepository
 from modules.accounting.services.aging_calculator import (
     AgingCalculator,
     APAgingCalculator,
@@ -106,7 +109,9 @@ class TestAgingBucketBoundaries:
     ) -> None:
         ledger, txn = _txn(days_overdue)
         repo = _FakeLedgerRepo([ledger], [txn])
-        report = AgingCalculator(repo).calculate_ar_aging(uuid4(), AS_OF)
+        report = AgingCalculator(
+            cast(CustomerLedgerRepository, repo)
+        ).calculate_ar_aging(uuid4(), AS_OF)
 
         row = next(r for r in report.rows if r.customer_ledger_id == ledger.id)
         assert getattr(row, expected_bucket) == Decimal("100.00")
@@ -116,7 +121,9 @@ class TestAgingBucketBoundaries:
         ledger1, txn1 = _txn(0, "100.00")
         ledger2, txn2 = _txn(31, "250.00")
         repo = _FakeLedgerRepo([ledger1, ledger2], [txn1, txn2])
-        report = AgingCalculator(repo).calculate_ar_aging(uuid4(), AS_OF)
+        report = AgingCalculator(
+            cast(CustomerLedgerRepository, repo)
+        ).calculate_ar_aging(uuid4(), AS_OF)
 
         assert report.totals.current == Decimal("100.00")
         assert report.totals.days_31_60 == Decimal("250.00")
@@ -135,14 +142,18 @@ class TestAgingBucketBoundaries:
             outstanding_amount=Decimal("60.00"),
         )
         repo = _FakeLedgerRepo([ledger], [txn_a, txn_b])
-        report = AgingCalculator(repo).calculate_ar_aging(uuid4(), AS_OF)
+        report = AgingCalculator(
+            cast(CustomerLedgerRepository, repo)
+        ).calculate_ar_aging(uuid4(), AS_OF)
 
         row = report.rows[0]
         assert row.current == Decimal("100.00")
 
     def test_no_open_transactions_returns_empty_rows(self) -> None:
         repo = _FakeLedgerRepo([], [])
-        report = AgingCalculator(repo).calculate_ar_aging(uuid4(), AS_OF)
+        report = AgingCalculator(
+            cast(CustomerLedgerRepository, repo)
+        ).calculate_ar_aging(uuid4(), AS_OF)
         assert report.rows == []
         assert report.totals.total == Decimal("0")
 
@@ -210,7 +221,9 @@ class TestAPAgingCalculator:
     ) -> None:
         ledger, txn = _ap_txn(days_overdue)
         repo = _FakeSupplierLedgerRepo([ledger], [txn])
-        report = APAgingCalculator(repo).calculate_ap_aging(uuid4(), AS_OF)
+        report = APAgingCalculator(
+            cast(SupplierLedgerRepository, repo)
+        ).calculate_ap_aging(uuid4(), AS_OF)
 
         row = next(r for r in report.rows if r.supplier_ledger_id == ledger.id)
         assert getattr(row, expected_bucket) == Decimal("100.00")
@@ -219,7 +232,9 @@ class TestAPAgingCalculator:
         ledger1, txn1 = _ap_txn(0, "300.00")
         ledger2, txn2 = _ap_txn(31, "150.00")
         repo = _FakeSupplierLedgerRepo([ledger1, ledger2], [txn1, txn2])
-        report = APAgingCalculator(repo).calculate_ap_aging(uuid4(), AS_OF)
+        report = APAgingCalculator(
+            cast(SupplierLedgerRepository, repo)
+        ).calculate_ap_aging(uuid4(), AS_OF)
 
         assert report.totals.current == Decimal("300.00")
         assert report.totals.days_31_60 == Decimal("150.00")

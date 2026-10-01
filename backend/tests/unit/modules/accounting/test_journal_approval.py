@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -72,7 +73,7 @@ def journal_service(posting_engine: PostingEngine) -> JournalEntryService:
 
 
 @pytest.fixture
-def gl_setup(db_session: Session) -> dict:
+def gl_setup(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -116,7 +117,7 @@ class TestSelfApprovalPrevention:
         self,
         journal_service: JournalEntryService,
         posting_engine: PostingEngine,
-        gl_setup: dict,
+        gl_setup: dict[str, Any],
     ) -> None:
         creator_id = uuid4()
         draft = posting_engine.create_journal(
@@ -150,7 +151,7 @@ class TestSelfApprovalPrevention:
         self,
         journal_service: JournalEntryService,
         posting_engine: PostingEngine,
-        gl_setup: dict,
+        gl_setup: dict[str, Any],
         db_session: Session,
     ) -> None:
         creator_id = uuid4()

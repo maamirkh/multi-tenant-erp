@@ -161,10 +161,10 @@ class TestT193DisabledTenantOriginationDenied:
         svc = InstallmentContractService(
             repo=InstallmentContractRepository(db_session),
             sequence_repo=None,  # type: ignore[arg-type]
-            eligibility_service=None,  # type: ignore[arg-type] — never reached
-            accounting_gateway=None,  # type: ignore[arg-type] — never reached
-            configuration_service=None,  # type: ignore[arg-type] — never reached
-            audit_service=None,  # type: ignore[arg-type] — never reached
+            eligibility_service=None,  # type: ignore[arg-type]  # never reached
+            accounting_gateway=None,  # type: ignore[arg-type]  # never reached
+            configuration_service=None,  # type: ignore[arg-type]  # never reached
+            audit_service=None,  # type: ignore[arg-type]  # never reached
             access_policy=access_policy,
         )
 
@@ -417,7 +417,7 @@ class TestT194DisabledTenantServicingContinues:
             db_session.query(InstallmentContract).filter_by(id=ctx["contract"].id).one()
         )
         contract.status = "DEFAULTED"
-        contract.defaulted_at = contract.contract_date
+        contract.defaulted_at = contract.contract_date  # type: ignore[assignment]
         db_session.add(contract)
         db_session.commit()
 

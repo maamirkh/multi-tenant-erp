@@ -24,7 +24,7 @@ Security invariants enforced here:
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from fastapi import Request
@@ -613,7 +613,7 @@ class UserProfileResult:
         display_name: str,
         account_status: str,
         is_email_verified: bool,
-        created_at,
+        created_at: datetime,
     ) -> None:
         self.user_id = user_id
         self.email = email

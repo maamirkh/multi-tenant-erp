@@ -21,6 +21,7 @@ Spec ref: spec.md BR-045 through BR-049, tasks T136.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -42,10 +43,10 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, f"Login failed: {resp.text}"
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -59,7 +60,7 @@ def _create_company(client: TestClient, token: str, suffix: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, f"Company creation failed: {resp.text}"
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _member_url(company_id: str, member_id: str, action: str = "") -> str:
@@ -137,7 +138,7 @@ class TestLastOwnerCannotBeDeactivated:
     """
 
     def test_owner_cannot_deactivate_self_as_last_owner(
-        self, test_client: TestClient, sole_owner_company: dict
+        self, test_client: TestClient, sole_owner_company: dict[str, Any]
     ) -> None:
         """Owner (sole) deactivating themselves is blocked — 409."""
         resp = test_client.post(
@@ -151,7 +152,7 @@ class TestLastOwnerCannotBeDeactivated:
         assert resp.status_code == 409
 
     def test_admin_cannot_deactivate_last_owner(
-        self, test_client: TestClient, sole_owner_company: dict
+        self, test_client: TestClient, sole_owner_company: dict[str, Any]
     ) -> None:
         """Admin deactivating the last Owner is blocked — 409."""
         resp = test_client.post(
@@ -177,7 +178,7 @@ class TestLastOwnerCannotBeSuspended:
     """
 
     def test_admin_cannot_suspend_last_owner(
-        self, test_client: TestClient, sole_owner_company: dict
+        self, test_client: TestClient, sole_owner_company: dict[str, Any]
     ) -> None:
         """Admin suspending the last Owner is blocked — 409."""
         resp = test_client.post(
@@ -192,7 +193,7 @@ class TestLastOwnerCannotBeSuspended:
         assert resp.status_code == 409
 
     def test_owner_cannot_suspend_self_as_last_owner(
-        self, test_client: TestClient, sole_owner_company: dict
+        self, test_client: TestClient, sole_owner_company: dict[str, Any]
     ) -> None:
         """Sole Owner suspending themselves is blocked — 409."""
         resp = test_client.post(
@@ -220,7 +221,7 @@ class TestLastOwnerCannotBeDemoted:
     """
 
     def test_owner_cannot_demote_self_when_sole_owner(
-        self, test_client: TestClient, sole_owner_company: dict
+        self, test_client: TestClient, sole_owner_company: dict[str, Any]
     ) -> None:
         """Sole Owner trying to change own role is blocked by BR-013 — 409."""
         resp = test_client.patch(
@@ -235,7 +236,10 @@ class TestLastOwnerCannotBeDemoted:
         assert resp.status_code == 409
 
     def test_demotion_allowed_when_second_owner_exists(
-        self, test_client: TestClient, db_session: Session, sole_owner_company: dict
+        self,
+        test_client: TestClient,
+        db_session: Session,
+        sole_owner_company: dict[str, Any],
     ) -> None:
         """Demoting one of two Owners is permitted (last-owner protection clears).
 
@@ -292,7 +296,7 @@ class TestLastOwnerCannotBeArchived:
     """
 
     def test_admin_cannot_archive_last_owner(
-        self, test_client: TestClient, sole_owner_company: dict
+        self, test_client: TestClient, sole_owner_company: dict[str, Any]
     ) -> None:
         """Admin archiving the last Owner is blocked — 409."""
         resp = test_client.post(
@@ -307,7 +311,7 @@ class TestLastOwnerCannotBeArchived:
         assert resp.status_code == 409
 
     def test_owner_cannot_archive_self_as_last_owner(
-        self, test_client: TestClient, sole_owner_company: dict
+        self, test_client: TestClient, sole_owner_company: dict[str, Any]
     ) -> None:
         """Sole Owner archiving themselves is blocked — 409."""
         resp = test_client.post(

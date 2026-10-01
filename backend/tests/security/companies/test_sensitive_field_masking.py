@@ -25,13 +25,18 @@ from __future__ import annotations
 
 import uuid as _uuid
 from datetime import UTC
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from tests.fixtures.auth_fixtures import create_test_user
+
+if TYPE_CHECKING:
+    from modules.companies.schemas.company import CompanyDetailResponse
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -42,10 +47,10 @@ def _login(client: TestClient, email: str, password: str) -> str:
     resp = client.post(
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -94,7 +99,7 @@ def company_with_sensitive_data(test_client: TestClient, db_session: Session):
 class TestSensitiveFieldMaskingSchema:
     """Direct tests of CompanyDetailResponse.for_role() without HTTP layer."""
 
-    def _make_response(self) -> object:
+    def _make_response(self) -> CompanyDetailResponse:
         from datetime import datetime
 
         from modules.companies.schemas.company import CompanyDetailResponse
@@ -181,7 +186,7 @@ class TestSensitiveFieldMaskingHTTP:
     def test_owner_get_company_returns_unmasked_tax_number(
         self,
         test_client: TestClient,
-        company_with_sensitive_data: tuple,
+        company_with_sensitive_data: tuple[Any, ...],
     ) -> None:
         token, company_id, _ = company_with_sensitive_data
         resp = test_client.get(f"/api/v1/companies/{company_id}", headers=_auth(token))
@@ -194,7 +199,7 @@ class TestSensitiveFieldMaskingHTTP:
         self,
         test_client: TestClient,
         db_session: Session,
-        company_with_sensitive_data: tuple,
+        company_with_sensitive_data: tuple[Any, ...],
     ) -> None:
         """SuperAdmin injected via dependency override sees unmasked fields."""
         from core.auth.dependencies import require_authenticated
@@ -215,7 +220,7 @@ class TestSensitiveFieldMaskingHTTP:
             mock.session_id = None
             return mock
 
-        app = test_client.app
+        app = cast(FastAPI, test_client.app)
         app.dependency_overrides[require_authenticated] = _fake_super_admin
         try:
             resp = test_client.get(f"/api/v1/companies/{company_id}")

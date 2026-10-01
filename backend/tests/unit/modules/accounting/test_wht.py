@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -42,7 +43,7 @@ from modules.accounting.services.payment_service import PaymentService
 
 
 @pytest.fixture
-def setup(db_session: Session) -> dict:
+def setup(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -128,7 +129,7 @@ def _enable_wht(db_session: Session, company_id) -> None:
 
 class TestWHTDeduction:
     def test_gross_1000_wht_10_percent_yields_net_900_and_wht_payable_100(
-        self, payment_service: PaymentService, setup: dict
+        self, payment_service: PaymentService, setup: dict[str, Any]
     ) -> None:
         _enable_wht(payment_service.db, setup["company_id"])
 
@@ -171,10 +172,11 @@ class TestWHTDeduction:
             "900.00"
         )
 
+        assert result is not None
         assert result.journal_entry_id == payment.journal_entry_id
 
     def test_wht_certificate_reports_gross_net_and_rate(
-        self, payment_service: PaymentService, setup: dict
+        self, payment_service: PaymentService, setup: dict[str, Any]
     ) -> None:
         _enable_wht(payment_service.db, setup["company_id"])
         payment, _ = payment_service.create_supplier_payment(
@@ -199,7 +201,7 @@ class TestWHTDeduction:
         assert certificate["wht_rate_percent"] == Decimal("10.00")
 
     def test_wht_without_flag_enabled_raises(
-        self, payment_service: PaymentService, setup: dict
+        self, payment_service: PaymentService, setup: dict[str, Any]
     ) -> None:
         with pytest.raises(WHTNotEnabledError):
             payment_service.create_supplier_payment(
@@ -216,7 +218,7 @@ class TestWHTDeduction:
             )
 
     def test_wht_without_payable_account_raises(
-        self, payment_service: PaymentService, setup: dict
+        self, payment_service: PaymentService, setup: dict[str, Any]
     ) -> None:
         _enable_wht(payment_service.db, setup["company_id"])
         with pytest.raises(PostingValidationError):
@@ -233,7 +235,7 @@ class TestWHTDeduction:
             )
 
     def test_supplier_payment_without_wht_has_zero_wht_amount(
-        self, payment_service: PaymentService, setup: dict
+        self, payment_service: PaymentService, setup: dict[str, Any]
     ) -> None:
         payment, _ = payment_service.create_supplier_payment(
             company_id=setup["company_id"],

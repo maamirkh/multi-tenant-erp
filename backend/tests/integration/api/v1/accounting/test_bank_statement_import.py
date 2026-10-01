@@ -25,6 +25,7 @@ import time
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Any
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -47,7 +48,7 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -91,7 +92,7 @@ def _make_statement_csv(line_count: int, start_date: date) -> str:
     return buf.getvalue()
 
 
-def _parse_statement_csv(csv_text: str) -> list[dict]:
+def _parse_statement_csv(csv_text: str) -> list[dict[str, Any]]:
     reader = csv.DictReader(io.StringIO(csv_text))
     return [
         {

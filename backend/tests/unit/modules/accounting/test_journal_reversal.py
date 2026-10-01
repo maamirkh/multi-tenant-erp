@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -74,7 +75,7 @@ def journal_service(posting_engine: PostingEngine) -> JournalEntryService:
 
 
 @pytest.fixture
-def gl_setup(db_session: Session) -> dict:
+def gl_setup(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -118,7 +119,7 @@ class TestReversalOppositeSign:
         self,
         journal_service: JournalEntryService,
         posting_engine: PostingEngine,
-        gl_setup: dict,
+        gl_setup: dict[str, Any],
     ) -> None:
         result = posting_engine.post_direct(
             company_id=gl_setup["company_id"],
@@ -168,7 +169,7 @@ class TestOriginalMarkedReversed:
         self,
         journal_service: JournalEntryService,
         posting_engine: PostingEngine,
-        gl_setup: dict,
+        gl_setup: dict[str, Any],
     ) -> None:
         result = posting_engine.post_direct(
             company_id=gl_setup["company_id"],
@@ -204,7 +205,7 @@ class TestReversalLinksToOriginal:
         self,
         journal_service: JournalEntryService,
         posting_engine: PostingEngine,
-        gl_setup: dict,
+        gl_setup: dict[str, Any],
     ) -> None:
         result = posting_engine.post_direct(
             company_id=gl_setup["company_id"],
@@ -237,7 +238,7 @@ class TestOnlyPostedCanBeReversed:
         self,
         journal_service: JournalEntryService,
         posting_engine: PostingEngine,
-        gl_setup: dict,
+        gl_setup: dict[str, Any],
     ) -> None:
         draft = posting_engine.create_journal(
             company_id=gl_setup["company_id"],
@@ -265,7 +266,7 @@ class TestOnlyPostedCanBeReversed:
         self,
         journal_service: JournalEntryService,
         posting_engine: PostingEngine,
-        gl_setup: dict,
+        gl_setup: dict[str, Any],
     ) -> None:
         result = posting_engine.post_direct(
             company_id=gl_setup["company_id"],

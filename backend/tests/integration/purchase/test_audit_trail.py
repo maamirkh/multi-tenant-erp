@@ -20,6 +20,7 @@ Task: T254
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -46,10 +47,10 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -57,12 +58,12 @@ def _base(cid: str) -> str:
     return f"/api/v1/companies/{cid}/purchase"
 
 
-def _ok(resp, ctx: str = "") -> dict:
+def _ok(resp, ctx: str = "") -> dict[str, Any]:
     assert resp.status_code in (
         200,
         201,
     ), f"{ctx}: {resp.status_code}: {resp.text[:300]}"
-    return resp.json()["data"]
+    return dict(resp.json()["data"])
 
 
 def _create_company(client: TestClient, token: str) -> str:
@@ -79,7 +80,7 @@ def _create_company(client: TestClient, token: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 @pytest.fixture()
@@ -109,7 +110,7 @@ def _create_and_activate_supplier(client, token, cid, code: str) -> str:
     )
     sid = data["id"]
     client.post(f"{_base(cid)}/suppliers/{sid}/activate", headers=_auth(token), json={})
-    return sid
+    return str(sid)
 
 
 def _create_approved_po(client, token, cid, sid: str) -> tuple[str, str]:
@@ -152,7 +153,7 @@ class TestSupplierAuditTrail:
     def test_supplier_created_event_published(self, audit_auth):
         client, token, cid = audit_auth
         bus = get_event_bus()
-        captured: list[dict] = []
+        captured: list[dict[str, Any]] = []
         bus.subscribe("supplier.created", lambda e: captured.append(e.to_dict()))
 
         client.post(
@@ -173,7 +174,7 @@ class TestSupplierAuditTrail:
     def test_supplier_activated_event_published(self, audit_auth):
         client, token, cid = audit_auth
         bus = get_event_bus()
-        captured: list[dict] = []
+        captured: list[dict[str, Any]] = []
         bus.subscribe("supplier.activated", lambda e: captured.append(e.to_dict()))
 
         resp = client.post(
@@ -198,7 +199,7 @@ class TestSupplierAuditTrail:
     def test_supplier_deactivated_event_published(self, audit_auth):
         client, token, cid = audit_auth
         bus = get_event_bus()
-        captured: list[dict] = []
+        captured: list[dict[str, Any]] = []
         bus.subscribe("supplier.deactivated", lambda e: captured.append(e.to_dict()))
 
         sid = _create_and_activate_supplier(client, token, cid, "AUDIT-DEACT-001")
@@ -220,7 +221,7 @@ class TestPOAuditTrail:
         """PO submit publishes purchase.po.submitted event (no 'created' event exists)."""
         client, token, cid = audit_auth
         bus = get_event_bus()
-        captured: list[dict] = []
+        captured: list[dict[str, Any]] = []
         bus.subscribe("purchase.po.submitted", lambda e: captured.append(e.to_dict()))
 
         sid = _create_and_activate_supplier(client, token, cid, "AUDIT-PO-SUP-001")
@@ -250,7 +251,7 @@ class TestPOAuditTrail:
     def test_po_approved_event_published(self, audit_auth):
         client, token, cid = audit_auth
         bus = get_event_bus()
-        captured: list[dict] = []
+        captured: list[dict[str, Any]] = []
         bus.subscribe("purchase.po.approved", lambda e: captured.append(e.to_dict()))
 
         sid = _create_and_activate_supplier(client, token, cid, "AUDIT-PO-SUP-002")
@@ -270,7 +271,7 @@ class TestGRAuditTrail:
     def test_gr_confirmed_event_published(self, audit_auth):
         client, token, cid = audit_auth
         bus = get_event_bus()
-        captured: list[dict] = []
+        captured: list[dict[str, Any]] = []
         bus.subscribe("purchase.gr.confirmed", lambda e: captured.append(e.to_dict()))
 
         sid = _create_and_activate_supplier(client, token, cid, "AUDIT-GR-SUP-001")

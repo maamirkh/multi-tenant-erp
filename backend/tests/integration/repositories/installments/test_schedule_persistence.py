@@ -239,4 +239,6 @@ class TestScheduleVersionAndLinePersistence:
         fetched_v2 = repo.get_version(company_id, contract.id, 2)
         assert fetched_v1 is not None and fetched_v1.status == "SUPERSEDED"
         assert fetched_v2 is not None and fetched_v2.status == "ACTIVE"
-        assert repo.get_active_version(company_id, contract.id).id == fetched_v2.id
+        active_version = repo.get_active_version(company_id, contract.id)
+        assert active_version is not None
+        assert active_version.id == fetched_v2.id

@@ -23,6 +23,7 @@ Task: T103
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -40,7 +41,7 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -65,7 +66,7 @@ def _create_company(client: TestClient, token: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _create_quotation(
@@ -75,7 +76,7 @@ def _create_quotation(
     customer_id: str | None = None,
     sales_rep_id: str | None = None,
     validity_date: str = "2026-09-30",
-) -> dict:
+) -> dict[str, Any]:
     resp = client.post(
         _url(company_id),
         json={
@@ -88,7 +89,7 @@ def _create_quotation(
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]
+    return dict(resp.json()["data"])
 
 
 # ---------------------------------------------------------------------------
@@ -468,6 +469,68 @@ class TestQuotationLines:
         assert resp.status_code == 201, resp.text
         data = resp.json()["data"]
         assert data["extended_amount"] == "900.00"
+
+    def test_add_line_resolves_price_from_default_price_list_when_unit_price_zero(
+        self, test_client: TestClient, db_session: Session
+    ) -> None:
+        """Regression test — `QuotationLineService.add_line()` called a
+        non-existent `PricingService.resolve()` (the real method is
+        `resolve_price()`), so every resolution attempt raised
+        `AttributeError`, was silently swallowed by a bare `except
+        Exception`, and fell back to the caller-supplied `unit_price`
+        unconditionally. Fixed by calling the correct method. This test
+        sets up a default price list (resolution level 6, well under the
+        `< 7` threshold that gates the override) and asserts a line added
+        with `unit_price=0` picks up the price-list amount rather than
+        silently staying at 0.
+        """
+        user, password = create_test_user(
+            db_session, email="quot_priceresolve@example.com"
+        )
+        token = _login(test_client, user.email, password)
+        company_id = _create_company(test_client, token)
+        product_id = str(uuid4())
+
+        pl_resp = test_client.post(
+            f"/api/v1/companies/{company_id}/sales/price-lists",
+            json={
+                "name": "Default List",
+                "currency_code": "USD",
+                "effective_from": "2026-01-01",
+                "is_default": True,
+            },
+            headers=_auth(token),
+        )
+        assert pl_resp.status_code == 201, pl_resp.text
+        price_list_id = pl_resp.json()["data"]["id"]
+
+        entry_resp = test_client.post(
+            f"/api/v1/companies/{company_id}/sales/price-lists/{price_list_id}/entries",
+            json={
+                "product_id": product_id,
+                "unit_price": "49.99",
+                "minimum_quantity": "1",
+                "unit_of_measure": "EA",
+            },
+            headers=_auth(token),
+        )
+        assert entry_resp.status_code == 201, entry_resp.text
+
+        q = _create_quotation(test_client, company_id, token)
+        resp = test_client.post(
+            _url(company_id, f"/{q['id']}/lines"),
+            json={
+                "product_id": product_id,
+                "description": "Resolved-price item",
+                "quantity": "1",
+                "unit_price": "0",
+                "unit_of_measure": "EA",
+            },
+            headers=_auth(token),
+        )
+        assert resp.status_code == 201, resp.text
+        data = resp.json()["data"]
+        assert data["unit_price"] == "49.9900", data
 
     def test_delete_line_from_draft(
         self, test_client: TestClient, db_session: Session

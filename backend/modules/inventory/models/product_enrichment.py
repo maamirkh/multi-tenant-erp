@@ -11,6 +11,8 @@ Spec ref: specs/005-inventory-management/spec.md §14, §35
 
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
@@ -113,7 +115,7 @@ class ProductCustomFieldValue(TenantBaseModel):
         doc="String/text/date value (stored as text; service casts to correct type)",
     )
 
-    value_number: Mapped[float | None] = mapped_column(
+    value_number: Mapped[str | None] = mapped_column(
         # Use Numeric-compatible column for numeric values
         String(50),
         nullable=True,
@@ -126,7 +128,7 @@ class ProductCustomFieldValue(TenantBaseModel):
         doc="Boolean value for checkbox fields",
     )
 
-    value_json: Mapped[dict | None] = mapped_column(
+    value_json: Mapped[dict[str, Any] | None] = mapped_column(
         JSONB,
         nullable=True,
         doc="JSON value for list/multi-select fields",
@@ -238,7 +240,7 @@ class ImportJob(TenantBaseModel):
         doc="Rows that could not be imported due to validation errors",
     )
 
-    error_rows: Mapped[dict | None] = mapped_column(
+    error_rows: Mapped[list[dict[str, Any]] | None] = mapped_column(
         JSONB,
         nullable=True,
         doc="Array of {row_number, product_code, errors} for failed rows",

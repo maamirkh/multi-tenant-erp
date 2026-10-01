@@ -18,8 +18,9 @@ import time
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import cast
 
-from sqlalchemy import bindparam, event, insert, update
+from sqlalchemy import Table, bindparam, event, insert, update
 from sqlalchemy.orm import Session
 
 from modules.accounting.dependencies import (
@@ -171,7 +172,7 @@ def _seed_company_with_many_contracts(
     db.execute(insert(InstallmentScheduleVersion), version_rows)
 
     db.execute(
-        update(InstallmentContract.__table__)
+        update(cast(Table, InstallmentContract.__table__))
         .where(InstallmentContract.__table__.c.id == bindparam("_id"))
         .values(active_schedule_version_id=bindparam("_version_id")),
         [
@@ -294,7 +295,7 @@ def _seed_customer_with_many_contracts(
     db.execute(insert(InstallmentScheduleVersion), version_rows)
 
     db.execute(
-        update(InstallmentContract.__table__)
+        update(cast(Table, InstallmentContract.__table__))
         .where(InstallmentContract.__table__.c.id == bindparam("_id"))
         .values(active_schedule_version_id=bindparam("_version_id")),
         [
@@ -412,7 +413,7 @@ def _seed_written_off_contracts(db: Session, company_id: uuid.UUID, count: int) 
     db.execute(insert(InstallmentScheduleVersion), version_rows)
 
     db.execute(
-        update(InstallmentContract.__table__)
+        update(cast(Table, InstallmentContract.__table__))
         .where(InstallmentContract.__table__.c.id == bindparam("_id"))
         .values(active_schedule_version_id=bindparam("_version_id")),
         [{"_id": contract_ids[i], "_version_id": version_ids[i]} for i in range(count)],

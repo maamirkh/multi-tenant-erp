@@ -15,6 +15,7 @@ Spec reference: Epic 4, Phase 15 (T132).
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from unittest.mock import MagicMock
 
 import pytest
@@ -61,6 +62,13 @@ def _make_member(
     return m
 
 
+@dataclass
+class _ServiceMocks:
+    db: MagicMock
+    audit_service: MagicMock
+    outbox_repo: MagicMock
+
+
 def _make_service(
     *,
     actor_member: CompanyMember | None = None,
@@ -69,7 +77,7 @@ def _make_service(
     owner_role: MagicMock | None = None,
     admin_role: MagicMock | None = None,
     company: MagicMock | None = None,
-) -> OwnershipService:
+) -> tuple[OwnershipService, _ServiceMocks]:
     """Build an OwnershipService with mocked dependencies."""
     db = MagicMock()
     member_repo = MagicMock()
@@ -101,13 +109,16 @@ def _make_service(
     company_mock = company or MagicMock()
     company_repo.get_by_id.return_value = company_mock
 
-    return OwnershipService(
+    service = OwnershipService(
         db=db,
         member_repo=member_repo,
         role_repo=role_repo,
         company_repo=company_repo,
         audit_service=audit_service,
         outbox_repo=outbox_repo,
+    )
+    return service, _ServiceMocks(
+        db=db, audit_service=audit_service, outbox_repo=outbox_repo
     )
 
 
@@ -140,7 +151,7 @@ class TestTransferOwnership:
         company_mock = MagicMock()
         company_mock.owner_id = actor_user_id
 
-        service = _make_service(
+        service, mocks = _make_service(
             actor_member=actor_member,
             actor_role=owner_role,
             target_member=target_member,
@@ -161,19 +172,19 @@ class TestTransferOwnership:
         # company.owner_id updated
         assert company_mock.owner_id == target_user_id
         # Audit log written
-        service._audit_service.record.assert_called_once()
-        call_kwargs = service._audit_service.record.call_args.kwargs
+        mocks.audit_service.record.assert_called_once()
+        call_kwargs = mocks.audit_service.record.call_args.kwargs
         assert call_kwargs["action"] == "OWNERSHIP_TRANSFERRED"
         assert call_kwargs["company_id"] == company_id
         assert call_kwargs["actor_user_id"] == actor_user_id
         # Outbox event written
-        service._outbox_repo.create.assert_called_once()
+        mocks.outbox_repo.create.assert_called_once()
         # DB committed
-        service._db.commit.assert_called_once()
+        mocks.db.commit.assert_called_once()
 
     def test_actor_not_found_raises(self) -> None:
         """Actor has no active membership → InsufficientRankError."""
-        service = _make_service(actor_member=None)
+        service, mocks = _make_service(actor_member=None)
 
         with pytest.raises(InsufficientRankError):
             service.transfer_ownership(
@@ -185,7 +196,7 @@ class TestTransferOwnership:
     def test_actor_inactive_raises(self) -> None:
         """Actor membership is inactive → InsufficientRankError."""
         actor_member = _make_member(status=MembershipStatus.inactive.value)
-        service = _make_service(actor_member=actor_member)
+        service, mocks = _make_service(actor_member=actor_member)
 
         with pytest.raises(InsufficientRankError):
             service.transfer_ownership(
@@ -198,7 +209,7 @@ class TestTransferOwnership:
         """Actor is not Owner (rank < OWNER_RANK) → InsufficientRankError."""
         admin_role = _make_role(ADMIN_RANK, "admin")
         actor_member = _make_member(role_id=admin_role.id)
-        service = _make_service(actor_member=actor_member, actor_role=admin_role)
+        service, mocks = _make_service(actor_member=actor_member, actor_role=admin_role)
 
         with pytest.raises(InsufficientRankError):
             service.transfer_ownership(
@@ -211,7 +222,7 @@ class TestTransferOwnership:
         """Target member does not exist → MemberNotFoundError."""
         owner_role = _make_role(OWNER_RANK, "owner")
         actor_member = _make_member(role_id=owner_role.id)
-        service = _make_service(
+        service, mocks = _make_service(
             actor_member=actor_member,
             actor_role=owner_role,
             target_member=None,
@@ -231,7 +242,7 @@ class TestTransferOwnership:
         actor_member = _make_member(user_id=actor_user_id, role_id=owner_role.id)
         # Target is the same user
         target_member = _make_member(user_id=actor_user_id)
-        service = _make_service(
+        service, mocks = _make_service(
             actor_member=actor_member,
             actor_role=owner_role,
             target_member=target_member,
@@ -249,7 +260,7 @@ class TestTransferOwnership:
         owner_role = _make_role(OWNER_RANK, "owner")
         actor_member = _make_member(role_id=owner_role.id)
         target_member = _make_member(status=MembershipStatus.suspended.value)
-        service = _make_service(
+        service, mocks = _make_service(
             actor_member=actor_member,
             actor_role=owner_role,
             target_member=target_member,
@@ -267,7 +278,7 @@ class TestTransferOwnership:
         owner_role = _make_role(OWNER_RANK, "owner")
         actor_member = _make_member(role_id=owner_role.id)
         target_member = _make_member()
-        service = _make_service(
+        service, mocks = _make_service(
             actor_member=actor_member,
             actor_role=owner_role,
             target_member=target_member,
@@ -287,7 +298,7 @@ class TestTransferOwnership:
         owner_role = _make_role(OWNER_RANK, "owner")
         actor_member = _make_member(role_id=owner_role.id)
         target_member = _make_member()
-        service = _make_service(
+        service, mocks = _make_service(
             actor_member=actor_member,
             actor_role=owner_role,
             target_member=target_member,

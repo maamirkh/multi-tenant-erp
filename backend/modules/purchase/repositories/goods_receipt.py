@@ -13,9 +13,11 @@ Task: T156
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import CursorResult, func, select, update
+from sqlalchemy.orm import Session
 
 from modules.purchase.models.goods_receipt import GoodsReceipt, GRLine
 from modules.purchase.repositories import BasePurchaseRepository
@@ -24,7 +26,7 @@ from modules.purchase.repositories import BasePurchaseRepository
 class GoodsReceiptRepository(BasePurchaseRepository[GoodsReceipt]):
     """Repository for GoodsReceipt aggregate root."""
 
-    def __init__(self, db) -> None:
+    def __init__(self, db: Session) -> None:
         super().__init__(db=db, model=GoodsReceipt)
 
     # ------------------------------------------------------------------
@@ -127,7 +129,7 @@ class GoodsReceiptRepository(BasePurchaseRepository[GoodsReceipt]):
 class GRLineRepository(BasePurchaseRepository[GRLine]):
     """Repository for GRLine entities."""
 
-    def __init__(self, db) -> None:
+    def __init__(self, db: Session) -> None:
         super().__init__(db=db, model=GRLine)
 
     def list_for_gr(self, gr_id: UUID, company_id: UUID) -> list[GRLine]:
@@ -202,6 +204,6 @@ class GRLineRepository(BasePurchaseRepository[GRLine]):
             .where(GRLine.is_deleted == False)  # noqa: E712
             .values(is_deleted=True, deleted_at=utcnow())
         )
-        result = self.db.execute(stmt)
+        result = cast(CursorResult[Any], self.db.execute(stmt))
         self.db.flush()
         return result.rowcount

@@ -8,6 +8,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from decimal import Decimal
+from typing import cast
 
 from sqlalchemy.orm import Session
 
@@ -16,6 +17,9 @@ from modules.installments.models.contract import InstallmentContract
 from modules.installments.repositories.audit import InstallmentAuditLogRepository
 from modules.installments.repositories.contract import InstallmentContractRepository
 from modules.installments.services.audit_service import InstallmentAuditService
+from modules.installments.services.configuration_service import (
+    InstallmentConfigurationService,
+)
 from modules.installments.services.contract_service import InstallmentContractService
 
 
@@ -37,10 +41,12 @@ def _make_service(
 ) -> InstallmentContractService:
     return InstallmentContractService(
         repo=InstallmentContractRepository(db_session),
-        sequence_repo=None,
-        eligibility_service=None,
-        accounting_gateway=None,
-        configuration_service=_FakeConfigurationService(threshold),
+        sequence_repo=None,  # type: ignore[arg-type]  # not exercised
+        eligibility_service=None,  # type: ignore[arg-type]  # not exercised
+        accounting_gateway=None,  # type: ignore[arg-type]  # not exercised
+        configuration_service=cast(
+            InstallmentConfigurationService, _FakeConfigurationService(threshold)
+        ),
         audit_service=InstallmentAuditService(
             db=db_session, audit_repo=InstallmentAuditLogRepository(db_session)
         ),

@@ -14,6 +14,7 @@ Spec reference: tasks T036, T046, T073.
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from unittest.mock import MagicMock
 
 import pytest
@@ -54,13 +55,34 @@ def _make_role(rank: int = 50, name: str = "Viewer", slug: str = "viewer") -> Ma
     return role
 
 
+@dataclass
+class _ServiceMocks:
+    """The constructor mocks behind a ``MemberService`` under test.
+
+    Tests assert against these directly (``mocks.audit_service...``)
+    rather than through ``service._audit_service...`` — the latter is
+    statically typed as the real dependency class regardless of what was
+    actually passed at construction, so MagicMock-only members like
+    ``.assert_called_once()``/``.call_args`` don't type-check on it.
+    ``service`` itself stays a plain ``MemberService`` so every existing
+    ``service.add_member(...)``-style call is still checked against the
+    real method signature."""
+
+    db: MagicMock
+    member_repo: MagicMock
+    role_repo: MagicMock
+    audit_service: MagicMock
+    outbox_repo: MagicMock
+    session_repo: MagicMock | None = None
+
+
 def _make_service(
     *,
     member_count: int = 0,
     existing_member: CompanyMember | None = None,
     role: MagicMock | None = None,
     max_members: int = 100,
-) -> MemberService:
+) -> tuple[MemberService, _ServiceMocks]:
     """Create a MemberService with mocked dependencies."""
     db = MagicMock()
     member_repo = MagicMock()
@@ -85,7 +107,13 @@ def _make_service(
         outbox_repo=outbox_repo,
         settings=settings,
     )
-    return service
+    return service, _ServiceMocks(
+        db=db,
+        member_repo=member_repo,
+        role_repo=role_repo,
+        audit_service=audit_service,
+        outbox_repo=outbox_repo,
+    )
 
 
 class TestAddMemberHappyPath:
@@ -94,7 +122,7 @@ class TestAddMemberHappyPath:
     def test_add_member_creates_record(self):
         """add_member creates a CompanyMember with correct fields."""
         role = _make_role(rank=20)
-        service = _make_service(role=role)
+        service, mocks = _make_service(role=role)
 
         company_id = uuid.uuid4()
         user_id = uuid.uuid4()
@@ -109,8 +137,8 @@ class TestAddMemberHappyPath:
         )
 
         # Verify db.add was called with a CompanyMember
-        service._db.add.assert_called_once()
-        added_entity = service._db.add.call_args[0][0]
+        mocks.db.add.assert_called_once()
+        added_entity = mocks.db.add.call_args[0][0]
         assert isinstance(added_entity, CompanyMember)
         assert added_entity.company_id == company_id
         assert added_entity.user_id == user_id
@@ -120,7 +148,7 @@ class TestAddMemberHappyPath:
     def test_add_member_writes_audit_log(self):
         """add_member calls audit_service.record with MEMBER_CREATED."""
         role = _make_role(rank=20)
-        service = _make_service(role=role)
+        service, mocks = _make_service(role=role)
 
         service.add_member(
             company_id=uuid.uuid4(),
@@ -130,14 +158,14 @@ class TestAddMemberHappyPath:
             actor_role_rank=80,
         )
 
-        service._audit_service.record.assert_called_once()
-        call_kwargs = service._audit_service.record.call_args[1]
+        mocks.audit_service.record.assert_called_once()
+        call_kwargs = mocks.audit_service.record.call_args[1]
         assert call_kwargs["action"] == "MEMBER_CREATED"
 
     def test_add_member_publishes_event(self):
         """add_member writes a MemberCreatedEvent to the outbox."""
         role = _make_role(rank=20)
-        service = _make_service(role=role)
+        service, mocks = _make_service(role=role)
 
         service.add_member(
             company_id=uuid.uuid4(),
@@ -147,12 +175,12 @@ class TestAddMemberHappyPath:
             actor_role_rank=80,
         )
 
-        service._outbox_repo.create.assert_called_once()
+        mocks.outbox_repo.create.assert_called_once()
 
     def test_add_member_commits_transaction(self):
         """add_member commits the database transaction."""
         role = _make_role(rank=20)
-        service = _make_service(role=role)
+        service, mocks = _make_service(role=role)
 
         service.add_member(
             company_id=uuid.uuid4(),
@@ -162,12 +190,12 @@ class TestAddMemberHappyPath:
             actor_role_rank=80,
         )
 
-        service._db.commit.assert_called()
+        mocks.db.commit.assert_called()
 
     def test_add_member_with_employee_fields(self):
         """add_member passes employee fields to the CompanyMember."""
         role = _make_role(rank=20)
-        service = _make_service(role=role)
+        service, mocks = _make_service(role=role)
 
         service.add_member(
             company_id=uuid.uuid4(),
@@ -180,7 +208,7 @@ class TestAddMemberHappyPath:
             department="Engineering",
         )
 
-        added_entity = service._db.add.call_args[0][0]
+        added_entity = mocks.db.add.call_args[0][0]
         assert added_entity.employee_id == "EMP-001"
         assert added_entity.job_title == "Developer"
         assert added_entity.department == "Engineering"
@@ -195,7 +223,7 @@ class TestAddMemberDuplicate:
         existing.status = MembershipStatus.active.value
         existing.is_deleted = False
 
-        service = _make_service(existing_member=existing)
+        service, mocks = _make_service(existing_member=existing)
 
         with pytest.raises(MemberAlreadyExistsError):
             service.add_member(
@@ -212,7 +240,7 @@ class TestAddMemberDuplicate:
         existing.status = MembershipStatus.pending_invitation.value
         existing.is_deleted = False
 
-        service = _make_service(existing_member=existing)
+        service, mocks = _make_service(existing_member=existing)
 
         with pytest.raises(MemberAlreadyExistsError):
             service.add_member(
@@ -229,7 +257,7 @@ class TestAddMemberLimitExceeded:
 
     def test_limit_exceeded_raises(self):
         """add_member raises MemberLimitExceededError at limit."""
-        service = _make_service(member_count=100, max_members=100)
+        service, mocks = _make_service(member_count=100, max_members=100)
 
         with pytest.raises(MemberLimitExceededError):
             service.add_member(
@@ -254,7 +282,7 @@ class TestAddMemberArchivedReactivation:
         existing.user_id = uuid.uuid4()
         existing.id = uuid.uuid4()
 
-        service = _make_service(existing_member=existing, role=role)
+        service, mocks = _make_service(existing_member=existing, role=role)
 
         result = service.add_member(
             company_id=existing.company_id,
@@ -277,7 +305,7 @@ class TestAddMemberRankEnforcement:
     def test_equal_rank_raises(self):
         """add_member raises InsufficientRankError when actor rank == target rank."""
         role = _make_role(rank=80)
-        service = _make_service(role=role)
+        service, mocks = _make_service(role=role)
 
         with pytest.raises(InsufficientRankError):
             service.add_member(
@@ -291,7 +319,7 @@ class TestAddMemberRankEnforcement:
     def test_lower_rank_raises(self):
         """add_member raises InsufficientRankError when actor rank < target rank."""
         role = _make_role(rank=80)
-        service = _make_service(role=role)
+        service, mocks = _make_service(role=role)
 
         with pytest.raises(InsufficientRankError):
             service.add_member(
@@ -305,7 +333,7 @@ class TestAddMemberRankEnforcement:
     def test_higher_rank_succeeds(self):
         """add_member succeeds when actor rank > target rank."""
         role = _make_role(rank=20)
-        service = _make_service(role=role)
+        service, mocks = _make_service(role=role)
 
         # Should not raise
         service.add_member(
@@ -322,7 +350,7 @@ class TestAddMemberRoleNotFound:
 
     def test_invalid_role_raises(self):
         """add_member raises RoleNotFoundError for non-existent role."""
-        service = _make_service(role=None)
+        service, mocks = _make_service(role=None)
 
         with pytest.raises(RoleNotFoundError):
             service.add_member(
@@ -362,7 +390,7 @@ def _make_change_role_service(
     current_role: MagicMock | None = None,
     new_role: MagicMock | None = None,
     owner_count: int = 2,
-) -> MemberService:
+) -> tuple[MemberService, _ServiceMocks]:
     """Create a MemberService wired for change_role tests."""
     db = MagicMock()
     member_repo = MagicMock()
@@ -383,13 +411,20 @@ def _make_change_role_service(
 
     role_repo.get_by_id_or_none.side_effect = _role_lookup
 
-    return MemberService(
+    service = MemberService(
         db=db,
         member_repo=member_repo,
         role_repo=role_repo,
         audit_service=audit_service,
         outbox_repo=outbox_repo,
         settings=settings,
+    )
+    return service, _ServiceMocks(
+        db=db,
+        member_repo=member_repo,
+        role_repo=role_repo,
+        audit_service=audit_service,
+        outbox_repo=outbox_repo,
     )
 
 
@@ -402,7 +437,7 @@ class TestChangeRoleHappyPath:
         new_role = _make_role(rank=60, name="Manager", slug="manager")
         member = _make_member(role_id=current_role.id)
 
-        service = _make_change_role_service(
+        service, mocks = _make_change_role_service(
             target_member=member,
             current_role=current_role,
             new_role=new_role,
@@ -424,7 +459,7 @@ class TestChangeRoleHappyPath:
         new_role = _make_role(rank=50, name="Salesperson", slug="salesperson")
         member = _make_member(role_id=current_role.id)
 
-        service = _make_change_role_service(
+        service, mocks = _make_change_role_service(
             target_member=member,
             current_role=current_role,
             new_role=new_role,
@@ -438,8 +473,8 @@ class TestChangeRoleHappyPath:
             actor_role_rank=100,
         )
 
-        service._audit_service.record.assert_called_once()
-        call_kwargs = service._audit_service.record.call_args[1]
+        mocks.audit_service.record.assert_called_once()
+        call_kwargs = mocks.audit_service.record.call_args[1]
         assert call_kwargs["action"] == "MEMBER_ROLE_CHANGED"
         assert call_kwargs["before_state"]["role_id"] == str(current_role.id)
         assert call_kwargs["after_state"]["role_id"] == str(new_role.id)
@@ -450,7 +485,7 @@ class TestChangeRoleHappyPath:
         new_role = _make_role(rank=50, name="Salesperson", slug="salesperson")
         member = _make_member(role_id=current_role.id)
 
-        service = _make_change_role_service(
+        service, mocks = _make_change_role_service(
             target_member=member,
             current_role=current_role,
             new_role=new_role,
@@ -464,7 +499,7 @@ class TestChangeRoleHappyPath:
             actor_role_rank=100,
         )
 
-        service._outbox_repo.create.assert_called_once()
+        mocks.outbox_repo.create.assert_called_once()
 
     def test_change_role_commits(self):
         """change_role commits the transaction."""
@@ -472,7 +507,7 @@ class TestChangeRoleHappyPath:
         new_role = _make_role(rank=50, name="Salesperson", slug="salesperson")
         member = _make_member(role_id=current_role.id)
 
-        service = _make_change_role_service(
+        service, mocks = _make_change_role_service(
             target_member=member,
             current_role=current_role,
             new_role=new_role,
@@ -486,7 +521,7 @@ class TestChangeRoleHappyPath:
             actor_role_rank=100,
         )
 
-        service._db.commit.assert_called()
+        mocks.db.commit.assert_called()
 
 
 class TestChangeRoleSelfPrevention:
@@ -499,7 +534,7 @@ class TestChangeRoleSelfPrevention:
         new_role = _make_role(rank=60, name="Manager", slug="manager")
         member = _make_member(user_id=actor_id, role_id=current_role.id)
 
-        service = _make_change_role_service(
+        service, mocks = _make_change_role_service(
             target_member=member,
             current_role=current_role,
             new_role=new_role,
@@ -524,7 +559,7 @@ class TestChangeRoleRankEnforcement:
         new_role = _make_role(rank=20, name="Viewer", slug="viewer")
         member = _make_member(role_id=current_role.id)
 
-        service = _make_change_role_service(
+        service, mocks = _make_change_role_service(
             target_member=member,
             current_role=current_role,
             new_role=new_role,
@@ -545,7 +580,7 @@ class TestChangeRoleRankEnforcement:
         new_role = _make_role(rank=80, name="Admin", slug="admin")
         member = _make_member(role_id=current_role.id)
 
-        service = _make_change_role_service(
+        service, mocks = _make_change_role_service(
             target_member=member,
             current_role=current_role,
             new_role=new_role,
@@ -566,7 +601,7 @@ class TestChangeRoleRankEnforcement:
         new_role = _make_role(rank=20, name="Viewer", slug="viewer")
         member = _make_member(role_id=current_role.id)
 
-        service = _make_change_role_service(
+        service, mocks = _make_change_role_service(
             target_member=member,
             current_role=current_role,
             new_role=new_role,
@@ -591,7 +626,7 @@ class TestChangeRoleLastOwnerProtection:
         new_role = _make_role(rank=80, name="Admin", slug="admin")
         member = _make_member(role_id=current_role.id)
 
-        service = _make_change_role_service(
+        service, mocks = _make_change_role_service(
             target_member=member,
             current_role=current_role,
             new_role=new_role,
@@ -613,7 +648,7 @@ class TestChangeRoleLastOwnerProtection:
         new_role = _make_role(rank=80, name="Admin", slug="admin")
         member = _make_member(role_id=current_role.id)
 
-        service = _make_change_role_service(
+        service, mocks = _make_change_role_service(
             target_member=member,
             current_role=current_role,
             new_role=new_role,
@@ -637,7 +672,7 @@ class TestChangeRoleMemberNotFound:
 
     def test_nonexistent_member_raises(self):
         """change_role raises MemberNotFoundError for unknown member_id."""
-        service = _make_change_role_service(target_member=None)
+        service, mocks = _make_change_role_service(target_member=None)
 
         with pytest.raises(MemberNotFoundError):
             service.change_role(
@@ -657,7 +692,7 @@ class TestChangeRoleRoleNotFound:
         current_role = _make_role(rank=20, name="Viewer", slug="viewer")
         member = _make_member(role_id=current_role.id)
 
-        service = _make_change_role_service(
+        service, mocks = _make_change_role_service(
             target_member=member,
             current_role=current_role,
             new_role=None,  # New role does not exist
@@ -705,7 +740,7 @@ def _make_lifecycle_service(
     role_rank: int = 20,
     owner_count: int = 2,
     with_session_repo: bool = True,
-) -> MemberService:
+) -> tuple[MemberService, _ServiceMocks]:
     """Create a MemberService wired for lifecycle tests."""
     db = MagicMock()
     member_repo = MagicMock()
@@ -726,13 +761,21 @@ def _make_lifecycle_service(
         role.id = member.role_id
     role_repo.get_by_id_or_none.return_value = role
 
-    return MemberService(
+    service = MemberService(
         db=db,
         member_repo=member_repo,
         role_repo=role_repo,
         audit_service=audit_service,
         outbox_repo=outbox_repo,
         settings=settings,
+        session_repo=session_repo,
+    )
+    return service, _ServiceMocks(
+        db=db,
+        member_repo=member_repo,
+        role_repo=role_repo,
+        audit_service=audit_service,
+        outbox_repo=outbox_repo,
         session_repo=session_repo,
     )
 
@@ -748,7 +791,7 @@ class TestDeactivateMember:
     def test_deactivate_active_member_succeeds(self):
         """deactivate_member transitions active → inactive."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         result = service.deactivate_member(
             company_id=member.company_id,
@@ -761,7 +804,7 @@ class TestDeactivateMember:
     def test_deactivate_writes_audit_log(self):
         """deactivate_member records MEMBER_DEACTIVATED audit action."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.deactivate_member(
             company_id=member.company_id,
@@ -769,14 +812,14 @@ class TestDeactivateMember:
             actor_user_id=uuid.uuid4(),
         )
 
-        service._audit_service.record.assert_called_once()
-        kwargs = service._audit_service.record.call_args[1]
+        mocks.audit_service.record.assert_called_once()
+        kwargs = mocks.audit_service.record.call_args[1]
         assert kwargs["action"] == "MEMBER_DEACTIVATED"
 
     def test_deactivate_revokes_sessions(self):
         """deactivate_member calls session_repo.revoke_all_by_user."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.deactivate_member(
             company_id=member.company_id,
@@ -784,12 +827,13 @@ class TestDeactivateMember:
             actor_user_id=uuid.uuid4(),
         )
 
-        service._session_repo.revoke_all_by_user.assert_called_once_with(member.user_id)
+        assert mocks.session_repo is not None
+        mocks.session_repo.revoke_all_by_user.assert_called_once_with(member.user_id)
 
     def test_deactivate_publishes_event(self):
         """deactivate_member writes a MemberDeactivatedEvent to the outbox."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.deactivate_member(
             company_id=member.company_id,
@@ -797,12 +841,12 @@ class TestDeactivateMember:
             actor_user_id=uuid.uuid4(),
         )
 
-        service._outbox_repo.create.assert_called_once()
+        mocks.outbox_repo.create.assert_called_once()
 
     def test_deactivate_invalid_transition_from_inactive_raises(self):
         """deactivate_member raises InvalidStatusTransitionError from inactive."""
         member = _make_lifecycle_member(status=MembershipStatus.inactive.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         with pytest.raises(InvalidStatusTransitionError):
             service.deactivate_member(
@@ -814,7 +858,7 @@ class TestDeactivateMember:
     def test_deactivate_invalid_transition_from_suspended_raises(self):
         """deactivate_member raises InvalidStatusTransitionError from suspended."""
         member = _make_lifecycle_member(status=MembershipStatus.suspended.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         with pytest.raises(InvalidStatusTransitionError):
             service.deactivate_member(
@@ -826,7 +870,7 @@ class TestDeactivateMember:
     def test_deactivate_last_owner_raises(self):
         """deactivate_member raises LastOwnerProtectionError for sole Owner."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(
+        service, mocks = _make_lifecycle_service(
             member=member, role_slug="owner", owner_count=1
         )
 
@@ -840,7 +884,7 @@ class TestDeactivateMember:
     def test_deactivate_not_last_owner_succeeds(self):
         """deactivate_member succeeds when there are multiple Owners."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(
+        service, mocks = _make_lifecycle_service(
             member=member, role_slug="owner", owner_count=2
         )
 
@@ -854,7 +898,7 @@ class TestDeactivateMember:
 
     def test_deactivate_member_not_found_raises(self):
         """deactivate_member raises MemberNotFoundError for unknown member."""
-        service = _make_lifecycle_service(member=None)
+        service, mocks = _make_lifecycle_service(member=None)
 
         with pytest.raises(MemberNotFoundError):
             service.deactivate_member(
@@ -866,7 +910,7 @@ class TestDeactivateMember:
     def test_deactivate_without_session_repo_skips_revocation(self):
         """deactivate_member proceeds without error when session_repo is None."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(member=member, with_session_repo=False)
+        service, mocks = _make_lifecycle_service(member=member, with_session_repo=False)
 
         # Should not raise even without session_repo
         service.deactivate_member(
@@ -889,7 +933,7 @@ class TestReactivateMember:
     def test_reactivate_from_inactive_succeeds(self):
         """reactivate_member transitions inactive → active."""
         member = _make_lifecycle_member(status=MembershipStatus.inactive.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.reactivate_member(
             company_id=member.company_id,
@@ -903,7 +947,7 @@ class TestReactivateMember:
         """reactivate_member transitions suspended → active and clears reason."""
         member = _make_lifecycle_member(status=MembershipStatus.suspended.value)
         member.suspended_reason = "Policy violation"
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.reactivate_member(
             company_id=member.company_id,
@@ -917,7 +961,7 @@ class TestReactivateMember:
     def test_reactivate_from_locked_succeeds(self):
         """reactivate_member transitions locked → active."""
         member = _make_lifecycle_member(status=MembershipStatus.locked.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.reactivate_member(
             company_id=member.company_id,
@@ -930,7 +974,7 @@ class TestReactivateMember:
     def test_reactivate_from_inactive_uses_reactivated_action(self):
         """reactivate_member records MEMBER_REACTIVATED when coming from inactive."""
         member = _make_lifecycle_member(status=MembershipStatus.inactive.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.reactivate_member(
             company_id=member.company_id,
@@ -938,13 +982,13 @@ class TestReactivateMember:
             actor_user_id=uuid.uuid4(),
         )
 
-        kwargs = service._audit_service.record.call_args[1]
+        kwargs = mocks.audit_service.record.call_args[1]
         assert kwargs["action"] == "MEMBER_REACTIVATED"
 
     def test_reactivate_from_suspended_uses_unsuspended_action(self):
         """reactivate_member records MEMBER_UNSUSPENDED when coming from suspended."""
         member = _make_lifecycle_member(status=MembershipStatus.suspended.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.reactivate_member(
             company_id=member.company_id,
@@ -952,13 +996,13 @@ class TestReactivateMember:
             actor_user_id=uuid.uuid4(),
         )
 
-        kwargs = service._audit_service.record.call_args[1]
+        kwargs = mocks.audit_service.record.call_args[1]
         assert kwargs["action"] == "MEMBER_UNSUSPENDED"
 
     def test_reactivate_from_locked_uses_unlocked_action(self):
         """reactivate_member records MEMBER_UNLOCKED when coming from locked."""
         member = _make_lifecycle_member(status=MembershipStatus.locked.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.reactivate_member(
             company_id=member.company_id,
@@ -966,13 +1010,13 @@ class TestReactivateMember:
             actor_user_id=uuid.uuid4(),
         )
 
-        kwargs = service._audit_service.record.call_args[1]
+        kwargs = mocks.audit_service.record.call_args[1]
         assert kwargs["action"] == "MEMBER_UNLOCKED"
 
     def test_reactivate_invalid_transition_from_active_raises(self):
         """reactivate_member raises InvalidStatusTransitionError from active."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         with pytest.raises(InvalidStatusTransitionError):
             service.reactivate_member(
@@ -983,7 +1027,7 @@ class TestReactivateMember:
 
     def test_reactivate_member_not_found_raises(self):
         """reactivate_member raises MemberNotFoundError for unknown member."""
-        service = _make_lifecycle_service(member=None)
+        service, mocks = _make_lifecycle_service(member=None)
 
         with pytest.raises(MemberNotFoundError):
             service.reactivate_member(
@@ -1004,7 +1048,7 @@ class TestSuspendMember:
     def test_suspend_active_member_succeeds(self):
         """suspend_member transitions active → suspended and stores reason."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.suspend_member(
             company_id=member.company_id,
@@ -1019,7 +1063,7 @@ class TestSuspendMember:
     def test_suspend_locked_member_succeeds(self):
         """suspend_member transitions locked → suspended."""
         member = _make_lifecycle_member(status=MembershipStatus.locked.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.suspend_member(
             company_id=member.company_id,
@@ -1033,7 +1077,7 @@ class TestSuspendMember:
     def test_suspend_writes_audit_log(self):
         """suspend_member records MEMBER_SUSPENDED with reason."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.suspend_member(
             company_id=member.company_id,
@@ -1042,14 +1086,14 @@ class TestSuspendMember:
             reason="Misconduct",
         )
 
-        kwargs = service._audit_service.record.call_args[1]
+        kwargs = mocks.audit_service.record.call_args[1]
         assert kwargs["action"] == "MEMBER_SUSPENDED"
         assert kwargs["after_state"]["reason"] == "Misconduct"
 
     def test_suspend_revokes_sessions(self):
         """suspend_member calls session_repo.revoke_all_by_user."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.suspend_member(
             company_id=member.company_id,
@@ -1058,12 +1102,13 @@ class TestSuspendMember:
             reason="Reason",
         )
 
-        service._session_repo.revoke_all_by_user.assert_called_once_with(member.user_id)
+        assert mocks.session_repo is not None
+        mocks.session_repo.revoke_all_by_user.assert_called_once_with(member.user_id)
 
     def test_suspend_publishes_event(self):
         """suspend_member writes a MemberSuspendedEvent to the outbox."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.suspend_member(
             company_id=member.company_id,
@@ -1072,12 +1117,12 @@ class TestSuspendMember:
             reason="Testing",
         )
 
-        service._outbox_repo.create.assert_called_once()
+        mocks.outbox_repo.create.assert_called_once()
 
     def test_suspend_invalid_transition_from_inactive_raises(self):
         """suspend_member raises InvalidStatusTransitionError from inactive."""
         member = _make_lifecycle_member(status=MembershipStatus.inactive.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         with pytest.raises(InvalidStatusTransitionError):
             service.suspend_member(
@@ -1090,7 +1135,7 @@ class TestSuspendMember:
     def test_suspend_invalid_transition_from_archived_raises(self):
         """suspend_member raises InvalidStatusTransitionError from archived."""
         member = _make_lifecycle_member(status=MembershipStatus.archived.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         with pytest.raises(InvalidStatusTransitionError):
             service.suspend_member(
@@ -1103,7 +1148,7 @@ class TestSuspendMember:
     def test_suspend_last_owner_raises(self):
         """suspend_member raises LastOwnerProtectionError for sole Owner."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(
+        service, mocks = _make_lifecycle_service(
             member=member, role_slug="owner", owner_count=1
         )
 
@@ -1127,7 +1172,7 @@ class TestLockMember:
     def test_lock_active_member_succeeds(self):
         """lock_member transitions active → locked."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.lock_member(
             company_id=member.company_id,
@@ -1140,7 +1185,7 @@ class TestLockMember:
     def test_lock_writes_audit_log(self):
         """lock_member records MEMBER_LOCKED audit action."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.lock_member(
             company_id=member.company_id,
@@ -1148,13 +1193,13 @@ class TestLockMember:
             actor_user_id=uuid.uuid4(),
         )
 
-        kwargs = service._audit_service.record.call_args[1]
+        kwargs = mocks.audit_service.record.call_args[1]
         assert kwargs["action"] == "MEMBER_LOCKED"
 
     def test_lock_revokes_sessions(self):
         """lock_member calls session_repo.revoke_all_by_user."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.lock_member(
             company_id=member.company_id,
@@ -1162,12 +1207,13 @@ class TestLockMember:
             actor_user_id=uuid.uuid4(),
         )
 
-        service._session_repo.revoke_all_by_user.assert_called_once_with(member.user_id)
+        assert mocks.session_repo is not None
+        mocks.session_repo.revoke_all_by_user.assert_called_once_with(member.user_id)
 
     def test_lock_publishes_event(self):
         """lock_member writes a MemberLockedEvent to the outbox."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.lock_member(
             company_id=member.company_id,
@@ -1175,12 +1221,12 @@ class TestLockMember:
             actor_user_id=uuid.uuid4(),
         )
 
-        service._outbox_repo.create.assert_called_once()
+        mocks.outbox_repo.create.assert_called_once()
 
     def test_lock_invalid_transition_from_inactive_raises(self):
         """lock_member raises InvalidStatusTransitionError from inactive."""
         member = _make_lifecycle_member(status=MembershipStatus.inactive.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         with pytest.raises(InvalidStatusTransitionError):
             service.lock_member(
@@ -1192,7 +1238,7 @@ class TestLockMember:
     def test_lock_invalid_transition_from_suspended_raises(self):
         """lock_member raises InvalidStatusTransitionError from suspended."""
         member = _make_lifecycle_member(status=MembershipStatus.suspended.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         with pytest.raises(InvalidStatusTransitionError):
             service.lock_member(
@@ -1203,7 +1249,7 @@ class TestLockMember:
 
     def test_lock_member_not_found_raises(self):
         """lock_member raises MemberNotFoundError for unknown member."""
-        service = _make_lifecycle_service(member=None)
+        service, mocks = _make_lifecycle_service(member=None)
 
         with pytest.raises(MemberNotFoundError):
             service.lock_member(
@@ -1224,7 +1270,7 @@ class TestArchiveMember:
     def test_archive_active_member_succeeds(self):
         """archive_member transitions active → archived and sets deletion fields."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.archive_member(
             company_id=member.company_id,
@@ -1241,7 +1287,7 @@ class TestArchiveMember:
     def test_archive_inactive_member_succeeds(self):
         """archive_member transitions inactive → archived."""
         member = _make_lifecycle_member(status=MembershipStatus.inactive.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.archive_member(
             company_id=member.company_id,
@@ -1255,7 +1301,7 @@ class TestArchiveMember:
     def test_archive_suspended_member_succeeds(self):
         """archive_member transitions suspended → archived."""
         member = _make_lifecycle_member(status=MembershipStatus.suspended.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.archive_member(
             company_id=member.company_id,
@@ -1269,7 +1315,7 @@ class TestArchiveMember:
     def test_archive_locked_member_succeeds(self):
         """archive_member transitions locked → archived."""
         member = _make_lifecycle_member(status=MembershipStatus.locked.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.archive_member(
             company_id=member.company_id,
@@ -1283,7 +1329,7 @@ class TestArchiveMember:
     def test_archive_writes_audit_log(self):
         """archive_member records MEMBER_ARCHIVED with reason."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.archive_member(
             company_id=member.company_id,
@@ -1292,14 +1338,14 @@ class TestArchiveMember:
             reason="Voluntary exit",
         )
 
-        kwargs = service._audit_service.record.call_args[1]
+        kwargs = mocks.audit_service.record.call_args[1]
         assert kwargs["action"] == "MEMBER_ARCHIVED"
         assert kwargs["after_state"]["reason"] == "Voluntary exit"
 
     def test_archive_revokes_sessions(self):
         """archive_member calls session_repo.revoke_all_by_user."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.archive_member(
             company_id=member.company_id,
@@ -1308,12 +1354,13 @@ class TestArchiveMember:
             reason="Reason",
         )
 
-        service._session_repo.revoke_all_by_user.assert_called_once_with(member.user_id)
+        assert mocks.session_repo is not None
+        mocks.session_repo.revoke_all_by_user.assert_called_once_with(member.user_id)
 
     def test_archive_publishes_event(self):
         """archive_member writes a MemberArchivedEvent to the outbox."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         service.archive_member(
             company_id=member.company_id,
@@ -1322,12 +1369,12 @@ class TestArchiveMember:
             reason="Reason",
         )
 
-        service._outbox_repo.create.assert_called_once()
+        mocks.outbox_repo.create.assert_called_once()
 
     def test_archive_invalid_transition_from_archived_raises(self):
         """archive_member raises InvalidStatusTransitionError from archived."""
         member = _make_lifecycle_member(status=MembershipStatus.archived.value)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         with pytest.raises(InvalidStatusTransitionError):
             service.archive_member(
@@ -1340,7 +1387,7 @@ class TestArchiveMember:
     def test_archive_last_owner_raises(self):
         """archive_member raises LastOwnerProtectionError for sole Owner."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(
+        service, mocks = _make_lifecycle_service(
             member=member, role_slug="owner", owner_count=1
         )
 
@@ -1355,7 +1402,7 @@ class TestArchiveMember:
     def test_archive_not_last_owner_succeeds(self):
         """archive_member succeeds when multiple Owners exist."""
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(
+        service, mocks = _make_lifecycle_service(
             member=member, role_slug="owner", owner_count=2
         )
 
@@ -1385,7 +1432,7 @@ class TestRestoreMember:
 
         # restore_member tries get_by_id_or_none first (returns None for archived),
         # then get_deleted_by_id
-        service = _make_lifecycle_service(member=None, deleted_member=member)
+        service, mocks = _make_lifecycle_service(member=None, deleted_member=member)
 
         service.restore_member(
             company_id=member.company_id,
@@ -1404,7 +1451,7 @@ class TestRestoreMember:
         member.is_deleted = True
 
         # Sometimes the primary lookup may include archived records
-        service = _make_lifecycle_service(member=member, deleted_member=None)
+        service, mocks = _make_lifecycle_service(member=member, deleted_member=None)
 
         service.restore_member(
             company_id=member.company_id,
@@ -1417,7 +1464,7 @@ class TestRestoreMember:
     def test_restore_writes_audit_log(self):
         """restore_member records MEMBER_RESTORED audit action."""
         member = _make_lifecycle_member(status=MembershipStatus.archived.value)
-        service = _make_lifecycle_service(member=None, deleted_member=member)
+        service, mocks = _make_lifecycle_service(member=None, deleted_member=member)
 
         service.restore_member(
             company_id=member.company_id,
@@ -1425,13 +1472,13 @@ class TestRestoreMember:
             actor_user_id=uuid.uuid4(),
         )
 
-        kwargs = service._audit_service.record.call_args[1]
+        kwargs = mocks.audit_service.record.call_args[1]
         assert kwargs["action"] == "MEMBER_RESTORED"
 
     def test_restore_publishes_event(self):
         """restore_member writes a MemberRestoredEvent to the outbox."""
         member = _make_lifecycle_member(status=MembershipStatus.archived.value)
-        service = _make_lifecycle_service(member=None, deleted_member=member)
+        service, mocks = _make_lifecycle_service(member=None, deleted_member=member)
 
         service.restore_member(
             company_id=member.company_id,
@@ -1439,11 +1486,11 @@ class TestRestoreMember:
             actor_user_id=uuid.uuid4(),
         )
 
-        service._outbox_repo.create.assert_called_once()
+        mocks.outbox_repo.create.assert_called_once()
 
     def test_restore_member_not_found_raises(self):
         """restore_member raises MemberNotFoundError when neither lookup finds a member."""
-        service = _make_lifecycle_service(member=None, deleted_member=None)
+        service, mocks = _make_lifecycle_service(member=None, deleted_member=None)
 
         with pytest.raises(MemberNotFoundError):
             service.restore_member(
@@ -1458,7 +1505,7 @@ class TestRestoreMember:
         active → active is not a valid state machine transition (BR-020).
         """
         member = _make_lifecycle_member(status=MembershipStatus.active.value)
-        service = _make_lifecycle_service(member=member, deleted_member=None)
+        service, mocks = _make_lifecycle_service(member=member, deleted_member=None)
 
         with pytest.raises(InvalidStatusTransitionError):
             service.restore_member(
@@ -1497,7 +1544,7 @@ class TestLifecycleStateTransitionMatrix:
     def test_transition(self, from_status, to_status, method, ok, kwargs):
         """Parametric BR-020 transition matrix check."""
         member = _make_lifecycle_member(status=from_status)
-        service = _make_lifecycle_service(member=member)
+        service, mocks = _make_lifecycle_service(member=member)
 
         call = getattr(service, method)
         call_kwargs = {
@@ -1532,7 +1579,7 @@ def _make_update_service(
     *,
     target_member: MagicMock | None = None,
     employee_id_conflict: MagicMock | None = None,
-) -> MemberService:
+) -> tuple[MemberService, _ServiceMocks]:
     """Create a MemberService wired for update_member tests."""
     db = MagicMock()
     member_repo = MagicMock()
@@ -1545,13 +1592,20 @@ def _make_update_service(
     # get_by_employee_id returns the conflict mock (or None if no conflict)
     member_repo.get_by_employee_id.return_value = employee_id_conflict
 
-    return MemberService(
+    service = MemberService(
         db=db,
         member_repo=member_repo,
         role_repo=role_repo,
         audit_service=audit_service,
         outbox_repo=outbox_repo,
         settings=settings,
+    )
+    return service, _ServiceMocks(
+        db=db,
+        member_repo=member_repo,
+        role_repo=role_repo,
+        audit_service=audit_service,
+        outbox_repo=outbox_repo,
     )
 
 
@@ -1583,7 +1637,7 @@ class TestUpdateMemberEmployeeId:
     def test_set_new_unique_employee_id_succeeds(self):
         """Setting an employee_id not used by any other member succeeds."""
         member = _make_update_member()
-        service = _make_update_service(
+        service, mocks = _make_update_service(
             target_member=member,
             employee_id_conflict=None,
         )
@@ -1600,7 +1654,7 @@ class TestUpdateMemberEmployeeId:
         """Re-assigning the same employee_id to the same member does not raise."""
         member = _make_update_member(employee_id="EMP-001")
         # get_by_employee_id returns the same member (self-conflict)
-        service = _make_update_service(
+        service, mocks = _make_update_service(
             target_member=member,
             employee_id_conflict=member,
         )
@@ -1617,7 +1671,7 @@ class TestUpdateMemberEmployeeId:
         """Setting employee_id already used by another member raises EmployeeIdConflictError."""
         member = _make_update_member()
         other_member = _make_update_member(employee_id="EMP-999")
-        service = _make_update_service(
+        service, mocks = _make_update_service(
             target_member=member,
             employee_id_conflict=other_member,
         )
@@ -1634,7 +1688,7 @@ class TestUpdateMemberEmployeeId:
         """Clearing employee_id (setting to None) does not trigger uniqueness check."""
         member = _make_update_member(employee_id="EMP-001")
         conflict = _make_update_member()
-        service = _make_update_service(
+        service, mocks = _make_update_service(
             target_member=member,
             employee_id_conflict=conflict,
         )
@@ -1646,12 +1700,12 @@ class TestUpdateMemberEmployeeId:
             actor_role_rank=80,
             employee_id=None,
         )
-        service._member_repo.get_by_employee_id.assert_not_called()
+        mocks.member_repo.get_by_employee_id.assert_not_called()
 
     def test_employee_id_not_provided_skips_uniqueness_check(self):
         """Omitting employee_id (sentinel) does not trigger uniqueness check."""
         member = _make_update_member()
-        service = _make_update_service(target_member=member)
+        service, mocks = _make_update_service(target_member=member)
         # Not passing employee_id at all (uses sentinel ...)
         service.update_member(
             company_id=member.company_id,
@@ -1659,7 +1713,7 @@ class TestUpdateMemberEmployeeId:
             actor_user_id=uuid.uuid4(),
             actor_role_rank=80,
         )
-        service._member_repo.get_by_employee_id.assert_not_called()
+        mocks.member_repo.get_by_employee_id.assert_not_called()
 
 
 class TestUpdateMemberHireDate:
@@ -1668,7 +1722,7 @@ class TestUpdateMemberHireDate:
     def test_today_hire_date_succeeds(self):
         """Hire date equal to today is valid."""
         member = _make_update_member()
-        service = _make_update_service(target_member=member)
+        service, mocks = _make_update_service(target_member=member)
         service.update_member(
             company_id=member.company_id,
             member_id=member.id,
@@ -1681,7 +1735,7 @@ class TestUpdateMemberHireDate:
     def test_past_hire_date_succeeds(self):
         """Hire date in the past is valid."""
         member = _make_update_member()
-        service = _make_update_service(target_member=member)
+        service, mocks = _make_update_service(target_member=member)
         past = date.today() - timedelta(days=365)
         service.update_member(
             company_id=member.company_id,
@@ -1695,7 +1749,7 @@ class TestUpdateMemberHireDate:
     def test_future_hire_date_raises(self):
         """Hire date in the future raises HireDateInFutureError."""
         member = _make_update_member()
-        service = _make_update_service(target_member=member)
+        service, mocks = _make_update_service(target_member=member)
         future = date.today() + timedelta(days=1)
         with pytest.raises(HireDateInFutureError):
             service.update_member(
@@ -1709,7 +1763,7 @@ class TestUpdateMemberHireDate:
     def test_clear_hire_date_to_none_does_not_validate(self):
         """Clearing hire_date to None does not trigger date validation."""
         member = _make_update_member(hire_date=date.today())
-        service = _make_update_service(target_member=member)
+        service, mocks = _make_update_service(target_member=member)
         service.update_member(
             company_id=member.company_id,
             member_id=member.id,
@@ -1722,7 +1776,7 @@ class TestUpdateMemberHireDate:
     def test_hire_date_not_provided_skips_validation(self):
         """Omitting hire_date (sentinel) does not trigger date validation."""
         member = _make_update_member()
-        service = _make_update_service(target_member=member)
+        service, mocks = _make_update_service(target_member=member)
         # Not passing hire_date at all (uses sentinel ...)
         service.update_member(
             company_id=member.company_id,
@@ -1738,7 +1792,7 @@ class TestUpdateMemberAuditLog:
     def test_update_writes_audit_log_with_before_and_after(self):
         """update_member records before/after state in audit log."""
         member = _make_update_member(notes="old notes")
-        service = _make_update_service(target_member=member)
+        service, mocks = _make_update_service(target_member=member)
 
         service.update_member(
             company_id=member.company_id,
@@ -1748,8 +1802,8 @@ class TestUpdateMemberAuditLog:
             notes="new notes",
         )
 
-        service._audit_service.record.assert_called_once()
-        call_kwargs = service._audit_service.record.call_args[1]
+        mocks.audit_service.record.assert_called_once()
+        call_kwargs = mocks.audit_service.record.call_args[1]
         assert call_kwargs["action"] == "MEMBER_UPDATED"
         assert "before_state" in call_kwargs
         assert call_kwargs["before_state"]["updated_fields"]["notes"] == "old notes"
@@ -1758,7 +1812,7 @@ class TestUpdateMemberAuditLog:
     def test_no_update_skips_audit_log(self):
         """When no fields are provided, no audit log is written."""
         member = _make_update_member()
-        service = _make_update_service(target_member=member)
+        service, mocks = _make_update_service(target_member=member)
 
         service.update_member(
             company_id=member.company_id,
@@ -1768,4 +1822,4 @@ class TestUpdateMemberAuditLog:
             # No fields provided (all sentinel)
         )
 
-        service._audit_service.record.assert_not_called()
+        mocks.audit_service.record.assert_not_called()

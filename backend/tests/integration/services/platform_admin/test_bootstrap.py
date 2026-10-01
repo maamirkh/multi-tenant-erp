@@ -215,6 +215,7 @@ class TestRepeatedBootstrapIsSafeNoOp:
         )
         assert owner_admin_id is not None
         existing_admin = db_session.get(PlatformAdministrator, owner_admin_id)
+        assert existing_admin is not None
         baseline_user = db_session.execute(
             select(User).where(User.id == existing_admin.user_id)
         ).scalar_one()

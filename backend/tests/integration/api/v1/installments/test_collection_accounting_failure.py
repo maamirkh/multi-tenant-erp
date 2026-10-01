@@ -60,6 +60,7 @@ def _lock_todays_period(db_session, company_id) -> None:
     period = FiscalPeriodRepository(db_session).find_open_period_for_date(
         company_id, date.today()
     )
+    assert period is not None
     fiscal_service.lock_period(
         company_id, period.id, locked_by_user_id=None, lock_reason="Gap-3 test fixture"
     )

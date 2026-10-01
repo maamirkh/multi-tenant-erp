@@ -43,9 +43,11 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from pathlib import Path
+from typing import Any, cast
 
 from fastapi.testclient import TestClient
 from sqlalchemy import Uuid, bindparam, select, text
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 
 from core.utils.datetime import utcnow
@@ -76,7 +78,7 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -179,7 +181,7 @@ def _post_a_journal(
     )
     assert resp.status_code == 200, resp.text
 
-    return journal_id
+    return str(journal_id)
 
 
 # ---------------------------------------------------------------------------
@@ -303,7 +305,10 @@ class TestDatabaseLevelImmutability:
         update_stmt = text(
             "UPDATE accounting_journal_lines SET debit_amount = :amt WHERE id = :id"
         ).bindparams(bindparam("id", type_=Uuid(as_uuid=True)))
-        result = db_session.execute(update_stmt, {"amt": 999999, "id": line_id})
+        result = cast(
+            "CursorResult[Any]",
+            db_session.execute(update_stmt, {"amt": 999999, "id": line_id}),
+        )
         db_session.commit()
         assert result.rowcount == 1, (
             f"Raw UPDATE matched {result.rowcount} row(s), expected exactly 1 "

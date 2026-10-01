@@ -43,6 +43,19 @@ log = logging.getLogger(__name__)
 
 _TWO = Decimal("0.01")
 
+#: KPIs whose value is an amount of money, or a ratio of amounts — each is
+#: only meaningful within one currency. ``get_money_kpis()`` computes these
+#: per currency (Epic 11 FR-RPT-152); the rest are counts, rates or days.
+MONEY_KPI_IDS: frozenset[str] = frozenset(
+    {
+        KPIType.REVENUE.value,
+        KPIType.AOV.value,
+        KPIType.SALES_GROWTH_RATE.value,
+        KPIType.OUTSTANDING_ORDERS_VALUE.value,
+        KPIType.RETURN_RATE.value,
+    }
+)
+
 
 def _pct(numerator: Decimal | None, denominator: Decimal | None) -> Decimal | None:
     if numerator is None or denominator is None or denominator == 0:
@@ -143,6 +156,94 @@ class KPIService:
         ]
         return KPIDashboard(company_id=str(company_id), period_label=label, kpis=kpis)
 
+    def currencies_in_period(
+        self,
+        company_id: str | UUID,
+        date_from: str | None = None,
+        date_to: str | None = None,
+    ) -> list[str]:
+        """Currency codes any money KPI draws on for this period: issued
+        invoices in the period and its comparison period, plus open orders.
+        Sorted; empty when there is no data."""
+        company_id = (
+            UUID(str(company_id)) if not isinstance(company_id, UUID) else company_id
+        )
+        prev_from, prev_to = _prev_period(date_from, date_to)
+        codes: set[str] = set()
+        for start, end in ((date_from, date_to), (prev_from, prev_to)):
+            q = self._db.query(SalesInvoice.currency_code).filter(
+                SalesInvoice.company_id == company_id,
+                SalesInvoice.is_deleted.is_(False),
+                SalesInvoice.status.in_(["ISSUED", "PAID"]),
+            )
+            if start:
+                q = q.filter(SalesInvoice.invoice_date >= start)
+            if end:
+                q = q.filter(SalesInvoice.invoice_date <= end)
+            codes.update(code for (code,) in q.distinct() if code)
+        orders = (
+            self._db.query(SalesOrder.currency_code)
+            .filter(
+                SalesOrder.company_id == company_id,
+                SalesOrder.is_deleted.is_(False),
+                SalesOrder.status.in_(["APPROVED", "PARTIALLY_DELIVERED"]),
+            )
+            .distinct()
+        )
+        codes.update(code for (code,) in orders if code)
+        return sorted(codes)
+
+    def get_money_kpis(
+        self,
+        company_id: str | UUID,
+        currency_code: str,
+        date_from: str | None = None,
+        date_to: str | None = None,
+    ) -> list[KPIResult]:
+        """The ``MONEY_KPI_IDS`` KPIs computed over documents in one
+        currency only, with that currency as the unit (Epic 11
+        FR-RPT-152). ``get_dashboard()`` is unchanged."""
+        company_id = (
+            UUID(str(company_id)) if not isinstance(company_id, UUID) else company_id
+        )
+        label = _period_label(date_from, date_to)
+        prev_from, prev_to = _prev_period(date_from, date_to)
+        return [
+            self._kpi_revenue(
+                company_id,
+                date_from,
+                date_to,
+                prev_from,
+                prev_to,
+                label,
+                currency_code=currency_code,
+            ),
+            self._kpi_aov(
+                company_id,
+                date_from,
+                date_to,
+                prev_from,
+                prev_to,
+                label,
+                currency_code=currency_code,
+            ),
+            self._kpi_sales_growth(
+                company_id,
+                date_from,
+                date_to,
+                prev_from,
+                prev_to,
+                label,
+                currency_code=currency_code,
+            ),
+            self._kpi_outstanding_orders(
+                company_id, label, currency_code=currency_code
+            ),
+            self._kpi_return_rate(
+                company_id, date_from, date_to, label, currency_code=currency_code
+            ),
+        ]
+
     # -----------------------------------------------------------------------
     # KPI-01: Revenue
     # -----------------------------------------------------------------------
@@ -155,33 +256,41 @@ class KPIService:
         prev_from: str,
         prev_to: str,
         label: str,
+        currency_code: str | None = None,
     ) -> KPIResult:
-        cur = self._invoice_revenue(company_id, date_from, date_to)
-        prev = self._invoice_revenue(company_id, prev_from, prev_to)
+        cur = self._invoice_revenue(company_id, date_from, date_to, currency_code)
+        prev = self._invoice_revenue(company_id, prev_from, prev_to, currency_code)
         t, chg = _trend(cur, prev)
         return KPIResult(
             kpi_id=KPIType.REVENUE.value,
             name="Revenue",
             value=cur,
-            unit="USD",
+            unit=currency_code or "USD",
             period_label=label,
             trend=t,
             change_pct=chg,
         )
 
     def _invoice_revenue(
-        self, company_id: UUID, date_from: str | None, date_to: str | None
+        self,
+        company_id: UUID,
+        date_from: str | None,
+        date_to: str | None,
+        currency_code: str | None = None,
     ) -> Decimal | None:
         q = self._db.query(func.sum(SalesInvoice.total_amount)).filter(
             SalesInvoice.company_id == company_id,
             SalesInvoice.is_deleted.is_(False),
             SalesInvoice.status.in_(["ISSUED", "PAID"]),
         )
+        if currency_code:
+            q = q.filter(SalesInvoice.currency_code == currency_code)
         if date_from:
             q = q.filter(SalesInvoice.invoice_date >= date_from)
         if date_to:
             q = q.filter(SalesInvoice.invoice_date <= date_to)
-        return q.scalar()
+        result: Decimal | None = q.scalar()
+        return result
 
     # -----------------------------------------------------------------------
     # KPI-02: Gross Margin %
@@ -256,22 +365,27 @@ class KPIService:
         prev_from: str,
         prev_to: str,
         label: str,
+        currency_code: str | None = None,
     ) -> KPIResult:
-        cur = self._aov(company_id, date_from, date_to)
-        prev = self._aov(company_id, prev_from, prev_to)
+        cur = self._aov(company_id, date_from, date_to, currency_code)
+        prev = self._aov(company_id, prev_from, prev_to, currency_code)
         t, chg = _trend(cur, prev)
         return KPIResult(
             kpi_id=KPIType.AOV.value,
             name="Average Order Value",
             value=cur,
-            unit="USD",
+            unit=currency_code or "USD",
             period_label=label,
             trend=t,
             change_pct=chg,
         )
 
     def _aov(
-        self, company_id: UUID, date_from: str | None, date_to: str | None
+        self,
+        company_id: UUID,
+        date_from: str | None,
+        date_to: str | None,
+        currency_code: str | None = None,
     ) -> Decimal | None:
         q = self._db.query(
             func.sum(SalesInvoice.total_amount),
@@ -281,6 +395,8 @@ class KPIService:
             SalesInvoice.is_deleted.is_(False),
             SalesInvoice.status.in_(["ISSUED", "PAID"]),
         )
+        if currency_code:
+            q = q.filter(SalesInvoice.currency_code == currency_code)
         if date_from:
             q = q.filter(SalesInvoice.invoice_date >= date_from)
         if date_to:
@@ -300,9 +416,10 @@ class KPIService:
         prev_from: str,
         prev_to: str,
         label: str,
+        currency_code: str | None = None,
     ) -> KPIResult:
-        cur = self._invoice_revenue(company_id, date_from, date_to)
-        prev = self._invoice_revenue(company_id, prev_from, prev_to)
+        cur = self._invoice_revenue(company_id, date_from, date_to, currency_code)
+        prev = self._invoice_revenue(company_id, prev_from, prev_to, currency_code)
         growth = None
         if cur is not None and prev is not None and prev != 0:
             growth = _pct(cur - prev, prev)
@@ -394,21 +511,22 @@ class KPIService:
     # KPI-08: Outstanding Orders Value
     # -----------------------------------------------------------------------
 
-    def _kpi_outstanding_orders(self, company_id: UUID, label: str) -> KPIResult:
-        value = (
-            self._db.query(func.sum(SalesOrder.total_amount))
-            .filter(
-                SalesOrder.company_id == company_id,
-                SalesOrder.is_deleted.is_(False),
-                SalesOrder.status.in_(["APPROVED", "PARTIALLY_DELIVERED"]),
-            )
-            .scalar()
+    def _kpi_outstanding_orders(
+        self, company_id: UUID, label: str, currency_code: str | None = None
+    ) -> KPIResult:
+        q = self._db.query(func.sum(SalesOrder.total_amount)).filter(
+            SalesOrder.company_id == company_id,
+            SalesOrder.is_deleted.is_(False),
+            SalesOrder.status.in_(["APPROVED", "PARTIALLY_DELIVERED"]),
         )
+        if currency_code:
+            q = q.filter(SalesOrder.currency_code == currency_code)
+        value = q.scalar()
         return KPIResult(
             kpi_id=KPIType.OUTSTANDING_ORDERS_VALUE.value,
             name="Outstanding Orders Value",
             value=value,
-            unit="USD",
+            unit=currency_code or "USD",
             period_label=label,
         )
 
@@ -417,7 +535,12 @@ class KPIService:
     # -----------------------------------------------------------------------
 
     def _kpi_return_rate(
-        self, company_id: UUID, date_from: str | None, date_to: str | None, label: str
+        self,
+        company_id: UUID,
+        date_from: str | None,
+        date_to: str | None,
+        label: str,
+        currency_code: str | None = None,
     ) -> KPIResult:
         # Return value for COMPLETED returns
         ret_q = self._db.query(func.sum(SalesReturn.credit_note_amount)).filter(
@@ -429,9 +552,14 @@ class KPIService:
             ret_q = ret_q.filter(SalesReturn.return_date >= date_from)
         if date_to:
             ret_q = ret_q.filter(SalesReturn.return_date <= date_to)
-        returned = ret_q.scalar()
+        if currency_code:
+            returned = self._returned_in_currency(
+                company_id, date_from, date_to, currency_code
+            )
+        else:
+            returned = ret_q.scalar()
 
-        revenue = self._invoice_revenue(company_id, date_from, date_to)
+        revenue = self._invoice_revenue(company_id, date_from, date_to, currency_code)
         value = _pct(returned, revenue)
         return KPIResult(
             kpi_id=KPIType.RETURN_RATE.value,
@@ -440,6 +568,68 @@ class KPIService:
             unit="%",
             period_label=label,
         )
+
+    def _returned_in_currency(
+        self,
+        company_id: UUID,
+        date_from: str | None,
+        date_to: str | None,
+        currency_code: str,
+    ) -> Decimal | None:
+        """Completed-return value whose source invoice (else order) is in
+        ``currency_code``. A return has no currency of its own. Two steps
+        rather than a string-id-to-UUID join, which differs by database."""
+        q = self._db.query(
+            SalesReturn.credit_note_amount,
+            SalesReturn.invoice_id,
+            SalesReturn.order_id,
+        ).filter(
+            SalesReturn.company_id == company_id,
+            SalesReturn.is_deleted.is_(False),
+            SalesReturn.status == "COMPLETED",
+        )
+        if date_from:
+            q = q.filter(SalesReturn.return_date >= date_from)
+        if date_to:
+            q = q.filter(SalesReturn.return_date <= date_to)
+        returns = q.all()
+        if not returns:
+            return None
+        invoice_ids = {UUID(r.invoice_id) for r in returns if r.invoice_id}
+        order_ids = {UUID(r.order_id) for r in returns if r.order_id}
+        invoice_currency = (
+            {
+                str(i): c
+                for i, c in self._db.query(SalesInvoice.id, SalesInvoice.currency_code)
+                .filter(
+                    SalesInvoice.company_id == company_id,
+                    SalesInvoice.id.in_(invoice_ids),
+                )
+                .all()
+            }
+            if invoice_ids
+            else {}
+        )
+        order_currency = (
+            {
+                str(i): c
+                for i, c in self._db.query(SalesOrder.id, SalesOrder.currency_code)
+                .filter(
+                    SalesOrder.company_id == company_id, SalesOrder.id.in_(order_ids)
+                )
+                .all()
+            }
+            if order_ids
+            else {}
+        )
+        total: Decimal | None = None
+        for r in returns:
+            code = invoice_currency.get(r.invoice_id or "") or order_currency.get(
+                r.order_id or ""
+            )
+            if code == currency_code and r.credit_note_amount is not None:
+                total = (total or Decimal("0")) + r.credit_note_amount
+        return total
 
     # -----------------------------------------------------------------------
     # KPI-10: Avg Days to Fulfil

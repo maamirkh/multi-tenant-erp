@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 from modules.installments.services.schedule_engine import ScheduleEngine
 
@@ -49,7 +50,7 @@ def test_round_half_up_vs_round_half_even_produce_different_base_amounts() -> No
     # 5.000001 / 2 = 2.5000005 exactly — a genuine tie at the 6th decimal
     # place (base amount's 6th digit is 0, i.e. even), so HALF_UP and
     # HALF_EVEN provably diverge.
-    kwargs = dict(
+    kwargs: dict[str, Any] = dict(
         principal=Decimal("5.000001"),
         down_payment=Decimal("0"),
         markup=Decimal("0"),

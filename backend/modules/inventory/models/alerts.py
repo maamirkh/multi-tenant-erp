@@ -19,6 +19,8 @@ Spec ref: specs/005-inventory-management/spec.md §15 / FR-IO-016
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
@@ -79,14 +81,14 @@ class ReorderRule(TenantBaseModel):
         doc="FK to the warehouse (null = applies to all warehouses)",
     )
 
-    reorder_level: Mapped[float] = mapped_column(
+    reorder_level: Mapped[Decimal] = mapped_column(
         Numeric(18, 4),
         nullable=False,
         server_default="0",
         doc="Trigger a reorder suggestion when qty_on_hand falls to this level",
     )
 
-    reorder_quantity: Mapped[float] = mapped_column(
+    reorder_quantity: Mapped[Decimal] = mapped_column(
         Numeric(18, 4),
         nullable=False,
         server_default="1",
@@ -173,13 +175,13 @@ class LowStockAlert(TenantBaseModel):
         doc="OPEN | ACKNOWLEDGED | RESOLVED",
     )
 
-    current_quantity: Mapped[float] = mapped_column(
+    current_quantity: Mapped[Decimal] = mapped_column(
         Numeric(18, 4),
         nullable=False,
         doc="Stock quantity at the time the alert was raised",
     )
 
-    threshold_quantity: Mapped[float] = mapped_column(
+    threshold_quantity: Mapped[Decimal] = mapped_column(
         Numeric(18, 4),
         nullable=False,
         doc="The threshold quantity that triggered the alert",
@@ -251,7 +253,7 @@ class ReorderSuggestion(TenantBaseModel):
         doc="FK to the warehouse that is running low",
     )
 
-    suggested_quantity: Mapped[float] = mapped_column(
+    suggested_quantity: Mapped[Decimal] = mapped_column(
         Numeric(18, 4),
         nullable=False,
         doc="Suggested order quantity (from the matching ReorderRule)",

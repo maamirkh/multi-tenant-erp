@@ -129,7 +129,10 @@ class InstallmentContractRepository(BaseRepository[InstallmentContract]):
         total: int = self.db.execute(count_stmt).scalar_one()
 
         rows_stmt = (
-            base_stmt.order_by(InstallmentContract.contract_date.desc())
+            base_stmt.order_by(
+                InstallmentContract.contract_date.desc(),
+                InstallmentContract.id,  # unique tiebreaker (Epic 11 T270)
+            )
             .offset(skip)
             .limit(limit)
         )

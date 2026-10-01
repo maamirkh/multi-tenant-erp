@@ -458,6 +458,58 @@ class AccountsReceivableService:
 
         return AgingCalculator(self._ledgers).calculate_ar_aging(company_id, as_of_date)
 
+    def count_aging_rows(self, company_id: UUID, as_of_date: date) -> int:
+        """Epic 11 Reports additive seam — bounded population size behind
+        the AR aging report (real SQL ``COUNT(DISTINCT customer_ledger_id)``,
+        never a full-population fetch)."""
+        return self._ledgers.count_ar_aging_rows(company_id, as_of_date)
+
+    def get_aging_page(
+        self, company_id: UUID, as_of_date: date, limit: int, offset: int
+    ) -> AgingReport:
+        """Epic 11 Reports additive seam — the identical, unmodified
+        per-ledger aging-bucket formula (``AgingCalculator._bucket_for``),
+        applied only to one SQL-level bounded page of customer ledgers
+        rather than the full company population. Never re-derives the
+        formula; never moves the calculation into Reports."""
+        from modules.accounting.services.aging_calculator import (
+            _BUCKET_FIELDS,
+            AgingCalculator,
+            AgingReport,
+            AgingRow,
+        )
+
+        transactions = self._ledgers.get_ar_aging_page(
+            company_id, as_of_date, limit, offset
+        )
+        ledger_ids = list({t.customer_ledger_id for t in transactions})
+        ledgers_by_id = {
+            ledger.id: ledger
+            for ledger in self._ledgers.get_ledgers_by_ids(company_id, ledger_ids)
+        }
+
+        rows_by_ledger: dict[UUID, AgingRow] = {}
+        for txn in transactions:
+            ledger = ledgers_by_id.get(txn.customer_ledger_id)
+            customer_id = ledger.customer_id if ledger else None
+            row = rows_by_ledger.setdefault(
+                txn.customer_ledger_id,
+                AgingRow(
+                    customer_ledger_id=txn.customer_ledger_id, customer_id=customer_id
+                ),
+            )
+            bucket = AgingCalculator._bucket_for(txn.due_date, as_of_date)
+            setattr(row, bucket, getattr(row, bucket) + txn.outstanding_amount)
+
+        totals = AgingRow(None, None)
+        for row in rows_by_ledger.values():
+            for f in _BUCKET_FIELDS:
+                setattr(totals, f, getattr(totals, f) + getattr(row, f))
+
+        return AgingReport(
+            as_of_date=as_of_date, rows=list(rows_by_ledger.values()), totals=totals
+        )
+
     # ------------------------------------------------------------------
     # Credit management
     # ------------------------------------------------------------------

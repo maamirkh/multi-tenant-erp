@@ -22,6 +22,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from decimal import Decimal
+from typing import cast
 
 import pytest
 from sqlalchemy.orm import Session, sessionmaker
@@ -33,6 +34,9 @@ from modules.installments.models.schedule import (
     InstallmentScheduleVersion,
 )
 from modules.installments.repositories.schedule import InstallmentScheduleRepository
+from modules.installments.services.accounting_gateway import (
+    AccountingIntegrationGateway,
+)
 from modules.installments.services.outstanding_service import (
     InstallmentOutstandingService,
 )
@@ -130,7 +134,7 @@ class _FakeAccountingGateway:
 def outstanding_service(db_session: Session) -> InstallmentOutstandingService:
     return InstallmentOutstandingService(
         schedule_repo=InstallmentScheduleRepository(db_session),
-        accounting_gateway=_FakeAccountingGateway(),
+        accounting_gateway=cast(AccountingIntegrationGateway, _FakeAccountingGateway()),
     )
 
 

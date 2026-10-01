@@ -292,6 +292,30 @@ class InstallmentReportingService:
         ]
         return matching[skip : skip + limit], len(matching)
 
+    def get_due_overdue_report(
+        self, company_id: UUID, *, skip: int = 0, limit: int = 20
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Due rows followed by overdue rows — exactly
+        ``get_due_report()`` + ``get_overdue_report()`` — from ONE
+        classification pass over the company's lines instead of two."""
+        self._authorize_read(company_id)
+        business_date = get_business_date()
+        triples = self._classified_lines_for_company(
+            company_id, business_date=business_date
+        )
+        due = [
+            self._due_row("due", line, contract, due_state)
+            for line, contract, due_state in triples
+            if due_state.state in ("DUE", "PARTIALLY_PAID")
+        ]
+        overdue = [
+            self._due_row("overdue", line, contract, due_state)
+            for line, contract, due_state in triples
+            if due_state.state == "OVERDUE"
+        ]
+        combined = due + overdue
+        return combined[skip : skip + limit], len(combined)
+
     @staticmethod
     def _due_row(
         report_type: str, line: Any, contract: Any, due_state: Any
@@ -300,6 +324,7 @@ class InstallmentReportingService:
             "report_type": report_type,
             "contract_id": str(contract.id),
             "contract_number": contract.contract_number,
+            "currency_code": contract.currency_code,
             "customer_id": str(contract.customer_id),
             "schedule_line_id": str(line.id),
             "due_date": line.due_date.isoformat(),
@@ -348,6 +373,7 @@ class InstallmentReportingService:
                     "report_type": "aging",
                     "contract_id": str(contract.id),
                     "contract_number": contract.contract_number,
+                    "currency_code": contract.currency_code,
                     "customer_id": str(contract.customer_id),
                     "schedule_line_id": str(line.id),
                     "due_date": line.due_date.isoformat(),
@@ -435,6 +461,7 @@ class InstallmentReportingService:
                     "report_type": "default-writeoff",
                     "contract_id": str(contract.id),
                     "contract_number": contract.contract_number,
+                    "currency_code": contract.currency_code,
                     "customer_id": str(contract.customer_id),
                     "defaulted_at": (
                         contract.defaulted_at.isoformat()

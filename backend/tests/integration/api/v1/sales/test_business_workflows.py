@@ -16,6 +16,7 @@ Spec ref: specs/007-sales-management/spec.md §23 Business Workflows
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -41,10 +42,10 @@ def _login(client: TestClient, email: str) -> str:
         json={"email": email, "password": _TEST_PASSWORD},
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -66,7 +67,7 @@ def _create_company(client: TestClient, token: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _setup(test_client: TestClient, db_session: Session) -> tuple[str, str, str]:
@@ -99,7 +100,7 @@ def _create_and_approve_order(
     token: str,
     company_id: str,
     customer_id: str,
-    lines: list[dict] | None = None,
+    lines: list[dict[str, Any]] | None = None,
 ) -> str:
     """Create, submit, and approve a sales order. Returns order_id."""
     if lines is None:
@@ -142,7 +143,7 @@ def _create_and_approve_order(
         assert approve_resp.status_code == 200, approve_resp.text
         assert approve_resp.json()["data"]["status"] == "APPROVED"
 
-    return order_id
+    return str(order_id)
 
 
 # ---------------------------------------------------------------------------

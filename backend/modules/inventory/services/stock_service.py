@@ -45,6 +45,7 @@ from modules.inventory.repositories.stock_repository import (
     StockPositionRepository,
 )
 from modules.inventory.repositories.warehouse_repository import WarehouseRepository
+from modules.inventory.services.alert_service import AlertEvaluationService
 
 logger = logging.getLogger(__name__)
 
@@ -97,14 +98,14 @@ class StockLedgerService:
         movement_repo: StockMovementRepository,
         snapshot_repo: SnapshotRepository,
         warehouse_repo: WarehouseRepository,
-        alert_svc: object | None = None,
+        alert_svc: AlertEvaluationService | None = None,
     ) -> None:
         self._db = db
         self._pos_repo = position_repo
         self._mov_repo = movement_repo
         self._snap_repo = snapshot_repo
         self._wh_repo = warehouse_repo
-        self._alert_svc = alert_svc  # AlertEvaluationService | None
+        self._alert_svc = alert_svc
 
     # ------------------------------------------------------------------
     # Opening stock

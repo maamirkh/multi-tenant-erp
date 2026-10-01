@@ -67,7 +67,7 @@ def _make_company_with_real_installment_contract(pg_db_session: Session) -> uuid
     ctx = build_active_contract_with_schedule(
         pg_db_session, installment_count=1, installment_amount=Decimal("100.00")
     )
-    return ctx["company_id"]
+    return cast(uuid.UUID, ctx["company_id"])
 
 
 class TestSupportAccessCannotReachInstallmentsBusinessRecords:

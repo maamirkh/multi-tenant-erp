@@ -13,10 +13,11 @@ Spec ref: specs/005-inventory-management/spec.md §16
 from __future__ import annotations
 
 import uuid
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
-from sqlalchemy import CheckConstraint, UniqueConstraint
+from sqlalchemy import CheckConstraint, Table, UniqueConstraint
 
 from modules.inventory.models.warehouse import Warehouse, WarehouseLocation
 from modules.inventory.services.warehouse_service import (
@@ -65,7 +66,7 @@ class TestWarehouseModel:
     def test_unique_constraint_company_code(self):
         constraint_names = {
             c.name
-            for c in Warehouse.__table__.constraints
+            for c in cast(Table, Warehouse.__table__).constraints
             if isinstance(c, UniqueConstraint)
         }
         assert "uq_inv_warehouses_company_code" in constraint_names
@@ -73,7 +74,7 @@ class TestWarehouseModel:
     def test_check_constraint_status(self):
         constraint_names = {
             c.name
-            for c in Warehouse.__table__.constraints
+            for c in cast(Table, Warehouse.__table__).constraints
             if isinstance(c, CheckConstraint)
         }
         assert "ck_inv_warehouses_status" in constraint_names
@@ -81,7 +82,7 @@ class TestWarehouseModel:
     def test_check_constraint_type(self):
         constraint_names = {
             c.name
-            for c in Warehouse.__table__.constraints
+            for c in cast(Table, Warehouse.__table__).constraints
             if isinstance(c, CheckConstraint)
         }
         assert "ck_inv_warehouses_type" in constraint_names
@@ -129,7 +130,7 @@ class TestWarehouseLocationModel:
     def test_unique_constraint(self):
         constraint_names = {
             c.name
-            for c in WarehouseLocation.__table__.constraints
+            for c in cast(Table, WarehouseLocation.__table__).constraints
             if isinstance(c, UniqueConstraint)
         }
         assert "uq_inv_wh_locations_wh_code" in constraint_names
@@ -176,7 +177,7 @@ class TestWarehouseStatusTransitions:
 class TestWarehouseServiceStateMachine:
     """Unit tests for WarehouseService.transition_status using mocks."""
 
-    def _make_service(self, warehouse: Warehouse) -> WarehouseService:
+    def _make_service(self, warehouse: Warehouse) -> tuple[WarehouseService, MagicMock]:
         """Build a WarehouseService with mocked repos."""
         db = MagicMock()
         db.flush = MagicMock()
@@ -184,7 +185,10 @@ class TestWarehouseServiceStateMachine:
         wh_repo.get_by_id_or_none.return_value = warehouse
         wh_repo.has_stock.return_value = False
         loc_repo = MagicMock()
-        return WarehouseService(db=db, warehouse_repo=wh_repo, location_repo=loc_repo)
+        service = WarehouseService(
+            db=db, warehouse_repo=wh_repo, location_repo=loc_repo
+        )
+        return service, wh_repo
 
     def _make_warehouse(self, status: str) -> Warehouse:
         cid = uuid.uuid4()
@@ -201,7 +205,7 @@ class TestWarehouseServiceStateMachine:
 
     def test_active_to_inactive(self):
         wh = self._make_warehouse("ACTIVE")
-        svc = self._make_service(wh)
+        svc, wh_repo = self._make_service(wh)
         result = svc.transition_status(
             company_id=wh.company_id,
             warehouse_id=wh.id,
@@ -211,7 +215,7 @@ class TestWarehouseServiceStateMachine:
 
     def test_invalid_transition_raises(self):
         wh = self._make_warehouse("ACTIVE")
-        svc = self._make_service(wh)
+        svc, wh_repo = self._make_service(wh)
         with pytest.raises(InvalidWarehouseStateTransitionError):
             svc.transition_status(
                 company_id=wh.company_id,
@@ -221,8 +225,8 @@ class TestWarehouseServiceStateMachine:
 
     def test_archive_with_stock_raises(self):
         wh = self._make_warehouse("INACTIVE")
-        svc = self._make_service(wh)
-        svc._repo.has_stock.return_value = True
+        svc, wh_repo = self._make_service(wh)
+        wh_repo.has_stock.return_value = True
         with pytest.raises(WarehouseHasStockError):
             svc.transition_status(
                 company_id=wh.company_id,
@@ -232,8 +236,8 @@ class TestWarehouseServiceStateMachine:
 
     def test_archive_without_stock_succeeds(self):
         wh = self._make_warehouse("INACTIVE")
-        svc = self._make_service(wh)
-        svc._repo.has_stock.return_value = False
+        svc, wh_repo = self._make_service(wh)
+        wh_repo.has_stock.return_value = False
         result = svc.transition_status(
             company_id=wh.company_id,
             warehouse_id=wh.id,
@@ -243,7 +247,7 @@ class TestWarehouseServiceStateMachine:
 
     def test_terminal_archived_raises(self):
         wh = self._make_warehouse("ARCHIVED")
-        svc = self._make_service(wh)
+        svc, wh_repo = self._make_service(wh)
         with pytest.raises(InvalidWarehouseStateTransitionError):
             svc.transition_status(
                 company_id=wh.company_id,

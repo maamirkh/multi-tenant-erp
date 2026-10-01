@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -25,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from modules.accounting.constants import RecurringInstanceStatus
 from modules.accounting.models.coa import Account
+from modules.accounting.models.recurring import RecurringJournalInstance
 from modules.accounting.repositories.coa import AccountRepository
 from modules.accounting.repositories.feature_flag_repository import (
     AccountingFeatureFlagRepository,
@@ -101,7 +103,7 @@ def recurring_service(
 
 
 @pytest.fixture
-def gl_setup(account_repo: AccountRepository, db_session: Session) -> dict:
+def gl_setup(account_repo: AccountRepository, db_session: Session) -> dict[str, Any]:
     company_id = uuid4()
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -146,9 +148,36 @@ def _lines(rent_id, cash_id, amount=Decimal("1500")):
     ]
 
 
+def _result_for(
+    results: list[RecurringJournalInstance], template_id: Any
+) -> RecurringJournalInstance:
+    """Isolate this test's own instance from ``results``.
+
+    ``execute_due_templates()`` runs across ALL companies by design (see
+    its docstring) — it is a global scheduler batch, not a tenant-scoped
+    query. Other tests sharing the same real database may also have a
+    template due on the same real calendar day (``date.today()``), so
+    asserting a fragile global count/index (``len(results) == 1``,
+    ``results[0]``) breaks depending on what else has run. Match by
+    ``template_id`` instead.
+    """
+    matches = [r for r in results if r.template_id == template_id]
+    assert len(matches) == 1, (
+        f"expected exactly one instance for template {template_id}, "
+        f"found {len(matches)} among {len(results)} globally-due results"
+    )
+    return matches[0]
+
+
+def _not_among(results: list[RecurringJournalInstance], template_id: Any) -> None:
+    """Assert this test's own template was NOT executed, without asserting
+    the (fragile, global) ``results`` list is empty overall."""
+    assert template_id not in {r.template_id for r in results}
+
+
 class TestDueTemplateExecutes:
     def test_due_template_creates_and_posts_journal(
-        self, recurring_service: RecurringJournalService, gl_setup: dict
+        self, recurring_service: RecurringJournalService, gl_setup: dict[str, Any]
     ) -> None:
         template = recurring_service.create_template(
             company_id=gl_setup["company_id"],
@@ -159,9 +188,9 @@ class TestDueTemplateExecutes:
             auto_post=True,
         )
         results = recurring_service.execute_due_templates(as_of_date=gl_setup["today"])
-        assert len(results) == 1
-        assert results[0].status == RecurringInstanceStatus.SUCCESS.value
-        assert results[0].journal_entry_id is not None
+        own = _result_for(results, template.id)
+        assert own.status == RecurringInstanceStatus.SUCCESS.value
+        assert own.journal_entry_id is not None
 
         refreshed = recurring_service.get_template(gl_setup["company_id"], template.id)
         assert refreshed.next_run_date == _add_months(gl_setup["today"], 1)
@@ -169,12 +198,12 @@ class TestDueTemplateExecutes:
 
 class TestFutureTemplateSkipped:
     def test_not_yet_due_template_is_not_executed(
-        self, recurring_service: RecurringJournalService, gl_setup: dict
+        self, recurring_service: RecurringJournalService, gl_setup: dict[str, Any]
     ) -> None:
         from datetime import timedelta
 
         future_start = gl_setup["today"] + timedelta(days=10)
-        recurring_service.create_template(
+        template = recurring_service.create_template(
             company_id=gl_setup["company_id"],
             template_name="Future Template",
             frequency="MONTHLY",
@@ -183,12 +212,12 @@ class TestFutureTemplateSkipped:
             auto_post=True,
         )
         results = recurring_service.execute_due_templates(as_of_date=gl_setup["today"])
-        assert results == []
+        _not_among(results, template.id)
 
 
 class TestIdempotency:
     def test_second_execution_for_same_scheduled_date_skips(
-        self, recurring_service: RecurringJournalService, gl_setup: dict
+        self, recurring_service: RecurringJournalService, gl_setup: dict[str, Any]
     ) -> None:
         template = recurring_service.create_template(
             company_id=gl_setup["company_id"],
@@ -201,7 +230,7 @@ class TestIdempotency:
         first_results = recurring_service.execute_due_templates(
             as_of_date=gl_setup["today"]
         )
-        assert len(first_results) == 1
+        first_own = _result_for(first_results, template.id)
 
         # Simulate a scheduler restart before next_run_date was durably
         # advanced: reset it back to the same scheduled date and re-run.
@@ -212,10 +241,8 @@ class TestIdempotency:
         second_results = recurring_service.execute_due_templates(
             as_of_date=gl_setup["today"]
         )
-        assert len(second_results) == 1
-        assert (
-            second_results[0].id == first_results[0].id
-        )  # same instance, not a duplicate
+        second_own = _result_for(second_results, template.id)
+        assert second_own.id == first_own.id  # same instance, not a duplicate
 
         history = recurring_service.get_template_history(
             gl_setup["company_id"], template.id
@@ -242,7 +269,7 @@ class TestNextRunDateAdvancement:
 
 class TestEndDateDeactivation:
     def test_template_deactivated_once_past_end_date(
-        self, recurring_service: RecurringJournalService, gl_setup: dict
+        self, recurring_service: RecurringJournalService, gl_setup: dict[str, Any]
     ) -> None:
         from datetime import timedelta
 
@@ -273,17 +300,17 @@ class TestEndDateDeactivation:
         results = recurring_service.execute_due_templates(
             as_of_date=gl_setup["today"] + timedelta(days=5)
         )
-        assert results == []
+        _not_among(results, template.id)
 
 
 class TestAutoPostFalse:
     def test_creates_draft_without_posting_when_auto_post_false(
         self,
         recurring_service: RecurringJournalService,
-        gl_setup: dict,
+        gl_setup: dict[str, Any],
         posting_engine: PostingEngine,
     ) -> None:
-        recurring_service.create_template(
+        template = recurring_service.create_template(
             company_id=gl_setup["company_id"],
             template_name="Manual Review Template",
             frequency="MONTHLY",
@@ -293,19 +320,18 @@ class TestAutoPostFalse:
             approval_required=False,
         )
         results = recurring_service.execute_due_templates(as_of_date=gl_setup["today"])
-        assert len(results) == 1
-        entry = posting_engine.get_journal(
-            gl_setup["company_id"], results[0].journal_entry_id
-        )
+        own = _result_for(results, template.id)
+        assert own.journal_entry_id is not None
+        entry = posting_engine.get_journal(gl_setup["company_id"], own.journal_entry_id)
         assert entry.status == "DRAFT"
 
     def test_creates_submitted_when_approval_required(
         self,
         recurring_service: RecurringJournalService,
-        gl_setup: dict,
+        gl_setup: dict[str, Any],
         posting_engine: PostingEngine,
     ) -> None:
-        recurring_service.create_template(
+        template = recurring_service.create_template(
             company_id=gl_setup["company_id"],
             template_name="Approval Required Template",
             frequency="MONTHLY",
@@ -315,15 +341,15 @@ class TestAutoPostFalse:
             approval_required=True,
         )
         results = recurring_service.execute_due_templates(as_of_date=gl_setup["today"])
-        entry = posting_engine.get_journal(
-            gl_setup["company_id"], results[0].journal_entry_id
-        )
+        own = _result_for(results, template.id)
+        assert own.journal_entry_id is not None
+        entry = posting_engine.get_journal(gl_setup["company_id"], own.journal_entry_id)
         assert entry.status == "SUBMITTED"
 
 
 class TestTemplateValidation:
     def test_unbalanced_template_rejected(
-        self, recurring_service: RecurringJournalService, gl_setup: dict
+        self, recurring_service: RecurringJournalService, gl_setup: dict[str, Any]
     ) -> None:
         from modules.accounting.exceptions import PostingValidationError
 
@@ -340,7 +366,7 @@ class TestTemplateValidation:
             )
 
     def test_invalid_frequency_rejected(
-        self, recurring_service: RecurringJournalService, gl_setup: dict
+        self, recurring_service: RecurringJournalService, gl_setup: dict[str, Any]
     ) -> None:
         with pytest.raises(ValueError):
             recurring_service.create_template(

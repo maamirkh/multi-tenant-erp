@@ -58,6 +58,7 @@ entitlement-override fix: T133 (Epic 9A Phase 9).
 from __future__ import annotations
 
 from collections.abc import Generator
+from typing import Any
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -69,7 +70,7 @@ from core.config.settings import Settings
 from core.database.session import get_db
 from tests.fixtures.auth_fixtures import create_test_user
 
-_TEST_ARGON2_KWARGS: dict[str, int] = {
+_TEST_ARGON2_KWARGS: dict[str, Any] = {
     "ARGON2_TIME_COST": 1,
     "ARGON2_MEMORY_COST": 19456,
     "ARGON2_PARALLELISM": 1,
@@ -130,10 +131,10 @@ def login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def auth_header(token: str) -> dict:
+def auth_header(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -162,4 +163,4 @@ def create_company(client: TestClient, token: str) -> str:
         headers=auth_header(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])

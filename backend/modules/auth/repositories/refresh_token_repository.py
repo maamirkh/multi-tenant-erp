@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import CursorResult, func, select, update
 from sqlalchemy.orm import Session
 
 from core.utils.datetime import utcnow
@@ -105,11 +106,14 @@ class RefreshTokenRepository:
             Number of tokens revoked.
         """
         now = utcnow()
-        result = self.db.execute(
-            update(RefreshToken)
-            .where(RefreshToken.user_id == user_id)
-            .where(RefreshToken.is_revoked == False)  # noqa: E712
-            .values(is_revoked=True, revoked_at=now, updated_at=now)
+        result = cast(
+            CursorResult[Any],
+            self.db.execute(
+                update(RefreshToken)
+                .where(RefreshToken.user_id == user_id)
+                .where(RefreshToken.is_revoked == False)  # noqa: E712
+                .values(is_revoked=True, revoked_at=now, updated_at=now)
+            ),
         )
         self.db.commit()
         count: int = result.rowcount
@@ -126,11 +130,14 @@ class RefreshTokenRepository:
             Number of tokens revoked.
         """
         now = utcnow()
-        result = self.db.execute(
-            update(RefreshToken)
-            .where(RefreshToken.session_id == session_id)
-            .where(RefreshToken.is_revoked == False)  # noqa: E712
-            .values(is_revoked=True, revoked_at=now, updated_at=now)
+        result = cast(
+            CursorResult[Any],
+            self.db.execute(
+                update(RefreshToken)
+                .where(RefreshToken.session_id == session_id)
+                .where(RefreshToken.is_revoked == False)  # noqa: E712
+                .values(is_revoked=True, revoked_at=now, updated_at=now)
+            ),
         )
         self.db.commit()
         count: int = result.rowcount
@@ -158,8 +165,9 @@ class RefreshTokenRepository:
         from sqlalchemy import delete
 
         now = utcnow()
-        result = self.db.execute(
-            delete(RefreshToken).where(RefreshToken.expires_at <= now)
+        result = cast(
+            CursorResult[Any],
+            self.db.execute(delete(RefreshToken).where(RefreshToken.expires_at <= now)),
         )
         self.db.commit()
         count: int = result.rowcount

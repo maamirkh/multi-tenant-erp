@@ -16,6 +16,7 @@ Spec ref: spec.md §BR-055, FR-062, FR-069, tasks T134.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -37,10 +38,10 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, f"Login failed: {resp.text}"
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -54,7 +55,7 @@ def _create_company(client: TestClient, token: str, suffix: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, f"Company creation failed: {resp.text}"
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +97,7 @@ def two_tenants(test_client: TestClient, db_session: Session):
 
     role_repo = RoleRepository(db_session)
     owner_role_b = role_repo.get_by_slug(b_uuid, "owner")
+    assert owner_role_b is not None
 
     # Create User B as an explicit member in Company B with Owner role
     create_test_member(
@@ -112,6 +114,7 @@ def two_tenants(test_client: TestClient, db_session: Session):
 
     member_repo = CompanyMemberRepository(db_session)
     member_b = member_repo.get_by_user_id(user_id=user_b.id, company_id=b_uuid)
+    assert member_b is not None
 
     return token_a, company_a_id, token_b, company_b_id, str(member_b.id)
 
@@ -125,7 +128,7 @@ class TestMemberTenantIsolation:
     """User A cannot access Company B's member resources."""
 
     def test_list_members_of_other_tenant_returns_403(
-        self, test_client: TestClient, two_tenants: tuple
+        self, test_client: TestClient, two_tenants: tuple[Any, ...]
     ) -> None:
         """GET /members on Company B using Company A's token returns 403."""
         token_a, _, _, company_b_id, _ = two_tenants
@@ -136,7 +139,7 @@ class TestMemberTenantIsolation:
         assert resp.status_code == 403
 
     def test_get_specific_member_of_other_tenant_returns_403(
-        self, test_client: TestClient, two_tenants: tuple
+        self, test_client: TestClient, two_tenants: tuple[Any, ...]
     ) -> None:
         """GET /members/{id} on Company B using Company A's token returns 403."""
         token_a, _, _, company_b_id, member_b_id = two_tenants
@@ -147,7 +150,7 @@ class TestMemberTenantIsolation:
         assert resp.status_code == 403
 
     def test_add_member_to_other_tenant_returns_403(
-        self, test_client: TestClient, two_tenants: tuple
+        self, test_client: TestClient, two_tenants: tuple[Any, ...]
     ) -> None:
         """POST /members on Company B using Company A's token returns 403."""
         token_a, _, _, company_b_id, _ = two_tenants
@@ -159,7 +162,7 @@ class TestMemberTenantIsolation:
         assert resp.status_code == 403
 
     def test_patch_member_of_other_tenant_returns_403(
-        self, test_client: TestClient, two_tenants: tuple
+        self, test_client: TestClient, two_tenants: tuple[Any, ...]
     ) -> None:
         """PATCH /members/{id} on Company B using Company A's token returns 403."""
         token_a, _, _, company_b_id, member_b_id = two_tenants
@@ -171,7 +174,7 @@ class TestMemberTenantIsolation:
         assert resp.status_code == 403
 
     def test_cross_tenant_member_response_is_not_404(
-        self, test_client: TestClient, two_tenants: tuple
+        self, test_client: TestClient, two_tenants: tuple[Any, ...]
     ) -> None:
         """Cross-tenant member list must be explicitly denied (403), not 404."""
         token_a, _, _, company_b_id, _ = two_tenants
@@ -193,7 +196,7 @@ class TestRoleTenantIsolation:
     """User A cannot access Company B's role resources."""
 
     def test_list_roles_of_other_tenant_returns_403(
-        self, test_client: TestClient, two_tenants: tuple
+        self, test_client: TestClient, two_tenants: tuple[Any, ...]
     ) -> None:
         """GET /roles on Company B using Company A's token returns 403."""
         token_a, _, _, company_b_id, _ = two_tenants
@@ -204,7 +207,7 @@ class TestRoleTenantIsolation:
         assert resp.status_code == 403
 
     def test_create_role_in_other_tenant_returns_403(
-        self, test_client: TestClient, two_tenants: tuple
+        self, test_client: TestClient, two_tenants: tuple[Any, ...]
     ) -> None:
         """POST /roles on Company B using Company A's token returns 403."""
         token_a, _, _, company_b_id, _ = two_tenants
@@ -216,7 +219,7 @@ class TestRoleTenantIsolation:
         assert resp.status_code == 403
 
     def test_get_role_of_other_tenant_returns_403(
-        self, test_client: TestClient, two_tenants: tuple, db_session: Session
+        self, test_client: TestClient, two_tenants: tuple[Any, ...], db_session: Session
     ) -> None:
         """GET /roles/{role_id} on Company B using Company A's token returns 403."""
         token_a, _, _, company_b_id, _ = two_tenants
@@ -242,7 +245,7 @@ class TestAuditLogTenantIsolation:
     """User A cannot access Company B's audit log."""
 
     def test_audit_log_of_other_tenant_returns_403(
-        self, test_client: TestClient, two_tenants: tuple
+        self, test_client: TestClient, two_tenants: tuple[Any, ...]
     ) -> None:
         """GET /companies/{company_b_id}/audit-logs returns 403 for Company A user."""
         token_a, _, _, company_b_id, _ = two_tenants

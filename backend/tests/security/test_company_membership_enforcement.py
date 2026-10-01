@@ -21,6 +21,7 @@ unaffected.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -36,10 +37,10 @@ def _login(client: TestClient, email: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": _PASSWORD}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 

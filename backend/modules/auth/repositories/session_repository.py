@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select, update
@@ -29,7 +30,7 @@ class SessionRepository:
         user_id: UUID,
         ip_address: str | None,
         user_agent: str | None,
-        device_info: dict | None = None,
+        device_info: dict[str, Any] | None = None,
     ) -> Session:
         """Create and persist a new authenticated session.
 

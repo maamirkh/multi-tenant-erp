@@ -9,12 +9,13 @@ Spec reference: Epic 4 — Users & Roles, tasks T033, T045.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from core.auth.dependencies import require_authenticated
+from core.auth.dependencies import require_authenticated, require_user_id
 from core.auth.interfaces import CurrentUser
 from core.config.settings import Settings, get_settings
 from core.database.session import get_db
@@ -218,8 +219,8 @@ def get_current_company_member(
 
     member_repo = CompanyMemberRepository(db)
     member = member_repo.get_by_user_id(
-        user_id=current_user.user_id,
-        company_id=company_id,  # type: ignore[arg-type]
+        user_id=require_user_id(current_user),
+        company_id=company_id,
     )
 
     if member is None or member.status not in ("active", "pending_invitation"):
@@ -248,7 +249,7 @@ def get_actor_role_rank(
     return role.rank
 
 
-def require_rank(minimum_rank: int):
+def require_rank(minimum_rank: int) -> Callable[..., int]:
     """Return a FastAPI dependency that enforces a minimum role rank.
 
     Usage::

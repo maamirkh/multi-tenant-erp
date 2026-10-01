@@ -44,8 +44,8 @@ class TestSupplierCreated:
         )
         assert evt.event_type == "supplier.created"
         assert evt.aggregate_type == "Supplier"
-        assert evt.aggregate_id == sid
-        assert evt.company_id == cid
+        assert evt.aggregate_id == str(sid)
+        assert evt.company_id == str(cid)
         assert evt.supplier_code == "SUP-001"
         assert evt.legal_name == "Acme"
 

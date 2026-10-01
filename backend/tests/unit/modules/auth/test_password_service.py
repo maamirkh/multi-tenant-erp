@@ -6,6 +6,8 @@ All tests use mocked or minimal Settings to avoid loading .env.
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from core.config.settings import Settings
@@ -64,7 +66,7 @@ class TestComplexityValidation:
     def test_too_short_raises(self, svc: PasswordService) -> None:
         with pytest.raises(ValidationException) as exc_info:
             svc.validate_new_password("Short@1", _VALID_EMAIL, [])
-        violations = exc_info.value.details.get("violations", [])
+        violations = cast(list[str], exc_info.value.details.get("violations", []))
         assert any("at least" in v.lower() for v in violations)
 
     def test_too_long_raises(self, svc: PasswordService) -> None:
@@ -75,32 +77,32 @@ class TestComplexityValidation:
     def test_no_uppercase_raises(self, svc: PasswordService) -> None:
         with pytest.raises(ValidationException) as exc_info:
             svc.validate_new_password("lowercase@1234567", _VALID_EMAIL, [])
-        violations = exc_info.value.details.get("violations", [])
+        violations = cast(list[str], exc_info.value.details.get("violations", []))
         assert any("uppercase" in v.lower() for v in violations)
 
     def test_no_lowercase_raises(self, svc: PasswordService) -> None:
         with pytest.raises(ValidationException) as exc_info:
             svc.validate_new_password("UPPERCASE@1234567", _VALID_EMAIL, [])
-        violations = exc_info.value.details.get("violations", [])
+        violations = cast(list[str], exc_info.value.details.get("violations", []))
         assert any("lowercase" in v.lower() for v in violations)
 
     def test_no_digit_raises(self, svc: PasswordService) -> None:
         with pytest.raises(ValidationException) as exc_info:
             svc.validate_new_password("NoDigitHere@!!##", _VALID_EMAIL, [])
-        violations = exc_info.value.details.get("violations", [])
+        violations = cast(list[str], exc_info.value.details.get("violations", []))
         assert any("digit" in v.lower() for v in violations)
 
     def test_no_special_char_raises(self, svc: PasswordService) -> None:
         with pytest.raises(ValidationException) as exc_info:
             svc.validate_new_password("NoSpecialChar1234", _VALID_EMAIL, [])
-        violations = exc_info.value.details.get("violations", [])
+        violations = cast(list[str], exc_info.value.details.get("violations", []))
         assert any("special" in v.lower() for v in violations)
 
     def test_contains_email_local_raises(self, svc: PasswordService) -> None:
         email = "alice@example.com"
         with pytest.raises(ValidationException) as exc_info:
             svc.validate_new_password("Alice@1234567890", email, [])
-        violations = exc_info.value.details.get("violations", [])
+        violations = cast(list[str], exc_info.value.details.get("violations", []))
         assert any("email" in v.lower() for v in violations)
 
 

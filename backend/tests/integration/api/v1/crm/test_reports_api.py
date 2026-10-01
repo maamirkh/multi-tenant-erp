@@ -71,7 +71,7 @@ from tests.integration.api.v1.crm.conftest import (
 def _current_user_id(client: TestClient, token: str) -> str:
     resp = client.get("/api/v1/profile", headers=auth_header(token))
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _seed_dataset(db_session: Session, company_id: UUID, owner_id: UUID) -> None:

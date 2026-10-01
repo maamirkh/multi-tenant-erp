@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from pydantic import Field, field_validator
@@ -143,7 +144,7 @@ class POAmendmentRead(PurchaseBaseSchema):
     po_id: str
     amendment_number: int
     reason: str
-    change_summary: dict | None = None
+    change_summary: dict[str, Any] | None = None
     requested_by: str | None = None
     approved_by: str | None = None
     approved_at: datetime | None = None
@@ -230,7 +231,7 @@ class POAmendRequest(PurchaseBaseSchema):
     reason: str = Field(
         ..., min_length=1, description="Justification for this amendment"
     )
-    changes: dict = Field(..., description="Map of field names to new values")
+    changes: dict[str, Any] = Field(..., description="Map of field names to new values")
 
 
 class POCancelRequest(PurchaseBaseSchema):

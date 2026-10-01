@@ -17,6 +17,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -48,7 +49,7 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -80,7 +81,7 @@ def _create_company(client: TestClient, token: str) -> uuid.UUID:
     return uuid.UUID(resp.json()["data"]["id"])
 
 
-def _setup(db_session: Session, company_id: uuid.UUID) -> dict:
+def _setup(db_session: Session, company_id: uuid.UUID) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     group_repo = AccountGroupRepository(db_session)
     cur_ast = group_repo.create(

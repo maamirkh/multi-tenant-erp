@@ -53,7 +53,7 @@ def _make_service(
     existing_alert: LowStockAlert | None = None,
     rules: list[ReorderRule] | None = None,
     flag_enabled: bool = False,
-) -> AlertEvaluationService:
+) -> tuple[AlertEvaluationService, MagicMock]:
     """Build AlertEvaluationService with mocked repos."""
     db = MagicMock()
     alert_repo = MagicMock()
@@ -71,8 +71,8 @@ def _make_service(
         flag_repo=flag_repo,
     )
     # Patch feature-flag lookup to control OVERSTOCK gating
-    svc._is_flag_enabled = MagicMock(return_value=flag_enabled)  # type: ignore[assignment]
-    return svc
+    svc._is_flag_enabled = MagicMock(return_value=flag_enabled)
+    return svc, db
 
 
 # ---------------------------------------------------------------------------
@@ -85,11 +85,11 @@ class TestThresholdDetection:
 
     def test_out_of_stock_zero_qty(self) -> None:
         pos = _make_position(qty=Decimal("0"))
-        svc = _make_service()
+        svc, db = _make_service()
         company_id = uuid4()
         svc.evaluate(company_id=company_id, position=pos)
         # Should create an OUT_OF_STOCK alert
-        calls = svc._db.add.call_args_list
+        calls = db.add.call_args_list
         created_alerts = [
             c.args[0] for c in calls if isinstance(c.args[0], LowStockAlert)
         ]
@@ -101,10 +101,10 @@ class TestThresholdDetection:
             reorder_level=Decimal("5"),
             safety_stock=Decimal("1"),
         )
-        svc = _make_service()
+        svc, db = _make_service()
         company_id = uuid4()
         svc.evaluate(company_id=company_id, position=pos)
-        calls = svc._db.add.call_args_list
+        calls = db.add.call_args_list
         created_alerts = [
             c.args[0] for c in calls if isinstance(c.args[0], LowStockAlert)
         ]
@@ -117,10 +117,10 @@ class TestThresholdDetection:
             safety_stock=Decimal("3"),
             reorder_level=Decimal("5"),
         )
-        svc = _make_service()
+        svc, db = _make_service()
         company_id = uuid4()
         svc.evaluate(company_id=company_id, position=pos)
-        calls = svc._db.add.call_args_list
+        calls = db.add.call_args_list
         created_alerts = [
             c.args[0] for c in calls if isinstance(c.args[0], LowStockAlert)
         ]
@@ -132,10 +132,10 @@ class TestThresholdDetection:
             reorder_level=Decimal("5"),
             safety_stock=Decimal("2"),
         )
-        svc = _make_service()
+        svc, db = _make_service()
         company_id = uuid4()
         svc.evaluate(company_id=company_id, position=pos)
-        calls = svc._db.add.call_args_list
+        calls = db.add.call_args_list
         created_alerts = [
             c.args[0] for c in calls if isinstance(c.args[0], LowStockAlert)
         ]
@@ -148,10 +148,10 @@ class TestThresholdDetection:
             reorder_level=Decimal("5"),
             safety_stock=Decimal("1"),
         )
-        svc = _make_service(flag_enabled=True)
+        svc, db = _make_service(flag_enabled=True)
         company_id = uuid4()
         svc.evaluate(company_id=company_id, position=pos)
-        calls = svc._db.add.call_args_list
+        calls = db.add.call_args_list
         created_alerts = [
             c.args[0] for c in calls if isinstance(c.args[0], LowStockAlert)
         ]
@@ -164,10 +164,10 @@ class TestThresholdDetection:
             reorder_level=Decimal("5"),
             safety_stock=Decimal("1"),
         )
-        svc = _make_service(flag_enabled=False)  # flag off
+        svc, db = _make_service(flag_enabled=False)  # flag off
         company_id = uuid4()
         svc.evaluate(company_id=company_id, position=pos)
-        calls = svc._db.add.call_args_list
+        calls = db.add.call_args_list
         created_alerts = [
             c.args[0] for c in calls if isinstance(c.args[0], LowStockAlert)
         ]
@@ -190,11 +190,11 @@ class TestAlertDeduplication:
             reorder_level=Decimal("5"),
             safety_stock=Decimal("1"),
         )
-        svc = _make_service(existing_alert=existing)
+        svc, db = _make_service(existing_alert=existing)
         company_id = uuid4()
         svc.evaluate(company_id=company_id, position=pos)
         # db.add should NOT be called with a new LowStockAlert
-        calls = svc._db.add.call_args_list
+        calls = db.add.call_args_list
         created_alerts = [
             c.args[0] for c in calls if isinstance(c.args[0], LowStockAlert)
         ]
@@ -208,7 +208,7 @@ class TestAlertDeduplication:
             reorder_level=Decimal("5"),
             safety_stock=Decimal("1"),
         )
-        svc = _make_service(existing_alert=existing)
+        svc, db = _make_service(existing_alert=existing)
         company_id = uuid4()
         svc.evaluate(company_id=company_id, position=pos)
         # The existing alert's current_quantity should be updated
@@ -238,7 +238,7 @@ class TestAutoResolve:
             suggestion_repo=MagicMock(),
             flag_repo=MagicMock(),
         )
-        svc._is_flag_enabled = MagicMock(return_value=False)  # type: ignore[assignment]
+        svc._is_flag_enabled = MagicMock(return_value=False)
         pos = _make_position(
             qty=Decimal("50"),
             reorder_level=Decimal("5"),
@@ -265,10 +265,10 @@ class TestReorderSuggestion:
             reorder_level=Decimal("5"),
             safety_stock=Decimal("0"),
         )
-        svc = _make_service(rules=[rule])
+        svc, db = _make_service(rules=[rule])
         company_id = uuid4()
         svc.evaluate(company_id=company_id, position=pos)
-        calls = svc._db.add.call_args_list
+        calls = db.add.call_args_list
         suggestions = [
             c.args[0] for c in calls if isinstance(c.args[0], ReorderSuggestion)
         ]
@@ -281,10 +281,10 @@ class TestReorderSuggestion:
             reorder_level=Decimal("5"),
             safety_stock=Decimal("0"),
         )
-        svc = _make_service(rules=[])
+        svc, db = _make_service(rules=[])
         company_id = uuid4()
         svc.evaluate(company_id=company_id, position=pos)
-        calls = svc._db.add.call_args_list
+        calls = db.add.call_args_list
         suggestions = [
             c.args[0] for c in calls if isinstance(c.args[0], ReorderSuggestion)
         ]
@@ -301,8 +301,8 @@ class TestErrorIsolation:
 
     def test_exception_in_evaluation_is_caught(self) -> None:
         pos = _make_position(qty=Decimal("3"), reorder_level=Decimal("5"))
-        svc = _make_service()
+        svc, db = _make_service()
         # Inject a failure into _evaluate_unsafe
-        svc._evaluate_unsafe = MagicMock(side_effect=RuntimeError("DB down"))  # type: ignore[assignment]
+        svc._evaluate_unsafe = MagicMock(side_effect=RuntimeError("DB down"))
         # Should NOT raise — error is swallowed
         svc.evaluate(company_id=uuid4(), position=pos)  # no exception

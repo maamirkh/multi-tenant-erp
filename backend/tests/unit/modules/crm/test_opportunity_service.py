@@ -105,9 +105,9 @@ class TestWinTransition:
     def test_win_open_opportunity_succeeds(self) -> None:
         service = _service()
         opp = _opportunity("OPEN")
-        service._get_or_raise = MagicMock(return_value=opp)  # type: ignore[method-assign]
-        service._stage_repo.get_flagged_stage = MagicMock(return_value=None)  # type: ignore[method-assign]
-        service.db.execute = MagicMock(return_value=MagicMock(rowcount=1))  # type: ignore[method-assign]
+        service._get_or_raise = MagicMock(return_value=opp)
+        service._stage_repo.get_flagged_stage = MagicMock(return_value=None)
+        service.db.execute = MagicMock(return_value=MagicMock(rowcount=1))
 
         result = service.win(uuid4(), uuid4())
 
@@ -117,9 +117,9 @@ class TestWinTransition:
     def test_win_already_won_raises(self) -> None:
         service = _service()
         opp = _opportunity("WON")
-        service._get_or_raise = MagicMock(return_value=opp)  # type: ignore[method-assign]
-        service._stage_repo.get_flagged_stage = MagicMock(return_value=None)  # type: ignore[method-assign]
-        service.db.execute = MagicMock(return_value=MagicMock(rowcount=0))  # type: ignore[method-assign]
+        service._get_or_raise = MagicMock(return_value=opp)
+        service._stage_repo.get_flagged_stage = MagicMock(return_value=None)
+        service.db.execute = MagicMock(return_value=MagicMock(rowcount=0))
 
         with pytest.raises(InvalidOpportunityTransitionError):
             service.win(uuid4(), uuid4())
@@ -127,9 +127,9 @@ class TestWinTransition:
     def test_win_already_lost_raises(self) -> None:
         service = _service()
         opp = _opportunity("LOST")
-        service._get_or_raise = MagicMock(return_value=opp)  # type: ignore[method-assign]
-        service._stage_repo.get_flagged_stage = MagicMock(return_value=None)  # type: ignore[method-assign]
-        service.db.execute = MagicMock(return_value=MagicMock(rowcount=0))  # type: ignore[method-assign]
+        service._get_or_raise = MagicMock(return_value=opp)
+        service._stage_repo.get_flagged_stage = MagicMock(return_value=None)
+        service.db.execute = MagicMock(return_value=MagicMock(rowcount=0))
 
         with pytest.raises(InvalidOpportunityTransitionError):
             service.win(uuid4(), uuid4())
@@ -139,13 +139,13 @@ class TestWinTransition:
         opp = _opportunity("OPEN")
         won_stage_id = uuid4()
         won_stage = MagicMock(id=won_stage_id, probability=100)
-        service._get_or_raise = MagicMock(return_value=opp)  # type: ignore[method-assign]
-        service._stage_repo.get_flagged_stage = MagicMock(return_value=won_stage)  # type: ignore[method-assign]
-        service.db.execute = MagicMock(return_value=MagicMock(rowcount=1))  # type: ignore[method-assign]
+        service._get_or_raise = MagicMock(return_value=opp)
+        service._stage_repo.get_flagged_stage = MagicMock(return_value=won_stage)
+        service.db.execute = MagicMock(return_value=MagicMock(rowcount=1))
 
         service.win(uuid4(), uuid4())
 
-        executed_stmt = service.db.execute.call_args[0][0]  # type: ignore[attr-defined]
+        executed_stmt = service.db.execute.call_args[0][0]
         bound_params = executed_stmt.compile().params
         assert bound_params["stage_id"] == won_stage_id
         assert bound_params["probability"] == 100
@@ -156,9 +156,9 @@ class TestLoseTransition:
     def test_lose_open_opportunity_succeeds(self) -> None:
         service = _service()
         opp = _opportunity("OPEN")
-        service._get_or_raise = MagicMock(return_value=opp)  # type: ignore[method-assign]
-        service._stage_repo.get_flagged_stage = MagicMock(return_value=None)  # type: ignore[method-assign]
-        service.db.execute = MagicMock(return_value=MagicMock(rowcount=1))  # type: ignore[method-assign]
+        service._get_or_raise = MagicMock(return_value=opp)
+        service._stage_repo.get_flagged_stage = MagicMock(return_value=None)
+        service.db.execute = MagicMock(return_value=MagicMock(rowcount=1))
 
         result = service.lose(uuid4(), uuid4(), "Budget cut")
 
@@ -168,9 +168,9 @@ class TestLoseTransition:
     def test_lose_already_terminal_raises(self) -> None:
         service = _service()
         opp = _opportunity("WON")
-        service._get_or_raise = MagicMock(return_value=opp)  # type: ignore[method-assign]
-        service._stage_repo.get_flagged_stage = MagicMock(return_value=None)  # type: ignore[method-assign]
-        service.db.execute = MagicMock(return_value=MagicMock(rowcount=0))  # type: ignore[method-assign]
+        service._get_or_raise = MagicMock(return_value=opp)
+        service._stage_repo.get_flagged_stage = MagicMock(return_value=None)
+        service.db.execute = MagicMock(return_value=MagicMock(rowcount=0))
 
         with pytest.raises(InvalidOpportunityTransitionError):
             service.lose(uuid4(), uuid4(), "Too late")
@@ -181,8 +181,8 @@ class TestChangeStage:
         service = _service()
         opp = _opportunity("OPEN", pipeline_id=uuid4())
         other_pipeline_stage = MagicMock(pipeline_id=uuid4(), is_active=True)
-        service._get_or_raise = MagicMock(return_value=opp)  # type: ignore[method-assign]
-        service._stage_repo.get_by_id_or_none = MagicMock(  # type: ignore[method-assign]
+        service._get_or_raise = MagicMock(return_value=opp)
+        service._stage_repo.get_by_id_or_none = MagicMock(
             return_value=other_pipeline_stage
         )
 
@@ -193,10 +193,8 @@ class TestChangeStage:
         service = _service()
         opp = _opportunity("OPEN")
         inactive_stage = MagicMock(pipeline_id=opp.pipeline_id, is_active=False)
-        service._get_or_raise = MagicMock(return_value=opp)  # type: ignore[method-assign]
-        service._stage_repo.get_by_id_or_none = MagicMock(  # type: ignore[method-assign]
-            return_value=inactive_stage
-        )
+        service._get_or_raise = MagicMock(return_value=opp)
+        service._stage_repo.get_by_id_or_none = MagicMock(return_value=inactive_stage)
 
         with pytest.raises(ValidationException):
             service.change_stage(uuid4(), uuid4(), uuid4())
@@ -207,9 +205,9 @@ class TestChangeStage:
         target_stage = MagicMock(
             pipeline_id=opp.pipeline_id, is_active=True, probability=75
         )
-        service._get_or_raise = MagicMock(return_value=opp)  # type: ignore[method-assign]
-        service._stage_repo.get_by_id_or_none = MagicMock(return_value=target_stage)  # type: ignore[method-assign]
-        service.db.execute = MagicMock(return_value=MagicMock(rowcount=1))  # type: ignore[method-assign]
+        service._get_or_raise = MagicMock(return_value=opp)
+        service._stage_repo.get_by_id_or_none = MagicMock(return_value=target_stage)
+        service.db.execute = MagicMock(return_value=MagicMock(rowcount=1))
 
         result = service.change_stage(uuid4(), uuid4(), uuid4())
 
@@ -222,7 +220,7 @@ class TestUpdateRejectedWhenTerminal:
     def test_update_terminal_opportunity_raises(self, status: str) -> None:
         service = _service()
         opp = _opportunity(status)
-        service._get_or_raise = MagicMock(return_value=opp)  # type: ignore[method-assign]
+        service._get_or_raise = MagicMock(return_value=opp)
 
         with pytest.raises(InvalidOpportunityTransitionError):
             service.update(uuid4(), uuid4(), OpportunityUpdate(description="new"))
@@ -230,8 +228,8 @@ class TestUpdateRejectedWhenTerminal:
     def test_update_open_opportunity_succeeds(self) -> None:
         service = _service()
         opp = _opportunity("OPEN")
-        service._get_or_raise = MagicMock(return_value=opp)  # type: ignore[method-assign]
-        service._repo.update = MagicMock(side_effect=lambda entity: entity)  # type: ignore[method-assign]
+        service._get_or_raise = MagicMock(return_value=opp)
+        service._repo.update = MagicMock(side_effect=lambda entity: entity)
 
         result = service.update(uuid4(), uuid4(), OpportunityUpdate(description="new"))
 

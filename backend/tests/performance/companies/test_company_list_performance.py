@@ -23,9 +23,11 @@ from __future__ import annotations
 
 import time
 import uuid as _uuid
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -103,14 +105,14 @@ class TestCompanyListPerformance:
         self,
         test_client: TestClient,
         db_session: Session,
-        seeded_list_data: tuple,
+        seeded_list_data: tuple[Any, ...],
     ) -> None:
         from modules.companies.dependencies import require_super_admin
 
         user, token = seeded_list_data
         headers = {"Authorization": f"Bearer {token}"}
 
-        app = test_client.app
+        app = cast(FastAPI, test_client.app)
         app.dependency_overrides[require_super_admin().__class__] = (
             _override_super_admin(user)
         )
@@ -147,14 +149,14 @@ class TestCompanyListPerformance:
         self,
         test_client: TestClient,
         db_session: Session,
-        seeded_list_data: tuple,
+        seeded_list_data: tuple[Any, ...],
     ) -> None:
         from modules.companies.dependencies import require_super_admin
 
         user, token = seeded_list_data
         headers = {"Authorization": f"Bearer {token}"}
 
-        app = test_client.app
+        app = cast(FastAPI, test_client.app)
         app.dependency_overrides[require_super_admin().__class__] = (
             _override_super_admin(user)
         )

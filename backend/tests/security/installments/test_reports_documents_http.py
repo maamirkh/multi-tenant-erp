@@ -67,7 +67,7 @@ def _login(pg_db_session: Session, test_client: TestClient, *, email: str) -> st
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert response.status_code == 200, response.text
-    return response.json()["data"]["access_token"]
+    return str(response.json()["data"]["access_token"])
 
 
 def _ensure_permission(db: Session, code: str) -> None:

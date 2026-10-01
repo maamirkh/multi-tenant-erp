@@ -74,7 +74,7 @@ class TestApproveRejectRace:
         session_a = session_factory()
         session_b = session_factory()
 
-        results: dict[str, object] = {}
+        results: dict[str, tuple[str, object]] = {}
 
         def _approve(session) -> None:
             try:

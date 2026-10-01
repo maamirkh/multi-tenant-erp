@@ -38,7 +38,10 @@ ENV NODE_ENV=production
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm ci --ignore-scripts
+# NODE_ENV=production makes `npm ci` skip devDependencies, but the build
+# needs them (@tailwindcss/postcss, typescript). Only .next/standalone is
+# copied into the production stage, so none of them ship.
+RUN npm ci --ignore-scripts --include=dev
 
 COPY . .
 

@@ -42,6 +42,7 @@ from modules.inventory.exceptions import (
     WarehouseNotFoundError,
 )
 from modules.inventory.models.adjustment import InventoryAdjustment
+from modules.inventory.models.stock import StockMovement, StockPosition
 from modules.inventory.repositories.adjustment_repository import AdjustmentRepository
 from modules.inventory.repositories.stock_repository import StockPositionRepository
 from modules.inventory.repositories.warehouse_repository import WarehouseRepository
@@ -403,7 +404,7 @@ class AdjustmentService:
         *,
         adj: InventoryAdjustment,
         actor_id: UUID | None,
-    ):
+    ) -> tuple[StockMovement, StockPosition]:
         """Call StockLedgerService.record_adjustment and return (movement, position)."""
         from uuid import UUID as _UUID
 

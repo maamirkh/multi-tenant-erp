@@ -146,7 +146,10 @@ class ReportQueryService:
 
         total_rows = q.count()
         rows_raw = (
-            q.order_by(StockMovement.performed_at.desc())
+            q.order_by(
+                StockMovement.performed_at.desc(),
+                StockMovement.id,  # unique tiebreaker (Epic 11 T270)
+            )
             .offset(offset)
             .limit(limit)
             .all()
@@ -219,9 +222,15 @@ class ReportQueryService:
         rows = []
         grand_total = Decimal("0")
         currency = None
+        # Epic 11 FR-RPT-152 (additive): each currency's own total, so a
+        # consumer never has to sum values across currencies.
+        by_currency: dict[str | None, Decimal] = {}
         for row in q.all():
             total_value = _dec(row.total_value)
             grand_total += total_value
+            by_currency[row.currency_code] = (
+                by_currency.get(row.currency_code, Decimal("0")) + total_value
+            )
             if row.currency_code:
                 currency = row.currency_code
             rows.append(
@@ -240,6 +249,12 @@ class ReportQueryService:
             "rows": rows,
             "grand_total_value": grand_total,
             "currency_code": currency,
+            "grand_totals_by_currency": [
+                {"currency_code": code, "total_value": value}
+                for code, value in sorted(
+                    by_currency.items(), key=lambda item: item[0] or ""
+                )
+            ],
             "as_of": utcnow(),
         }
 
@@ -418,9 +433,9 @@ class ReportQueryService:
         if date_to:
             mv_q = mv_q.filter(StockMovement.performed_at <= date_to)
         mv_q = mv_q.group_by(Product.category_id)
-        for row in mv_q.all():
-            if row.category_id:
-                mov_cat[row.category_id] = int(row.cnt)
+        for mv_row in mv_q.all():
+            if mv_row.category_id:
+                mov_cat[mv_row.category_id] = int(mv_row.cnt)
 
         categories = []
         for row in cat_q.all():
@@ -472,9 +487,9 @@ class ReportQueryService:
         if date_to:
             mv_bq = mv_bq.filter(StockMovement.performed_at <= date_to)
         mv_bq = mv_bq.group_by(Product.brand_id)
-        for row in mv_bq.all():
-            if row.brand_id:
-                mov_brand[row.brand_id] = int(row.cnt)
+        for mv_row in mv_bq.all():
+            if mv_row.brand_id:
+                mov_brand[mv_row.brand_id] = int(mv_row.cnt)
 
         brands = []
         for row in brand_q.all():
@@ -495,13 +510,12 @@ class ReportQueryService:
     # Report 8 — Dead Stock
     # =========================================================================
 
-    def dead_stock(
-        self,
-        *,
-        company_id: UUID,
-        threshold_days: int = 90,
-    ) -> dict[str, Any]:
-        """Products with zero movement in last N days."""
+    def _dead_stock_rows(
+        self, *, company_id: UUID, threshold_days: int = 90
+    ) -> tuple[list[dict[str, Any]], Decimal]:
+        """Full, sorted dead-stock population + total value — shared by
+        ``dead_stock()`` and ``count_dead_stock()`` (Epic 11 Reports
+        additive seam)."""
         cutoff = utcnow() - timedelta(days=threshold_days)
 
         # Products that have had a movement after the cutoff
@@ -566,26 +580,64 @@ class ReportQueryService:
                 }
             )
 
-        rows.sort(key=lambda r: r["days_without_movement"], reverse=True)
+        # (product_id, warehouse_id) breaks ties deterministically (Epic 11
+        # T270): the source query has no ORDER BY, so equal keys would
+        # otherwise land in a different order on each paged re-fetch.
+        rows.sort(
+            key=lambda r: (
+                r["days_without_movement"],
+                r["product_id"],
+                r["warehouse_id"],
+            ),
+            reverse=True,
+        )
+        return rows, total_dead_value
+
+    def dead_stock(
+        self,
+        *,
+        company_id: UUID,
+        threshold_days: int = 90,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Products with zero movement in last N days. ``limit``/``offset``
+        are optional (Epic 11 Reports additive seam) — omitting them
+        reproduces the exact prior unbounded behavior for existing
+        callers."""
+        rows, total_dead_value = self._dead_stock_rows(
+            company_id=company_id, threshold_days=threshold_days
+        )
+        if limit is not None:
+            rows = rows[offset : offset + limit]
         return {
             "rows": rows,
             "threshold_days": threshold_days,
             "total_dead_stock_value": total_dead_value,
         }
 
+    def count_dead_stock(self, *, company_id: UUID, threshold_days: int = 90) -> int:
+        """Epic 11 Reports additive seam — population size behind
+        ``dead_stock``."""
+        rows, _total_value = self._dead_stock_rows(
+            company_id=company_id, threshold_days=threshold_days
+        )
+        return len(rows)
+
     # =========================================================================
     # Reports 9 & 10 — Movement Velocity
     # =========================================================================
 
-    def movement_velocity(
+    def _movement_velocity_rows(
         self,
         *,
         company_id: UUID,
         date_from: datetime | None = None,
         date_to: datetime | None = None,
-        top_n: int = 20,
-    ) -> dict[str, Any]:
-        """Fast and slow moving products by movement count over period."""
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Full, sorted movement-velocity population + period_days —
+        shared by ``movement_velocity()`` and ``count_movement_velocity()``
+        (Epic 11 Reports additive seam)."""
         if date_from is None:
             date_from = utcnow() - timedelta(days=90)
         if date_to is None:
@@ -634,24 +686,73 @@ class ReportQueryService:
                 }
             )
 
-        all_rows.sort(key=lambda r: r["total_movements"], reverse=True)
+        # product_id breaks ties deterministically (Epic 11 T270).
+        all_rows.sort(
+            key=lambda r: (r["total_movements"], str(r["product_id"])), reverse=True
+        )
+        return all_rows, period_days
+
+    def movement_velocity(
+        self,
+        *,
+        company_id: UUID,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        top_n: int = 20,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Fast and slow moving products by movement count over period.
+        ``limit``/``offset`` are optional (Epic 11 Reports additive seam):
+        when provided, an additional bounded ``rows`` slice of the full
+        ranked population is included alongside the unchanged
+        ``fast_moving``/``slow_moving`` (``top_n``-governed) shape existing
+        callers rely on."""
+        all_rows, period_days = self._movement_velocity_rows(
+            company_id=company_id, date_from=date_from, date_to=date_to
+        )
         fast = all_rows[:top_n]
         slow = all_rows[-top_n:] if len(all_rows) > top_n else []
         slow = list(reversed(slow))
 
-        return {"fast_moving": fast, "slow_moving": slow, "period_days": period_days}
+        result: dict[str, Any] = {
+            "fast_moving": fast,
+            "slow_moving": slow,
+            "period_days": period_days,
+            "total_products_with_movement": len(all_rows),
+        }
+        if limit is not None:
+            result["rows"] = all_rows[offset : offset + limit]
+        return result
+
+    def count_movement_velocity(
+        self,
+        *,
+        company_id: UUID,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> int:
+        """Epic 11 Reports additive seam — the distinct-product population
+        size ``movement_velocity`` draws its fast/slow-mover rankings
+        from."""
+        all_rows, _period_days = self._movement_velocity_rows(
+            company_id=company_id, date_from=date_from, date_to=date_to
+        )
+        return len(all_rows)
 
     # =========================================================================
     # Report 11 — Stock Aging
     # =========================================================================
 
-    def stock_aging(
+    def _stock_aging_rows(
         self,
         *,
         company_id: UUID,
         warehouse_id: UUID | None = None,
-    ) -> dict[str, Any]:
-        """Age of current stock by first-receipt date."""
+    ) -> tuple[list[dict[str, Any]], datetime]:
+        """Full, sorted stock-aging population + as_of timestamp — shared
+        by ``stock_aging()`` and ``count_stock_aging()`` (Epic 11 Reports
+        additive seam)."""
         # First receipt date per product × warehouse
         first_receipt: dict[tuple[str, str], datetime | None] = {}
         q = (
@@ -716,8 +817,41 @@ class ReportQueryService:
                 }
             )
 
-        rows.sort(key=lambda r: r["age_days"] or 0, reverse=True)
-        return {"rows": rows, "as_of": now}
+        # (product_id, warehouse_id) breaks ties deterministically (Epic 11 T270).
+        rows.sort(
+            key=lambda r: (r["age_days"] or 0, r["product_id"], r["warehouse_id"]),
+            reverse=True,
+        )
+        return rows, now
+
+    def stock_aging(
+        self,
+        *,
+        company_id: UUID,
+        warehouse_id: UUID | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Age of current stock by first-receipt date. ``limit``/``offset``
+        are optional (Epic 11 Reports additive seam) — omitting them
+        reproduces the exact prior unbounded behavior for existing
+        callers."""
+        rows, as_of = self._stock_aging_rows(
+            company_id=company_id, warehouse_id=warehouse_id
+        )
+        if limit is not None:
+            rows = rows[offset : offset + limit]
+        return {"rows": rows, "as_of": as_of}
+
+    def count_stock_aging(
+        self, *, company_id: UUID, warehouse_id: UUID | None = None
+    ) -> int:
+        """Epic 11 Reports additive seam — population size behind
+        ``stock_aging``."""
+        rows, _as_of = self._stock_aging_rows(
+            company_id=company_id, warehouse_id=warehouse_id
+        )
+        return len(rows)
 
     # =========================================================================
     # Reports 12 & 13 — Operational (Adjustment + Transfer)
@@ -868,7 +1002,7 @@ class ReportQueryService:
         for performed_at, direction, quantity in mov_q.all():
             if performed_at is None:
                 continue
-            date_key = performed_at.strftime("%Y-%m-%d")  # type: ignore[union-attr]
+            date_key = performed_at.strftime("%Y-%m-%d")
             if date_key not in daily:
                 daily[date_key] = {"in": Decimal("0"), "out": Decimal("0")}
             qty = _dec(quantity)

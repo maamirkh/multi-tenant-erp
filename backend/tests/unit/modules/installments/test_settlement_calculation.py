@@ -16,7 +16,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -24,7 +24,15 @@ from modules.installments.exceptions import (
     InstallmentNotFoundError,
     InstallmentSettlementNotAllowedError,
 )
-from modules.installments.services.outstanding_service import OutstandingBreakdown
+from modules.installments.repositories.contract import InstallmentContractRepository
+from modules.installments.services.audit_service import InstallmentAuditService
+from modules.installments.services.configuration_service import (
+    InstallmentConfigurationService,
+)
+from modules.installments.services.outstanding_service import (
+    InstallmentOutstandingService,
+    OutstandingBreakdown,
+)
 from modules.installments.services.settlement_service import (
     InstallmentSettlementService,
 )
@@ -58,7 +66,7 @@ class _FakeOutstandingService:
 
 @dataclass
 class _FakeConfig:
-    early_settlement_policy: dict | None = None
+    early_settlement_policy: dict[str, Any] | None = None
 
 
 class _FakeConfigurationService:
@@ -71,7 +79,7 @@ class _FakeConfigurationService:
 
 class _FakeAuditService:
     def __init__(self) -> None:
-        self.records: list[tuple[tuple, dict]] = []
+        self.records: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
 
     def record(self, *args: Any, **kwargs: Any) -> None:
         self.records.append((args, kwargs))
@@ -95,12 +103,19 @@ def _make_service(
 ) -> InstallmentSettlementService:
     return InstallmentSettlementService(
         db=db if db is not None else _FakeDb(),
-        contract_repo=_FakeContractRepo(contract),
-        outstanding_service=_FakeOutstandingService(breakdown),
+        contract_repo=cast(InstallmentContractRepository, _FakeContractRepo(contract)),
+        outstanding_service=cast(
+            InstallmentOutstandingService, _FakeOutstandingService(breakdown)
+        ),
         collection_service=None,  # type: ignore[arg-type]
-        configuration_service=_FakeConfigurationService(config),
+        configuration_service=cast(
+            InstallmentConfigurationService, _FakeConfigurationService(config)
+        ),
         idempotency_service=None,  # type: ignore[arg-type]
-        audit_service=audit if audit is not None else _FakeAuditService(),
+        audit_service=cast(
+            InstallmentAuditService,
+            audit if audit is not None else _FakeAuditService(),
+        ),
     )
 
 

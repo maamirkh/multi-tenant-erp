@@ -226,378 +226,511 @@ INSTALLMENTS_PERMISSIONS: Final[tuple[PermissionDefinition, ...]] = (
     ),
 )
 
+# Epic 11 (Reports & Analytics) — all 16 reports.* permission codes
+# (spec.md §33), unioned into INITIAL_PERMISSIONS below so
+# RoleSeedService grants them to every NEW company automatically at
+# creation time. Deliberately NOT added to DEFAULT_ROLE_PERMISSIONS below
+# (FR-RPT-243): Epic 11 hardcodes no default role mapping — role-to-
+# permission assignment for reports.* remains fully tenant-configurable
+# via the existing RBAC UI from day one, unlike CRM/Installments' owner/
+# admin default grants.
+REPORTS_PERMISSIONS: Final[tuple[PermissionDefinition, ...]] = (
+    PermissionDefinition(
+        "reports.executive.view",
+        "View Executive Dashboard",
+        "reports",
+        "read",
+        "View the Executive Dashboard",
+    ),
+    PermissionDefinition(
+        "reports.sales.view",
+        "View Sales Analytics",
+        "reports",
+        "read",
+        "View Sales analytics reports",
+    ),
+    PermissionDefinition(
+        "reports.sales.export",
+        "Export Sales Analytics",
+        "reports",
+        "export",
+        "Export Sales analytics reports",
+    ),
+    PermissionDefinition(
+        "reports.purchase.view",
+        "View Purchase Analytics",
+        "reports",
+        "read",
+        "View Purchase analytics reports",
+    ),
+    PermissionDefinition(
+        "reports.purchase.export",
+        "Export Purchase Analytics",
+        "reports",
+        "export",
+        "Export Purchase analytics reports",
+    ),
+    PermissionDefinition(
+        "reports.inventory.view",
+        "View Inventory Analytics",
+        "reports",
+        "read",
+        "View Inventory analytics reports",
+    ),
+    PermissionDefinition(
+        "reports.inventory.export",
+        "Export Inventory Analytics",
+        "reports",
+        "export",
+        "Export Inventory analytics reports",
+    ),
+    PermissionDefinition(
+        "reports.accounting.view",
+        "View Financial Reports",
+        "reports",
+        "read",
+        "View financial reports",
+    ),
+    PermissionDefinition(
+        "reports.accounting.export",
+        "Export Financial Reports",
+        "reports",
+        "export",
+        "Export financial reports",
+    ),
+    PermissionDefinition(
+        "reports.crm.view",
+        "View CRM Analytics",
+        "reports",
+        "read",
+        "View CRM analytics reports",
+    ),
+    PermissionDefinition(
+        "reports.crm.export",
+        "Export CRM Analytics",
+        "reports",
+        "export",
+        "Export CRM analytics reports",
+    ),
+    PermissionDefinition(
+        "reports.installments.view",
+        "View Installment Analytics",
+        "reports",
+        "read",
+        "View Installment analytics reports",
+    ),
+    PermissionDefinition(
+        "reports.installments.export",
+        "Export Installment Analytics",
+        "reports",
+        "export",
+        "Export Installment analytics reports",
+    ),
+    PermissionDefinition(
+        "reports.customer_360.view",
+        "View Customer 360 Financial View",
+        "reports",
+        "read",
+        "View the cross-module Customer 360 Financial View",
+    ),
+    PermissionDefinition(
+        "reports.branch_performance.view",
+        "View Branch Performance Summary",
+        "reports",
+        "read",
+        "View the (deferred) Branch Performance Summary",
+    ),
+    PermissionDefinition(
+        "reports.saved_view.manage",
+        "Manage Own Saved Report Views",
+        "reports",
+        "manage",
+        "Create/edit/delete one's own private saved report views",
+    ),
+)
+
 
 INITIAL_PERMISSIONS: Final[tuple[PermissionDefinition, ...]] = (
-    # Members module
-    PermissionDefinition(
-        "members.create",
-        "Add Members",
-        "members",
-        "create",
-        "Create new company memberships",
-    ),
-    PermissionDefinition(
-        "members.read",
-        "View Members",
-        "members",
-        "read",
-        "View member list and details",
-    ),
-    PermissionDefinition(
-        "members.update",
-        "Edit Members",
-        "members",
-        "update",
-        "Update member information",
-    ),
-    PermissionDefinition(
-        "members.delete",
-        "Remove Members",
-        "members",
-        "delete",
-        "Archive company memberships",
-    ),
-    PermissionDefinition(
-        "members.manage",
-        "Manage Member Status",
-        "members",
-        "manage",
-        "Change member lifecycle status",
-    ),
-    # Roles module
-    PermissionDefinition(
-        "roles.create", "Create Roles", "roles", "create", "Create custom roles"
-    ),
-    PermissionDefinition(
-        "roles.read", "View Roles", "roles", "read", "View role list and details"
-    ),
-    PermissionDefinition(
-        "roles.update",
-        "Edit Roles",
-        "roles",
-        "update",
-        "Update custom role definitions",
-    ),
-    PermissionDefinition(
-        "roles.delete", "Delete Roles", "roles", "delete", "Delete custom roles"
-    ),
-    # Companies module
-    PermissionDefinition(
-        "companies.read", "View Company", "companies", "read", "View company details"
-    ),
-    PermissionDefinition(
-        "companies.update",
-        "Edit Company",
-        "companies",
-        "update",
-        "Update company settings",
-    ),
-    PermissionDefinition(
-        "companies.manage",
-        "Manage Company",
-        "companies",
-        "manage",
-        "Full company management",
-    ),
-    # Profile module
-    PermissionDefinition(
-        "profile.read", "View Profiles", "profile", "read", "View member profiles"
-    ),
-    PermissionDefinition(
-        "profile.update",
-        "Edit Own Profile",
-        "profile",
-        "update",
-        "Update own profile and preferences",
-    ),
-    # Accounting module (Epic 8, Phase 14 — spec.md §33 Permission Matrix)
-    PermissionDefinition(
-        "accounting.gl.view",
-        "View General Ledger",
-        "accounting",
-        "read",
-        "View GL entries and balances",
-    ),
-    PermissionDefinition(
-        "accounting.journal.create",
-        "Create Journal Entry",
-        "accounting",
-        "create",
-        "Create a manual journal entry",
-    ),
-    PermissionDefinition(
-        "accounting.journal.approve",
-        "Approve Journal Entry",
-        "accounting",
-        "approve",
-        "Approve a journal entry submitted for approval",
-    ),
-    PermissionDefinition(
-        "accounting.journal.post",
-        "Post Journal Entry",
-        "accounting",
-        "update",
-        "Post a draft/approved journal entry to the GL",
-    ),
-    PermissionDefinition(
-        "accounting.journal.reverse",
-        "Reverse Journal Entry",
-        "accounting",
-        "update",
-        "Reverse a posted journal entry",
-    ),
-    PermissionDefinition(
-        "accounting.period.lock",
-        "Lock/Unlock Period",
-        "accounting",
-        "manage",
-        "Lock or unlock a fiscal period",
-    ),
-    PermissionDefinition(
-        "accounting.period.close",
-        "Close Fiscal Year",
-        "accounting",
-        "manage",
-        "Close a fiscal year",
-    ),
-    PermissionDefinition(
-        "accounting.payment.customer.create",
-        "Create Customer Payment",
-        "accounting",
-        "create",
-        "Record a customer payment receipt",
-    ),
-    PermissionDefinition(
-        "accounting.payment.customer.approve",
-        "Approve Customer Payment",
-        "accounting",
-        "approve",
-        "Approve a customer payment submitted for approval",
-    ),
-    PermissionDefinition(
-        "accounting.payment.supplier.create",
-        "Create Supplier Payment",
-        "accounting",
-        "create",
-        "Record a supplier payment disbursement",
-    ),
-    PermissionDefinition(
-        "accounting.payment.supplier.approve",
-        "Approve Supplier Payment",
-        "accounting",
-        "approve",
-        "Approve a supplier payment submitted for approval",
-    ),
-    PermissionDefinition(
-        "accounting.coa.manage",
-        "Manage Chart of Accounts",
-        "accounting",
-        "manage",
-        "Create/update/deactivate accounts",
-    ),
-    PermissionDefinition(
-        "accounting.tax.manage",
-        "Manage Tax Codes",
-        "accounting",
-        "manage",
-        "Create/update tax codes, rates, and groups",
-    ),
-    PermissionDefinition(
-        "accounting.exchangerate.manage",
-        "Manage Exchange Rates",
-        "accounting",
-        "manage",
-        "Record exchange rates and run currency revaluation",
-    ),
-    PermissionDefinition(
-        "accounting.bank.reconcile",
-        "Perform Bank Reconciliation",
-        "accounting",
-        "update",
-        "Reconcile bank statements",
-    ),
-    PermissionDefinition(
-        "accounting.reports.view",
-        "View Financial Statements",
-        "accounting",
-        "read",
-        "View trial balance, balance sheet, P&L, cash flow, and subsidiary reports",
-    ),
-    PermissionDefinition(
-        "accounting.ar.writeoff",
-        "Write-Off AR",
-        "accounting",
-        "manage",
-        "Write off an uncollectible AR balance",
-    ),
-    PermissionDefinition(
-        "accounting.creditlimit.override",
-        "Override Credit Limit",
-        "accounting",
-        "manage",
-        "Override a customer's credit hold/limit",
-    ),
-    PermissionDefinition(
-        "accounting.approvalworkflow.manage",
-        "Manage Approval Workflows",
-        "accounting",
-        "manage",
-        "Configure journal/payment approval thresholds",
-    ),
-    PermissionDefinition(
-        "accounting.audit.view",
-        "View Audit Trail",
-        "accounting",
-        "read",
-        "View the full financial audit trail",
-    ),
-    # CRM module (Epic 9, Phase 8 — spec.md §31.1 Permission Matrix)
-    PermissionDefinition("crm.leads.view", "View Leads", "crm", "read", "View leads"),
-    PermissionDefinition(
-        "crm.leads.create", "Create Leads", "crm", "create", "Create leads"
-    ),
-    PermissionDefinition(
-        "crm.leads.update",
-        "Update Leads",
-        "crm",
-        "update",
-        "Update leads, including qualify/disqualify",
-    ),
-    PermissionDefinition(
-        "crm.leads.delete", "Delete Leads", "crm", "delete", "Soft-delete leads"
-    ),
-    PermissionDefinition(
-        "crm.leads.assign",
-        "Assign Leads",
-        "crm",
-        "manage",
-        "Reassign lead ownership",
-    ),
-    PermissionDefinition(
-        "crm.leads.convert",
-        "Convert Leads",
-        "crm",
-        "update",
-        "Convert a qualified lead",
-    ),
-    PermissionDefinition(
-        "crm.opportunities.view",
-        "View Opportunities",
-        "crm",
-        "read",
-        "View opportunities",
-    ),
-    PermissionDefinition(
-        "crm.opportunities.create",
-        "Create Opportunities",
-        "crm",
-        "create",
-        "Create opportunities",
-    ),
-    PermissionDefinition(
-        "crm.opportunities.update",
-        "Update Opportunities",
-        "crm",
-        "update",
-        "Update opportunities, including stage changes",
-    ),
-    PermissionDefinition(
-        "crm.opportunities.delete",
-        "Delete Opportunities",
-        "crm",
-        "delete",
-        "Soft-delete opportunities",
-    ),
-    PermissionDefinition(
-        "crm.opportunities.assign",
-        "Assign Opportunities",
-        "crm",
-        "manage",
-        "Reassign opportunity ownership",
-    ),
-    PermissionDefinition(
-        "crm.opportunities.close",
-        "Close Opportunities",
-        "crm",
-        "manage",
-        "Mark an opportunity WON or LOST",
-    ),
-    PermissionDefinition(
-        "crm.activities.view",
-        "View Activities",
-        "crm",
-        "read",
-        "View activities",
-    ),
-    PermissionDefinition(
-        "crm.activities.create",
-        "Create Activities",
-        "crm",
-        "create",
-        "Create activities",
-    ),
-    PermissionDefinition(
-        "crm.activities.update",
-        "Update Activities",
-        "crm",
-        "update",
-        "Update/complete activities",
-    ),
-    PermissionDefinition(
-        "crm.activities.delete",
-        "Delete Activities",
-        "crm",
-        "delete",
-        "Soft-delete activities",
-    ),
-    PermissionDefinition(
-        "crm.pipeline.view",
-        "View Pipelines",
-        "crm",
-        "read",
-        "View pipelines/stages",
-    ),
-    PermissionDefinition(
-        "crm.pipeline.manage",
-        "Manage Pipelines",
-        "crm",
-        "manage",
-        "Create/update/deactivate pipelines and stages",
-    ),
-    PermissionDefinition(
-        "crm.reports.view",
-        "View CRM Reports",
-        "crm",
-        "read",
-        "View CRM reports/KPIs/dashboard",
-    ),
-    # Epic 9A Phase 10 (T138-T141, plan.md §14) — feature-toggle mutation
-    # hardening for the three modules confirmed vulnerable during
-    # reconnaissance (Inventory, Sales, Purchase had no permission check
-    # beyond active tenant membership on PUT .../feature-flags/{key}).
-    # Accounting and CRM already had an equivalent code and are untouched.
-    PermissionDefinition(
-        "inventory.settings.manage",
-        "Manage Inventory Feature Flags",
-        "inventory",
-        "manage",
-        "Enable or disable inventory module feature flags",
-    ),
-    PermissionDefinition(
-        "sales.settings.manage",
-        "Manage Sales Feature Flags",
-        "sales",
-        "manage",
-        "Enable or disable sales module feature flags",
-    ),
-    PermissionDefinition(
-        "purchase.settings.manage",
-        "Manage Purchase Feature Flags",
-        "purchase",
-        "manage",
-        "Enable or disable purchase module feature flags",
-    ),
-) + INSTALLMENTS_PERMISSIONS
+    (
+        # Members module
+        PermissionDefinition(
+            "members.create",
+            "Add Members",
+            "members",
+            "create",
+            "Create new company memberships",
+        ),
+        PermissionDefinition(
+            "members.read",
+            "View Members",
+            "members",
+            "read",
+            "View member list and details",
+        ),
+        PermissionDefinition(
+            "members.update",
+            "Edit Members",
+            "members",
+            "update",
+            "Update member information",
+        ),
+        PermissionDefinition(
+            "members.delete",
+            "Remove Members",
+            "members",
+            "delete",
+            "Archive company memberships",
+        ),
+        PermissionDefinition(
+            "members.manage",
+            "Manage Member Status",
+            "members",
+            "manage",
+            "Change member lifecycle status",
+        ),
+        # Roles module
+        PermissionDefinition(
+            "roles.create", "Create Roles", "roles", "create", "Create custom roles"
+        ),
+        PermissionDefinition(
+            "roles.read", "View Roles", "roles", "read", "View role list and details"
+        ),
+        PermissionDefinition(
+            "roles.update",
+            "Edit Roles",
+            "roles",
+            "update",
+            "Update custom role definitions",
+        ),
+        PermissionDefinition(
+            "roles.delete", "Delete Roles", "roles", "delete", "Delete custom roles"
+        ),
+        # Companies module
+        PermissionDefinition(
+            "companies.read",
+            "View Company",
+            "companies",
+            "read",
+            "View company details",
+        ),
+        PermissionDefinition(
+            "companies.update",
+            "Edit Company",
+            "companies",
+            "update",
+            "Update company settings",
+        ),
+        PermissionDefinition(
+            "companies.manage",
+            "Manage Company",
+            "companies",
+            "manage",
+            "Full company management",
+        ),
+        # Profile module
+        PermissionDefinition(
+            "profile.read", "View Profiles", "profile", "read", "View member profiles"
+        ),
+        PermissionDefinition(
+            "profile.update",
+            "Edit Own Profile",
+            "profile",
+            "update",
+            "Update own profile and preferences",
+        ),
+        # Accounting module (Epic 8, Phase 14 — spec.md §33 Permission Matrix)
+        PermissionDefinition(
+            "accounting.gl.view",
+            "View General Ledger",
+            "accounting",
+            "read",
+            "View GL entries and balances",
+        ),
+        PermissionDefinition(
+            "accounting.journal.create",
+            "Create Journal Entry",
+            "accounting",
+            "create",
+            "Create a manual journal entry",
+        ),
+        PermissionDefinition(
+            "accounting.journal.approve",
+            "Approve Journal Entry",
+            "accounting",
+            "approve",
+            "Approve a journal entry submitted for approval",
+        ),
+        PermissionDefinition(
+            "accounting.journal.post",
+            "Post Journal Entry",
+            "accounting",
+            "update",
+            "Post a draft/approved journal entry to the GL",
+        ),
+        PermissionDefinition(
+            "accounting.journal.reverse",
+            "Reverse Journal Entry",
+            "accounting",
+            "update",
+            "Reverse a posted journal entry",
+        ),
+        PermissionDefinition(
+            "accounting.period.lock",
+            "Lock/Unlock Period",
+            "accounting",
+            "manage",
+            "Lock or unlock a fiscal period",
+        ),
+        PermissionDefinition(
+            "accounting.period.close",
+            "Close Fiscal Year",
+            "accounting",
+            "manage",
+            "Close a fiscal year",
+        ),
+        PermissionDefinition(
+            "accounting.payment.customer.create",
+            "Create Customer Payment",
+            "accounting",
+            "create",
+            "Record a customer payment receipt",
+        ),
+        PermissionDefinition(
+            "accounting.payment.customer.approve",
+            "Approve Customer Payment",
+            "accounting",
+            "approve",
+            "Approve a customer payment submitted for approval",
+        ),
+        PermissionDefinition(
+            "accounting.payment.supplier.create",
+            "Create Supplier Payment",
+            "accounting",
+            "create",
+            "Record a supplier payment disbursement",
+        ),
+        PermissionDefinition(
+            "accounting.payment.supplier.approve",
+            "Approve Supplier Payment",
+            "accounting",
+            "approve",
+            "Approve a supplier payment submitted for approval",
+        ),
+        PermissionDefinition(
+            "accounting.coa.manage",
+            "Manage Chart of Accounts",
+            "accounting",
+            "manage",
+            "Create/update/deactivate accounts",
+        ),
+        PermissionDefinition(
+            "accounting.tax.manage",
+            "Manage Tax Codes",
+            "accounting",
+            "manage",
+            "Create/update tax codes, rates, and groups",
+        ),
+        PermissionDefinition(
+            "accounting.exchangerate.manage",
+            "Manage Exchange Rates",
+            "accounting",
+            "manage",
+            "Record exchange rates and run currency revaluation",
+        ),
+        PermissionDefinition(
+            "accounting.bank.reconcile",
+            "Perform Bank Reconciliation",
+            "accounting",
+            "update",
+            "Reconcile bank statements",
+        ),
+        PermissionDefinition(
+            "accounting.reports.view",
+            "View Financial Statements",
+            "accounting",
+            "read",
+            "View trial balance, balance sheet, P&L, cash flow, and subsidiary reports",
+        ),
+        PermissionDefinition(
+            "accounting.ar.writeoff",
+            "Write-Off AR",
+            "accounting",
+            "manage",
+            "Write off an uncollectible AR balance",
+        ),
+        PermissionDefinition(
+            "accounting.creditlimit.override",
+            "Override Credit Limit",
+            "accounting",
+            "manage",
+            "Override a customer's credit hold/limit",
+        ),
+        PermissionDefinition(
+            "accounting.approvalworkflow.manage",
+            "Manage Approval Workflows",
+            "accounting",
+            "manage",
+            "Configure journal/payment approval thresholds",
+        ),
+        PermissionDefinition(
+            "accounting.audit.view",
+            "View Audit Trail",
+            "accounting",
+            "read",
+            "View the full financial audit trail",
+        ),
+        # CRM module (Epic 9, Phase 8 — spec.md §31.1 Permission Matrix)
+        PermissionDefinition(
+            "crm.leads.view", "View Leads", "crm", "read", "View leads"
+        ),
+        PermissionDefinition(
+            "crm.leads.create", "Create Leads", "crm", "create", "Create leads"
+        ),
+        PermissionDefinition(
+            "crm.leads.update",
+            "Update Leads",
+            "crm",
+            "update",
+            "Update leads, including qualify/disqualify",
+        ),
+        PermissionDefinition(
+            "crm.leads.delete", "Delete Leads", "crm", "delete", "Soft-delete leads"
+        ),
+        PermissionDefinition(
+            "crm.leads.assign",
+            "Assign Leads",
+            "crm",
+            "manage",
+            "Reassign lead ownership",
+        ),
+        PermissionDefinition(
+            "crm.leads.convert",
+            "Convert Leads",
+            "crm",
+            "update",
+            "Convert a qualified lead",
+        ),
+        PermissionDefinition(
+            "crm.opportunities.view",
+            "View Opportunities",
+            "crm",
+            "read",
+            "View opportunities",
+        ),
+        PermissionDefinition(
+            "crm.opportunities.create",
+            "Create Opportunities",
+            "crm",
+            "create",
+            "Create opportunities",
+        ),
+        PermissionDefinition(
+            "crm.opportunities.update",
+            "Update Opportunities",
+            "crm",
+            "update",
+            "Update opportunities, including stage changes",
+        ),
+        PermissionDefinition(
+            "crm.opportunities.delete",
+            "Delete Opportunities",
+            "crm",
+            "delete",
+            "Soft-delete opportunities",
+        ),
+        PermissionDefinition(
+            "crm.opportunities.assign",
+            "Assign Opportunities",
+            "crm",
+            "manage",
+            "Reassign opportunity ownership",
+        ),
+        PermissionDefinition(
+            "crm.opportunities.close",
+            "Close Opportunities",
+            "crm",
+            "manage",
+            "Mark an opportunity WON or LOST",
+        ),
+        PermissionDefinition(
+            "crm.activities.view",
+            "View Activities",
+            "crm",
+            "read",
+            "View activities",
+        ),
+        PermissionDefinition(
+            "crm.activities.create",
+            "Create Activities",
+            "crm",
+            "create",
+            "Create activities",
+        ),
+        PermissionDefinition(
+            "crm.activities.update",
+            "Update Activities",
+            "crm",
+            "update",
+            "Update/complete activities",
+        ),
+        PermissionDefinition(
+            "crm.activities.delete",
+            "Delete Activities",
+            "crm",
+            "delete",
+            "Soft-delete activities",
+        ),
+        PermissionDefinition(
+            "crm.pipeline.view",
+            "View Pipelines",
+            "crm",
+            "read",
+            "View pipelines/stages",
+        ),
+        PermissionDefinition(
+            "crm.pipeline.manage",
+            "Manage Pipelines",
+            "crm",
+            "manage",
+            "Create/update/deactivate pipelines and stages",
+        ),
+        PermissionDefinition(
+            "crm.reports.view",
+            "View CRM Reports",
+            "crm",
+            "read",
+            "View CRM reports/KPIs/dashboard",
+        ),
+        # Epic 9A Phase 10 (T138-T141, plan.md §14) — feature-toggle mutation
+        # hardening for the three modules confirmed vulnerable during
+        # reconnaissance (Inventory, Sales, Purchase had no permission check
+        # beyond active tenant membership on PUT .../feature-flags/{key}).
+        # Accounting and CRM already had an equivalent code and are untouched.
+        PermissionDefinition(
+            "inventory.settings.manage",
+            "Manage Inventory Feature Flags",
+            "inventory",
+            "manage",
+            "Enable or disable inventory module feature flags",
+        ),
+        PermissionDefinition(
+            "sales.settings.manage",
+            "Manage Sales Feature Flags",
+            "sales",
+            "manage",
+            "Enable or disable sales module feature flags",
+        ),
+        PermissionDefinition(
+            "purchase.settings.manage",
+            "Manage Purchase Feature Flags",
+            "purchase",
+            "manage",
+            "Enable or disable purchase module feature flags",
+        ),
+    )
+    + INSTALLMENTS_PERMISSIONS
+    + REPORTS_PERMISSIONS
+)
 
 PERMISSION_BY_CODE: Final[dict[str, PermissionDefinition]] = {
     p.code: p for p in INITIAL_PERMISSIONS

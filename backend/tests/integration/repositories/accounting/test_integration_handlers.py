@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -40,7 +41,7 @@ from modules.accounting.services.fiscal_service import FiscalCalendarService
 from modules.sales.events.invoice_events import InvoiceCreditNoteIssued, InvoiceIssued
 
 
-def _setup_company_for_gl(db_session: Session) -> dict:
+def _setup_company_for_gl(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,

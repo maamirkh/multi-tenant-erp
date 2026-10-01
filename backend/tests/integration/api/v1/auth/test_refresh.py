@@ -5,18 +5,20 @@ Spec ref: spec.md §7 FR-007, US-03.
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from tests.fixtures.auth_fixtures import create_test_user
 
 
-def _login(client: TestClient, email: str, password: str) -> dict:
+def _login(client: TestClient, email: str, password: str) -> dict[str, Any]:
     resp = client.post(
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200
-    return resp.json()["data"]
+    return dict(resp.json()["data"])
 
 
 class TestRefreshValid:

@@ -29,10 +29,10 @@ from modules.sales.services.credit_check_service import (
 # ---------------------------------------------------------------------------
 
 
-def _make_service() -> CreditCheckService:
+def _make_service() -> tuple[CreditCheckService, MagicMock]:
     db = MagicMock()
     svc = CreditCheckService(db)
-    return svc
+    return svc, db
 
 
 def _make_customer(
@@ -52,8 +52,9 @@ def _make_customer(
 
 class TestCreditCheckService:
     def setup_method(self) -> None:
-        self.svc = _make_service()
-        self.svc._order_repo = MagicMock()
+        self.svc, self.db = _make_service()
+        self.order_repo = MagicMock()
+        self.svc._order_repo = self.order_repo
         self.company_id = uuid4()
         self.customer_id = uuid4()
 
@@ -65,14 +66,12 @@ class TestCreditCheckService:
         customer_found: bool = True,
     ) -> None:
         if customer_found:
-            self.svc._db.query.return_value.filter.return_value.first.return_value = (
+            self.db.query.return_value.filter.return_value.first.return_value = (
                 _make_customer(credit_status, credit_limit)
             )
         else:
-            self.svc._db.query.return_value.filter.return_value.first.return_value = (
-                None
-            )
-        self.svc._order_repo.get_outstanding_total_for_customer.return_value = Decimal(
+            self.db.query.return_value.filter.return_value.first.return_value = None
+        self.order_repo.get_outstanding_total_for_customer.return_value = Decimal(
             outstanding
         )
 
@@ -158,11 +157,11 @@ class TestCreditCheckService:
         existing_order.total_amount = Decimal("1000.00")
 
         # Customer query returns customer
-        self.svc._db.query.return_value.filter.return_value.first.side_effect = [
+        self.db.query.return_value.filter.return_value.first.side_effect = [
             _make_customer("GOOD", "10000.00"),  # Customer query
             existing_order,  # Existing order query
         ]
-        self.svc._order_repo.get_outstanding_total_for_customer.return_value = Decimal(
+        self.order_repo.get_outstanding_total_for_customer.return_value = Decimal(
             "5000.00"
         )
 

@@ -21,6 +21,7 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx import Response
 
 from tests.fixtures.auth_fixtures import create_test_user
 
@@ -34,7 +35,7 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -49,7 +50,7 @@ def _flag_url(company_id: str, key: str) -> str:
     return f"/api/v1/companies/{company_id}/purchase/feature-flags/{key}"
 
 
-def _build_csv(rows: list[dict]) -> bytes:
+def _build_csv(rows: list[dict[str, str]]) -> bytes:
     """Build a CSV bytes payload from a list of dicts (auto-derives header from first row)."""
     if not rows:
         return b"supplier_code,legal_name\n"
@@ -62,8 +63,8 @@ def _build_csv(rows: list[dict]) -> bytes:
 
 def _post_csv(
     client: TestClient, token: str, company_id: str, csv_bytes: bytes
-) -> dict:
-    resp = client.post(
+) -> Response:
+    resp: Response = client.post(
         _import_url(company_id),
         headers=_auth(token),
         files={"file": ("suppliers.csv", csv_bytes, "text/csv")},
@@ -90,7 +91,7 @@ def _create_company(client: TestClient, token: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 @pytest.fixture()

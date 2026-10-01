@@ -400,6 +400,12 @@ SALES_FEATURE_FLAGS: Final[tuple[FeatureFlagDefinition, ...]] = (
         description="Sales reports, KPIs, and analytics dashboard",
         default_enabled=True,
     ),
+    FeatureFlagDefinition(
+        key="sales.invoice_pdf_export",
+        label="Invoice PDF Export",
+        description="Export a sales invoice as a PDF document",
+        default_enabled=True,
+    ),
     # --- Ready but Disabled ---
     FeatureFlagDefinition(
         key="sales.quotation_required",

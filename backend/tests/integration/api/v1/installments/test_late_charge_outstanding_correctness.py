@@ -28,6 +28,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
@@ -138,14 +139,16 @@ def _add_late_charge(
         accounting_ar_transaction_id=ar_id,
     )
     if waived:
-        late_charge.waived_at = date.today()  # any non-None sentinel value
+        late_charge.waived_at = date.today()  # type: ignore[assignment]  # any non-None sentinel value
         late_charge.waived_by = None
         late_charge.waived_reason = "test waiver"
     db.add(late_charge)
     db.commit()
 
 
-def _add_second_contract_same_company(db: Session, *, company_id: uuid.UUID) -> dict:
+def _add_second_contract_same_company(
+    db: Session, *, company_id: uuid.UUID
+) -> dict[str, Any]:
     """Add a second, independent contract + one schedule line to a
     company ``build_active_contract_with_schedule()`` already set up
     (GL accounts, fiscal year, ``AccountingConfiguration``) — calling

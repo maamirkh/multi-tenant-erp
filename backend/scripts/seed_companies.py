@@ -26,6 +26,7 @@ import sys
 import time
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import create_engine, text
 
@@ -104,8 +105,8 @@ _BUSINESS_TYPES = [
 _CHUNK_SIZE = 500
 
 
-def _make_row(n: int, owner_id: str) -> dict:
-    """Build one company row dict for bulk insert."""
+def _make_row(n: int, owner_id: str) -> dict[str, Any]:
+    """Build one company row dict[str, Any] for bulk insert."""
     now = datetime.now(UTC).isoformat()
     status = random.choices(_STATUSES, weights=_STATUS_WEIGHTS)[0]
     country = random.choice(_COUNTRIES)

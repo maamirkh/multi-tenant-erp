@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import logging
 from decimal import Decimal
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
@@ -116,7 +117,7 @@ class TransferService:
         company_id: UUID,
         source_warehouse_id: UUID,
         destination_warehouse_id: UUID,
-        lines: list[dict],
+        lines: list[dict[str, Any]],
         notes: str | None = None,
         reference_no: str | None = None,
         actor_id: UUID | None = None,

@@ -14,6 +14,7 @@ transaction (ADR-5, mirrors ``PlatformAuditRepository``).
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -65,7 +66,7 @@ class PlatformAdministratorRepository:
         administrator: PlatformAdministrator,
         *,
         is_active: bool,
-        deactivated_at=None,
+        deactivated_at: datetime | None = None,
         deactivated_by: UUID | None = None,
     ) -> PlatformAdministrator:
         """Stage an activation/deactivation state change. Caller commits."""

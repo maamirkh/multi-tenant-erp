@@ -7,9 +7,11 @@ from conftest.py.  All writes are rolled back after each test function.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from sqlalchemy.orm import Session
 
+from modules.companies.models.company import Company
 from modules.companies.models.enums import CompanyStatus
 from modules.companies.repositories.company_repository import CompanyRepository
 from tests.fixtures.company_fixtures import make_company_data
@@ -23,7 +25,7 @@ def _repo(db: Session) -> CompanyRepository:
     return CompanyRepository(db)
 
 
-def _make(db: Session, **overrides: object) -> object:
+def _make(db: Session, **overrides: Any) -> Company:
     """Create a company via the repository and return it."""
     data = make_company_data(**overrides)
     return _repo(db).create(data)

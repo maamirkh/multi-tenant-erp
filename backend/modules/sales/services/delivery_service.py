@@ -542,7 +542,7 @@ class DeliveryService:
 
         # Create lines + reserve stock
         for line_data in data.lines:
-            order_line = self._order_line_repo.get_by_id_or_none(
+            existing_order_line = self._order_line_repo.get_by_id_or_none(
                 line_data.order_line_id, company_id
             )
             dn_line = DeliveryNoteLine(
@@ -552,7 +552,9 @@ class DeliveryService:
                 product_id=(
                     str(line_data.product_id)
                     if line_data.product_id
-                    else (order_line.product_id if order_line else None)
+                    else (
+                        existing_order_line.product_id if existing_order_line else None
+                    )
                 ),
                 description=line_data.description,
                 quantity_dispatched=line_data.quantity_dispatched,

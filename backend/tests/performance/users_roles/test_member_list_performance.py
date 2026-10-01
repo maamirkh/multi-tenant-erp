@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import time
 import uuid as _uuid
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -121,7 +122,7 @@ class TestMemberListPerformance:
         self,
         test_client: TestClient,
         db_session: Session,
-        seeded_members: tuple,
+        seeded_members: tuple[Any, ...],
     ) -> None:
         """p95 latency for paginated member list with 1000 members < 500ms."""
         owner_token, company_id = seeded_members
@@ -156,7 +157,7 @@ class TestMemberListPerformance:
         self,
         test_client: TestClient,
         db_session: Session,
-        seeded_members: tuple,
+        seeded_members: tuple[Any, ...],
     ) -> None:
         """p95 latency for filtered member list (status=active) < 500ms."""
         owner_token, company_id = seeded_members
@@ -191,7 +192,7 @@ class TestMemberListPerformance:
         self,
         test_client: TestClient,
         db_session: Session,
-        seeded_members: tuple,
+        seeded_members: tuple[Any, ...],
     ) -> None:
         """p95 latency for department-filtered member list < 500ms."""
         owner_token, company_id = seeded_members

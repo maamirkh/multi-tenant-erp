@@ -20,6 +20,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import and_, select
+from sqlalchemy.orm import Session
 
 from modules.purchase.models.approval import (
     ApprovalDelegate,
@@ -38,7 +39,7 @@ from modules.purchase.repositories import BasePurchaseRepository
 class ApprovalMatrixRepository(BasePurchaseRepository[ApprovalMatrix]):
     """Data-access layer for the ``approval_matrices`` table."""
 
-    def __init__(self, db) -> None:
+    def __init__(self, db: Session) -> None:
         super().__init__(db=db, model=ApprovalMatrix)
 
     def get_active_for_document_type(
@@ -73,7 +74,7 @@ class ApprovalMatrixRepository(BasePurchaseRepository[ApprovalMatrix]):
 class MatrixRuleRepository(BasePurchaseRepository[MatrixRule]):
     """Data-access layer for the ``matrix_rules`` table."""
 
-    def __init__(self, db) -> None:
+    def __init__(self, db: Session) -> None:
         super().__init__(db=db, model=MatrixRule)
 
     def list_for_matrix(self, company_id: UUID, matrix_id: UUID) -> list[MatrixRule]:
@@ -96,7 +97,7 @@ class MatrixRuleRepository(BasePurchaseRepository[MatrixRule]):
 class ApprovalLevelRepository(BasePurchaseRepository[ApprovalLevel]):
     """Data-access layer for the ``approval_levels`` table."""
 
-    def __init__(self, db) -> None:
+    def __init__(self, db: Session) -> None:
         super().__init__(db=db, model=ApprovalLevel)
 
     def list_for_rule(self, company_id: UUID, rule_id: UUID) -> list[ApprovalLevel]:
@@ -123,7 +124,7 @@ class ApprovalRecordRepository(BasePurchaseRepository[ApprovalRecord]):
     Once an ApprovalRecord is written it is immutable.
     """
 
-    def __init__(self, db) -> None:
+    def __init__(self, db: Session) -> None:
         super().__init__(db=db, model=ApprovalRecord)
 
     # ------------------------------------------------------------------
@@ -168,12 +169,12 @@ class ApprovalRecordRepository(BasePurchaseRepository[ApprovalRecord]):
     # Immutability guard — override mutating base methods to raise
     # ------------------------------------------------------------------
 
-    def update(self, entity):  # type: ignore[override]
+    def update(self, entity: ApprovalRecord) -> ApprovalRecord:
         raise NotImplementedError(
             "ApprovalRecord is immutable — updates are forbidden."
         )
 
-    def soft_delete(self, id, company_id):  # type: ignore[override]
+    def soft_delete(self, id: UUID, company_id: UUID) -> None:
         raise NotImplementedError(
             "ApprovalRecord is immutable — deletes are forbidden."
         )
@@ -187,7 +188,7 @@ class ApprovalRecordRepository(BasePurchaseRepository[ApprovalRecord]):
 class ApprovalDelegateRepository(BasePurchaseRepository[ApprovalDelegate]):
     """Data-access layer for the ``approval_delegates`` table."""
 
-    def __init__(self, db) -> None:
+    def __init__(self, db: Session) -> None:
         super().__init__(db=db, model=ApprovalDelegate)
 
     def get_active_delegation(

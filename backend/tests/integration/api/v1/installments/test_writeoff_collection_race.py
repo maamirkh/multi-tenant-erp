@@ -16,7 +16,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
 from core.events.outbox import EventOutboxRepository
-from modules.accounting.dependencies import build_ar_service, build_payment_service
+from modules.accounting.dependencies import (
+    build_allocation_engine,
+    build_ar_service,
+    build_payment_service,
+)
 from modules.accounting.models.ar import ARTransaction
 from modules.accounting.models.gl import JournalEntry
 from modules.accounting.models.payments import Payment
@@ -58,7 +62,9 @@ def _build_contract_service(session) -> InstallmentContractService:
     ar_service = build_ar_service(session, with_sales_sync=False)
     payment_service = build_payment_service(session)
     gateway = AccountingIntegrationGateway(
-        ar_service=ar_service, payment_service=payment_service, allocation_engine=None
+        ar_service=ar_service,
+        payment_service=payment_service,
+        allocation_engine=build_allocation_engine(session),
     )
     return InstallmentContractService(
         repo=InstallmentContractRepository(session),
@@ -102,7 +108,7 @@ class TestWriteoffVsCollectionRace:
         session_a = session_factory()
         session_b = session_factory()
 
-        results: dict[str, object] = {}
+        results: dict[str, tuple[str, object]] = {}
 
         def _attempt_writeoff(session) -> None:
             try:
@@ -180,8 +186,8 @@ class TestWriteoffVsCollectionRace:
             # flagged WRITTEN_OFF).
             gateway = AccountingIntegrationGateway(
                 ar_service=build_ar_service(verify_session, with_sales_sync=False),
-                payment_service=None,
-                allocation_engine=None,
+                payment_service=build_payment_service(verify_session),
+                allocation_engine=build_allocation_engine(verify_session),
             )
             ar_transaction_id = gateway.get_invoice_ar_transaction_id(
                 company_id, ctx["contract"].sales_invoice_id

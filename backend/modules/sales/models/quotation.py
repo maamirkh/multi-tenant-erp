@@ -20,6 +20,7 @@ Spec ref: specs/007-sales-management/data-model.md §Sales Quotation Aggregate
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import (
     CheckConstraint,
@@ -400,7 +401,7 @@ class QuotationRevision(TenantBaseModel):
 
     # ---- Snapshot ----
 
-    snapshot: Mapped[dict] = mapped_column(
+    snapshot: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         nullable=False,
         doc="Full quotation + lines snapshot as JSONB at revision time",

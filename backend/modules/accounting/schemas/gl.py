@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from pydantic import Field
@@ -120,7 +121,7 @@ class JournalLineResponse(AccountingBaseSchema):
 
 
 class JournalEntryResponse(AccountingBaseSchema):
-    """Response schema for a journal entry (list view — no nested lines)."""
+    """Response schema for a journal entry (list[Any] view — no nested lines)."""
 
     id: UUID
     company_id: UUID
@@ -150,7 +151,7 @@ class JournalEntryResponse(AccountingBaseSchema):
 class JournalEntryDetailResponse(JournalEntryResponse):
     """Response schema for a journal entry detail view — includes lines."""
 
-    lines: list[JournalLineResponse] = Field(default_factory=list)
+    lines: list[JournalLineResponse] = Field(default_factory=list[Any])
 
 
 # ---------------------------------------------------------------------------
@@ -203,8 +204,8 @@ class AuditLogEntryResponse(AccountingBaseSchema):
     action: str
     actor_user_id: UUID | None
     occurred_at: datetime
-    before_state: dict | None
-    after_state: dict | None
+    before_state: dict[str, Any] | None
+    after_state: dict[str, Any] | None
     reason: str | None
 
 

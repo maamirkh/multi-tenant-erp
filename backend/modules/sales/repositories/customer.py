@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.orm import Session
 
 from modules.sales.models.customer import (
@@ -77,6 +77,27 @@ class CustomerRepository(BaseSalesRepository[Customer]):
         )
         return self.db.execute(stmt).scalars().one_or_none()
 
+    def get_names_by_ids(
+        self, company_id: UUID, customer_ids: set[UUID]
+    ) -> dict[UUID, str]:
+        """Return ``{id: legal_name}`` for the given customers in one query.
+
+        Additive, read-only (Epic 11 T269): lets a caller resolve display
+        names for a whole page of rows without one lookup per row.
+        Tenant-scoped and soft-delete-aware exactly like
+        ``get_by_id_or_none`` — an id that is missing, soft-deleted, or
+        belongs to another company is simply absent from the result.
+        """
+        if not customer_ids:
+            return {}
+        stmt = (
+            select(Customer.id, Customer.legal_name)
+            .where(Customer.company_id == company_id)
+            .where(Customer.id.in_(customer_ids))
+            .where(Customer.is_deleted == False)  # noqa: E712
+        )
+        return {row.id: row.legal_name for row in self.db.execute(stmt)}
+
     def get_active(self, company_id: UUID) -> list[Customer]:
         """Return all ACTIVE customers for a company."""
         stmt = (
@@ -109,7 +130,7 @@ class CustomerRepository(BaseSalesRepository[Customer]):
         ]
 
         # Text search — FTS on PostgreSQL, ILIKE on SQLite
-        text_filter = None
+        text_filter: ColumnElement[bool] | None = None
         if query:
             q = query.strip()
             if _dialect_name(self.db) == "postgresql":

@@ -16,6 +16,7 @@ Spec reference: spec.md Section 10.1, tasks T130.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -35,10 +36,10 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -50,7 +51,7 @@ def _create_company(client: TestClient, token: str, legal_name: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _audit_actions(db: Session, company_id: str) -> list[str]:
@@ -87,7 +88,7 @@ def _add_member(
     email: str,
     role_id: str,
     db: Session,
-) -> dict:
+) -> dict[str, Any]:
     """Add a member via API, return the response data dict."""
     resp = client.post(
         f"/api/v1/companies/{company_id}/members",
@@ -95,7 +96,7 @@ def _add_member(
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]
+    return dict(resp.json()["data"])
 
 
 def _setup_company_with_owner(

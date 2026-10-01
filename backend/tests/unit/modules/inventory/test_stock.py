@@ -13,11 +13,12 @@ Spec ref: specs/005-inventory-management/spec.md §15
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import cast
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import CheckConstraint, UniqueConstraint
+from sqlalchemy import CheckConstraint, Table, UniqueConstraint
 
 from modules.inventory.models.stock import (
     FIFOCostLayer,
@@ -55,7 +56,7 @@ class TestStockPositionModel:
     def test_unique_constraint_exists(self):
         constraint_names = [
             c.name
-            for c in StockPosition.__table__.constraints
+            for c in cast(Table, StockPosition.__table__).constraints
             if isinstance(c, UniqueConstraint)
         ]
         assert "uq_inv_stock_pos_product_wh" in constraint_names
@@ -85,7 +86,7 @@ class TestStockMovementModel:
     def test_check_constraints_exist(self):
         check_names = [
             c.name
-            for c in StockMovement.__table__.constraints
+            for c in cast(Table, StockMovement.__table__).constraints
             if isinstance(c, CheckConstraint)
         ]
         assert "ck_inv_stock_mov_type" in check_names

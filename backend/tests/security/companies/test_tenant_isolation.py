@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json as _json
 import uuid
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -23,10 +24,10 @@ def _login(client: TestClient, email: str, password: str) -> str:
     resp = client.post(
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -37,7 +38,7 @@ def _create_company(client: TestClient, token: str, name: str, email: str) -> st
         headers=_auth(token),
     )
     assert resp.status_code == 201, f"Company creation failed: {resp.json()}"
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 @pytest.fixture()
@@ -68,7 +69,7 @@ class TestCrossTenantIsolation:
     """User B cannot access User A's company resources."""
 
     def test_get_other_tenant_company_returns_403(
-        self, test_client: TestClient, two_tenants: tuple
+        self, test_client: TestClient, two_tenants: tuple[Any, ...]
     ) -> None:
         _, company_a_id, token_b, _ = two_tenants
         resp = test_client.get(
@@ -77,7 +78,7 @@ class TestCrossTenantIsolation:
         assert resp.status_code == 403
 
     def test_patch_other_tenant_company_returns_403(
-        self, test_client: TestClient, two_tenants: tuple
+        self, test_client: TestClient, two_tenants: tuple[Any, ...]
     ) -> None:
         _, company_a_id, token_b, _ = two_tenants
         resp = test_client.patch(
@@ -88,7 +89,7 @@ class TestCrossTenantIsolation:
         assert resp.status_code == 403
 
     def test_delete_other_tenant_company_returns_403(
-        self, test_client: TestClient, two_tenants: tuple
+        self, test_client: TestClient, two_tenants: tuple[Any, ...]
     ) -> None:
         _, company_a_id, token_b, _ = two_tenants
         resp = test_client.request(
@@ -103,7 +104,7 @@ class TestCrossTenantIsolation:
         assert resp.status_code == 403
 
     def test_get_other_tenant_audit_log_returns_403(
-        self, test_client: TestClient, two_tenants: tuple
+        self, test_client: TestClient, two_tenants: tuple[Any, ...]
     ) -> None:
         _, company_a_id, token_b, _ = two_tenants
         resp = test_client.get(
@@ -112,7 +113,7 @@ class TestCrossTenantIsolation:
         assert resp.status_code == 403
 
     def test_post_other_tenant_address_returns_403(
-        self, test_client: TestClient, two_tenants: tuple
+        self, test_client: TestClient, two_tenants: tuple[Any, ...]
     ) -> None:
         _, company_a_id, token_b, _ = two_tenants
         resp = test_client.post(
@@ -128,7 +129,7 @@ class TestCrossTenantIsolation:
         assert resp.status_code == 403
 
     def test_cross_tenant_response_is_not_404(
-        self, test_client: TestClient, two_tenants: tuple
+        self, test_client: TestClient, two_tenants: tuple[Any, ...]
     ) -> None:
         """Existence of company_a must not be revealed to tenant_b via 404 path."""
         _, company_a_id, token_b, _ = two_tenants

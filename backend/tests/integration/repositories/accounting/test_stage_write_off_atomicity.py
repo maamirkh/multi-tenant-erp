@@ -20,8 +20,10 @@ absent/unchanged.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Generator
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from sqlalchemy.orm import Session, sessionmaker
@@ -60,7 +62,7 @@ def pg_engine(request: pytest.FixtureRequest):
 
 
 @pytest.fixture
-def db_session(pg_engine) -> Session:
+def db_session(pg_engine) -> Generator[Session, None, None]:
     session_factory = sessionmaker(bind=pg_engine)
     session = session_factory()
     try:
@@ -70,7 +72,7 @@ def db_session(pg_engine) -> Session:
 
 
 @pytest.fixture
-def setup(pg_engine, db_session: Session) -> dict:
+def setup(pg_engine, db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -132,7 +134,7 @@ def setup(pg_engine, db_session: Session) -> dict:
 
 class TestStageWriteOffAtomicity:
     def test_forced_failure_between_stage_and_finalize_leaves_nothing_committed(
-        self, db_session: Session, setup: dict
+        self, db_session: Session, setup: dict[str, Any]
     ) -> None:
         ar_service = build_ar_service(db_session, with_sales_sync=False)
         customer_id = uuid.uuid4()
@@ -189,6 +191,7 @@ class TestStageWriteOffAtomicity:
             assert journal_entry is None
 
             verified_invoice = verify_session.get(ARTransaction, invoice.id)
+            assert verified_invoice is not None
             assert verified_invoice.status == "OPEN"
             assert verified_invoice.outstanding_amount == Decimal("600.00")
 
@@ -198,7 +201,7 @@ class TestStageWriteOffAtomicity:
             verify_session.close()
 
     def test_normal_path_commits_gl_and_status_change_together(
-        self, db_session: Session, setup: dict
+        self, db_session: Session, setup: dict[str, Any]
     ) -> None:
         ar_service = build_ar_service(db_session, with_sales_sync=False)
         customer_id = uuid.uuid4()
@@ -231,6 +234,7 @@ class TestStageWriteOffAtomicity:
             assert journal_entry is not None
 
             verified_invoice = verify_session.get(ARTransaction, written_off.id)
+            assert verified_invoice is not None
             assert verified_invoice.status == "WRITTEN_OFF"
             assert verified_invoice.outstanding_amount == Decimal("0")
         finally:

@@ -10,6 +10,7 @@ identical — with the two new ``companies`` columns NULL.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import sqlalchemy as sa
 
@@ -80,7 +81,9 @@ def _seed_pre_epic_9a_tenant(engine: sa.engine.Engine) -> dict[str, uuid.UUID]:
     }
 
 
-def _row_as_dict(engine: sa.engine.Engine, table: str, id_col: str, id_value) -> dict:
+def _row_as_dict(
+    engine: sa.engine.Engine, table: str, id_col: str, id_value
+) -> dict[str, Any]:
     with engine.connect() as conn:
         row = (
             conn.execute(

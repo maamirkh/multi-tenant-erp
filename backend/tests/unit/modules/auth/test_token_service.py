@@ -75,7 +75,7 @@ class TestCreateRefreshToken:
 
         captured_hash: list[str] = []
 
-        def _capture_create(**kwargs):  # type: ignore[no-untyped-def]
+        def _capture_create(**kwargs):
             captured_hash.append(kwargs["token_hash"])
             rec = MagicMock(spec=RefreshToken)
             rec.id = uuid.uuid4()

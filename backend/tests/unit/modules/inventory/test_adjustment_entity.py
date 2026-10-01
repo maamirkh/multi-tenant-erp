@@ -14,10 +14,13 @@ Spec ref: specs/005-inventory-management/spec.md §15 / FR-IO-012
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from decimal import Decimal
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
+from sqlalchemy import Table
 
 from modules.inventory.exceptions import (
     AdjustmentNotFoundError,
@@ -40,7 +43,7 @@ def _make_adj(**kwargs) -> MagicMock:
     SQLAlchemy instrumentation errors when accessing mapped attributes
     outside of a session context.
     """
-    defaults: dict = {
+    defaults: dict[str, Any] = {
         "id": uuid.uuid4(),
         "company_id": uuid.uuid4(),
         "product_id": str(uuid.uuid4()),
@@ -64,7 +67,25 @@ def _make_adj(**kwargs) -> MagicMock:
     return mock
 
 
-def _make_service(approval_enabled: bool = False) -> AdjustmentService:
+@dataclass
+class _ServiceUnderTest:
+    """Bundles the real ``AdjustmentService`` with its own constructor
+    mocks, so tests assert against the mocks directly (``m.wh_repo...``)
+    rather than through ``svc._wh_repo...`` — the latter is statically
+    typed as the real repository class regardless of what was actually
+    passed at construction, so MagicMock-only members like
+    ``.return_value``/``.assert_called_once()`` don't type-check on it."""
+
+    service: AdjustmentService
+    db: MagicMock
+    adj_repo: MagicMock
+    ledger: MagicMock
+    pos_repo: MagicMock
+    wh_repo: MagicMock
+    flag_service: MagicMock
+
+
+def _make_service(approval_enabled: bool = False) -> _ServiceUnderTest:
     db = MagicMock()
     adj_repo = MagicMock()
     stock_ledger = MagicMock()
@@ -81,7 +102,15 @@ def _make_service(approval_enabled: bool = False) -> AdjustmentService:
         warehouse_repo=wh_repo,
         flag_service=flag_service,
     )
-    return svc
+    return _ServiceUnderTest(
+        service=svc,
+        db=db,
+        adj_repo=adj_repo,
+        ledger=stock_ledger,
+        pos_repo=pos_repo,
+        wh_repo=wh_repo,
+        flag_service=flag_service,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -121,11 +150,13 @@ class TestInventoryAdjustmentModel:
         assert "rejection_reason" in cols
 
     def test_status_check_constraint_exists(self):
-        constraints = {c.name for c in InventoryAdjustment.__table__.constraints}
+        table = cast(Table, InventoryAdjustment.__table__)
+        constraints = {c.name for c in table.constraints}
         assert "ck_inv_adj_status" in constraints
 
     def test_movement_type_check_constraint_exists(self):
-        constraints = {c.name for c in InventoryAdjustment.__table__.constraints}
+        table = cast(Table, InventoryAdjustment.__table__)
+        constraints = {c.name for c in table.constraints}
         assert "ck_inv_adj_movement_type" in constraints
 
 
@@ -136,12 +167,12 @@ class TestInventoryAdjustmentModel:
 
 class TestCreateAdjustment:
     def test_invalid_quantity_raises(self):
-        svc = _make_service()
-        svc._wh_repo.get_by_id_or_none.return_value = MagicMock(
+        m = _make_service()
+        m.wh_repo.get_by_id_or_none.return_value = MagicMock(
             is_deleted=False, status="ACTIVE"
         )
         with pytest.raises(InvalidStockQuantityError):
-            svc.create_adjustment(
+            m.service.create_adjustment(
                 company_id=uuid.uuid4(),
                 product_id=uuid.uuid4(),
                 warehouse_id=uuid.uuid4(),
@@ -150,12 +181,12 @@ class TestCreateAdjustment:
             )
 
     def test_negative_quantity_raises(self):
-        svc = _make_service()
-        svc._wh_repo.get_by_id_or_none.return_value = MagicMock(
+        m = _make_service()
+        m.wh_repo.get_by_id_or_none.return_value = MagicMock(
             is_deleted=False, status="ACTIVE"
         )
         with pytest.raises(InvalidStockQuantityError):
-            svc.create_adjustment(
+            m.service.create_adjustment(
                 company_id=uuid.uuid4(),
                 product_id=uuid.uuid4(),
                 warehouse_id=uuid.uuid4(),
@@ -164,12 +195,12 @@ class TestCreateAdjustment:
             )
 
     def test_invalid_movement_type_raises(self):
-        svc = _make_service()
-        svc._wh_repo.get_by_id_or_none.return_value = MagicMock(
+        m = _make_service()
+        m.wh_repo.get_by_id_or_none.return_value = MagicMock(
             is_deleted=False, status="ACTIVE"
         )
         with pytest.raises(ValueError):
-            svc.create_adjustment(
+            m.service.create_adjustment(
                 company_id=uuid.uuid4(),
                 product_id=uuid.uuid4(),
                 warehouse_id=uuid.uuid4(),
@@ -178,10 +209,10 @@ class TestCreateAdjustment:
             )
 
     def test_warehouse_not_found_raises(self):
-        svc = _make_service()
-        svc._wh_repo.get_by_id_or_none.return_value = None
+        m = _make_service()
+        m.wh_repo.get_by_id_or_none.return_value = None
         with pytest.raises(WarehouseNotFoundError):
-            svc.create_adjustment(
+            m.service.create_adjustment(
                 company_id=uuid.uuid4(),
                 product_id=uuid.uuid4(),
                 warehouse_id=uuid.uuid4(),
@@ -190,12 +221,12 @@ class TestCreateAdjustment:
             )
 
     def test_inactive_warehouse_raises(self):
-        svc = _make_service()
-        svc._wh_repo.get_by_id_or_none.return_value = MagicMock(
+        m = _make_service()
+        m.wh_repo.get_by_id_or_none.return_value = MagicMock(
             is_deleted=False, status="INACTIVE"
         )
         with pytest.raises(WarehouseNotFoundError):
-            svc.create_adjustment(
+            m.service.create_adjustment(
                 company_id=uuid.uuid4(),
                 product_id=uuid.uuid4(),
                 warehouse_id=uuid.uuid4(),
@@ -204,15 +235,15 @@ class TestCreateAdjustment:
             )
 
     def test_create_sets_draft_status(self):
-        svc = _make_service()
-        svc._wh_repo.get_by_id_or_none.return_value = MagicMock(
+        m = _make_service()
+        m.wh_repo.get_by_id_or_none.return_value = MagicMock(
             is_deleted=False, status="ACTIVE"
         )
-        svc._pos_repo.get_by_product_warehouse.return_value = None
-        svc._db.add = MagicMock()
-        svc._db.flush = MagicMock()
+        m.pos_repo.get_by_product_warehouse.return_value = None
+        m.db.add = MagicMock()
+        m.db.flush = MagicMock()
 
-        result = svc.create_adjustment(
+        result = m.service.create_adjustment(
             company_id=uuid.uuid4(),
             product_id=uuid.uuid4(),
             warehouse_id=uuid.uuid4(),
@@ -223,41 +254,43 @@ class TestCreateAdjustment:
         assert result.version == 1
 
     def test_old_quantity_captured_from_position(self):
-        svc = _make_service()
-        svc._wh_repo.get_by_id_or_none.return_value = MagicMock(
+        m = _make_service()
+        m.wh_repo.get_by_id_or_none.return_value = MagicMock(
             is_deleted=False, status="ACTIVE"
         )
         mock_pos = MagicMock()
         mock_pos.qty_on_hand = Decimal("75")
-        svc._pos_repo.get_by_product_warehouse.return_value = mock_pos
-        svc._db.add = MagicMock()
-        svc._db.flush = MagicMock()
+        m.pos_repo.get_by_product_warehouse.return_value = mock_pos
+        m.db.add = MagicMock()
+        m.db.flush = MagicMock()
 
-        result = svc.create_adjustment(
+        result = m.service.create_adjustment(
             company_id=uuid.uuid4(),
             product_id=uuid.uuid4(),
             warehouse_id=uuid.uuid4(),
             movement_type="ADJUSTMENT_OUT",
             quantity=Decimal("25"),
         )
+        assert result.old_quantity is not None
         assert float(result.old_quantity) == pytest.approx(75.0)
 
     def test_old_quantity_zero_when_no_position(self):
-        svc = _make_service()
-        svc._wh_repo.get_by_id_or_none.return_value = MagicMock(
+        m = _make_service()
+        m.wh_repo.get_by_id_or_none.return_value = MagicMock(
             is_deleted=False, status="ACTIVE"
         )
-        svc._pos_repo.get_by_product_warehouse.return_value = None
-        svc._db.add = MagicMock()
-        svc._db.flush = MagicMock()
+        m.pos_repo.get_by_product_warehouse.return_value = None
+        m.db.add = MagicMock()
+        m.db.flush = MagicMock()
 
-        result = svc.create_adjustment(
+        result = m.service.create_adjustment(
             company_id=uuid.uuid4(),
             product_id=uuid.uuid4(),
             warehouse_id=uuid.uuid4(),
             movement_type="ADJUSTMENT_IN",
             quantity=Decimal("20"),
         )
+        assert result.old_quantity is not None
         assert float(result.old_quantity) == pytest.approx(0.0)
 
 
@@ -268,57 +301,57 @@ class TestCreateAdjustment:
 
 class TestSubmitAdjustment:
     def test_submit_non_draft_raises(self):
-        svc = _make_service()
+        m = _make_service()
         adj = _make_adj(status="PENDING_APPROVAL")
-        svc._adj_repo.get_by_id_or_none.return_value = adj
+        m.adj_repo.get_by_id_or_none.return_value = adj
         with pytest.raises(InvalidAdjustmentStateTransitionError):
-            svc.submit_adjustment(
+            m.service.submit_adjustment(
                 company_id=adj.company_id,
                 adjustment_id=adj.id,
             )
 
     def test_submit_not_found_raises(self):
-        svc = _make_service()
-        svc._adj_repo.get_by_id_or_none.return_value = None
+        m = _make_service()
+        m.adj_repo.get_by_id_or_none.return_value = None
         with pytest.raises(AdjustmentNotFoundError):
-            svc.submit_adjustment(
+            m.service.submit_adjustment(
                 company_id=uuid.uuid4(),
                 adjustment_id=uuid.uuid4(),
             )
 
     def test_submit_with_approval_flag_disabled_auto_approves(self):
-        svc = _make_service(approval_enabled=False)
+        m = _make_service(approval_enabled=False)
         adj = _make_adj(status="DRAFT", version=1)
-        svc._adj_repo.get_by_id_or_none.return_value = adj
+        m.adj_repo.get_by_id_or_none.return_value = adj
         # Mock ledger returning movement + position
         mock_movement = MagicMock()
         mock_movement.id = uuid.uuid4()
         mock_pos = MagicMock()
         mock_pos.qty_on_hand = Decimal("110")
-        svc._ledger.record_adjustment.return_value = (mock_movement, mock_pos)
+        m.ledger.record_adjustment.return_value = (mock_movement, mock_pos)
         approved_adj = _make_adj(status="APPROVED", version=2)
-        svc._adj_repo.update_status.return_value = approved_adj
+        m.adj_repo.update_status.return_value = approved_adj
 
-        result = svc.submit_adjustment(
+        result = m.service.submit_adjustment(
             company_id=adj.company_id,
             adjustment_id=adj.id,
         )
         assert result.status == "APPROVED"
-        svc._ledger.record_adjustment.assert_called_once()
+        m.ledger.record_adjustment.assert_called_once()
 
     def test_submit_with_approval_flag_enabled_goes_pending(self):
-        svc = _make_service(approval_enabled=True)
+        m = _make_service(approval_enabled=True)
         adj = _make_adj(status="DRAFT", version=1)
-        svc._adj_repo.get_by_id_or_none.return_value = adj
+        m.adj_repo.get_by_id_or_none.return_value = adj
         pending_adj = _make_adj(status="PENDING_APPROVAL", version=2)
-        svc._adj_repo.update_status.return_value = pending_adj
+        m.adj_repo.update_status.return_value = pending_adj
 
-        result = svc.submit_adjustment(
+        result = m.service.submit_adjustment(
             company_id=adj.company_id,
             adjustment_id=adj.id,
         )
         assert result.status == "PENDING_APPROVAL"
-        svc._ledger.record_adjustment.assert_not_called()
+        m.ledger.record_adjustment.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -328,22 +361,22 @@ class TestSubmitAdjustment:
 
 class TestApproveAdjustment:
     def test_approve_non_pending_raises(self):
-        svc = _make_service()
+        m = _make_service()
         adj = _make_adj(status="DRAFT")
-        svc._adj_repo.get_by_id_or_none.return_value = adj
+        m.adj_repo.get_by_id_or_none.return_value = adj
         with pytest.raises(InvalidAdjustmentStateTransitionError):
-            svc.approve_adjustment(
+            m.service.approve_adjustment(
                 company_id=adj.company_id,
                 adjustment_id=adj.id,
             )
 
     def test_self_approval_raises(self):
         actor = uuid.uuid4()
-        svc = _make_service()
+        m = _make_service()
         adj = _make_adj(status="PENDING_APPROVAL", submitted_by=str(actor))
-        svc._adj_repo.get_by_id_or_none.return_value = adj
+        m.adj_repo.get_by_id_or_none.return_value = adj
         with pytest.raises(InvalidAdjustmentStateTransitionError):
-            svc.approve_adjustment(
+            m.service.approve_adjustment(
                 company_id=adj.company_id,
                 adjustment_id=adj.id,
                 actor_id=actor,
@@ -352,41 +385,41 @@ class TestApproveAdjustment:
     def test_approve_by_different_user_succeeds(self):
         submitter = uuid.uuid4()
         approver = uuid.uuid4()
-        svc = _make_service()
+        m = _make_service()
         adj = _make_adj(
             status="PENDING_APPROVAL", submitted_by=str(submitter), version=2
         )
-        svc._adj_repo.get_by_id_or_none.return_value = adj
+        m.adj_repo.get_by_id_or_none.return_value = adj
         mock_movement = MagicMock()
         mock_movement.id = uuid.uuid4()
         mock_pos = MagicMock()
         mock_pos.qty_on_hand = Decimal("120")
-        svc._ledger.record_adjustment.return_value = (mock_movement, mock_pos)
+        m.ledger.record_adjustment.return_value = (mock_movement, mock_pos)
         approved_adj = _make_adj(status="APPROVED", version=3)
-        svc._adj_repo.update_status.return_value = approved_adj
+        m.adj_repo.update_status.return_value = approved_adj
 
-        result = svc.approve_adjustment(
+        result = m.service.approve_adjustment(
             company_id=adj.company_id,
             adjustment_id=adj.id,
             actor_id=approver,
         )
         assert result.status == "APPROVED"
-        svc._ledger.record_adjustment.assert_called_once()
+        m.ledger.record_adjustment.assert_called_once()
 
     def test_approve_with_no_actor_id_allowed(self):
         """System-level approve (no actor) should succeed."""
-        svc = _make_service()
+        m = _make_service()
         adj = _make_adj(status="PENDING_APPROVAL", submitted_by=None, version=2)
-        svc._adj_repo.get_by_id_or_none.return_value = adj
+        m.adj_repo.get_by_id_or_none.return_value = adj
         mock_movement = MagicMock()
         mock_movement.id = uuid.uuid4()
         mock_pos = MagicMock()
         mock_pos.qty_on_hand = Decimal("10")
-        svc._ledger.record_adjustment.return_value = (mock_movement, mock_pos)
+        m.ledger.record_adjustment.return_value = (mock_movement, mock_pos)
         approved_adj = _make_adj(status="APPROVED", version=3)
-        svc._adj_repo.update_status.return_value = approved_adj
+        m.adj_repo.update_status.return_value = approved_adj
 
-        result = svc.approve_adjustment(
+        result = m.service.approve_adjustment(
             company_id=adj.company_id,
             adjustment_id=adj.id,
             actor_id=None,
@@ -401,55 +434,53 @@ class TestApproveAdjustment:
 
 class TestRejectAdjustment:
     def test_reject_non_pending_raises(self):
-        svc = _make_service()
+        m = _make_service()
         adj = _make_adj(status="DRAFT")
-        svc._adj_repo.get_by_id_or_none.return_value = adj
+        m.adj_repo.get_by_id_or_none.return_value = adj
         with pytest.raises(InvalidAdjustmentStateTransitionError):
-            svc.reject_adjustment(
+            m.service.reject_adjustment(
                 company_id=adj.company_id,
                 adjustment_id=adj.id,
                 rejection_reason="No reason",
             )
 
     def test_reject_approved_raises(self):
-        svc = _make_service()
+        m = _make_service()
         adj = _make_adj(status="APPROVED")
-        svc._adj_repo.get_by_id_or_none.return_value = adj
+        m.adj_repo.get_by_id_or_none.return_value = adj
         with pytest.raises(InvalidAdjustmentStateTransitionError):
-            svc.reject_adjustment(
+            m.service.reject_adjustment(
                 company_id=adj.company_id,
                 adjustment_id=adj.id,
                 rejection_reason="Too late",
             )
 
     def test_reject_pending_succeeds(self):
-        svc = _make_service()
+        m = _make_service()
         adj = _make_adj(status="PENDING_APPROVAL", version=2)
-        svc._adj_repo.get_by_id_or_none.return_value = adj
+        m.adj_repo.get_by_id_or_none.return_value = adj
         rejected_adj = _make_adj(status="REJECTED", version=3)
-        svc._adj_repo.update_status.return_value = rejected_adj
+        m.adj_repo.update_status.return_value = rejected_adj
 
-        result = svc.reject_adjustment(
+        result = m.service.reject_adjustment(
             company_id=adj.company_id,
             adjustment_id=adj.id,
             rejection_reason="Stock count incorrect",
         )
         assert result.status == "REJECTED"
-        svc._ledger.record_adjustment.assert_not_called()
+        m.ledger.record_adjustment.assert_not_called()
 
     def test_reject_passes_reason_to_repo(self):
-        svc = _make_service()
+        m = _make_service()
         adj = _make_adj(status="PENDING_APPROVAL", version=2)
-        svc._adj_repo.get_by_id_or_none.return_value = adj
-        svc._adj_repo.update_status.return_value = _make_adj(
-            status="REJECTED", version=3
-        )
+        m.adj_repo.get_by_id_or_none.return_value = adj
+        m.adj_repo.update_status.return_value = _make_adj(status="REJECTED", version=3)
 
-        svc.reject_adjustment(
+        m.service.reject_adjustment(
             company_id=adj.company_id,
             adjustment_id=adj.id,
             rejection_reason="Not authorised",
         )
-        call_kwargs = svc._adj_repo.update_status.call_args.kwargs
+        call_kwargs = m.adj_repo.update_status.call_args.kwargs
         assert call_kwargs["rejection_reason"] == "Not authorised"
         assert call_kwargs["new_status"] == "REJECTED"

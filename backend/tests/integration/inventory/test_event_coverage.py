@@ -23,6 +23,7 @@ import json
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -88,7 +89,7 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
 def _create_company(client: TestClient, token: str) -> uuid.UUID:
@@ -108,7 +109,7 @@ def _create_company(client: TestClient, token: str) -> uuid.UUID:
     return uuid.UUID(resp.json()["data"]["id"])
 
 
-def _auth(client: TestClient, db: Session) -> tuple[dict, uuid.UUID]:
+def _auth(client: TestClient, db: Session) -> tuple[dict[str, str], uuid.UUID]:
     email = f"evt-{uuid.uuid4().hex[:8]}@test.com"
     create_test_user(db, email=email, password="TestPass123!")
     token = _login(client, email, "TestPass123!")
@@ -116,7 +117,7 @@ def _auth(client: TestClient, db: Session) -> tuple[dict, uuid.UUID]:
     return {"Authorization": f"Bearer {token}"}, company_id
 
 
-def _make_event_kwargs(event_cls) -> dict:
+def _make_event_kwargs(event_cls) -> dict[str, Any]:
     """Build minimal kwargs to instantiate any domain event class."""
     import dataclasses
 
@@ -198,7 +199,7 @@ def _make_event_kwargs(event_cls) -> dict:
     except TypeError:
         return base
 
-    kwargs = dict(base)
+    kwargs: dict[str, Any] = dict(base)
     for f in fields:
         if not f.init or f.name in base:
             continue

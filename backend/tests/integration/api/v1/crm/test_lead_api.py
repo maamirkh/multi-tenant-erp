@@ -18,6 +18,7 @@ specs/009-crm/spec.md §38.1-38.2, §38.7.
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -37,8 +38,8 @@ from tests.integration.api.v1.crm.conftest import (
 )
 
 
-def _create_lead_payload(**overrides: object) -> dict:
-    payload = {
+def _create_lead_payload(**overrides: object) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "first_name": "Jane",
         "last_name": "Prospect",
         "email": f"jane-{uuid4().hex[:8]}@example.com",

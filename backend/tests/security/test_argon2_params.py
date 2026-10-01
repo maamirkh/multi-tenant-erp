@@ -11,11 +11,12 @@ Spec ref: spec.md §13.1, NFR-011.
 from __future__ import annotations
 
 import time
+from typing import Any
 
 import pytest
 from argon2 import PasswordHasher
 
-_SETTINGS_KWARGS = {
+_SETTINGS_KWARGS: dict[str, Any] = {
     "DATABASE_URL": "sqlite:///:memory:",
     "SECRET_KEY": "test-secret-key-minimum-32-chars-ok",
     "JWT_SECRET_KEY": "test-jwt-secret-key-min-32-chars-ok!",

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -71,7 +72,7 @@ def _build_engine(db_session: Session) -> PostingEngine:
     )
 
 
-def _setup_company(db_session: Session) -> dict:
+def _setup_company(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,

@@ -13,6 +13,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -35,7 +36,7 @@ from tests.integration.api.v1.installments.conftest import (
 )
 
 
-def _persist_pre_active_contract(db_session, status: str) -> tuple:
+def _persist_pre_active_contract(db_session, status: str) -> tuple[Any, ...]:
     """A DRAFT/PENDING_APPROVAL/APPROVED contract — no schedule, no
     Accounting activity — for the free-cancellation-path tests."""
     company_id = uuid.uuid4()

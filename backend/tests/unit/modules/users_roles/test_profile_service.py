@@ -9,6 +9,7 @@ Spec reference: tasks T065.
 from __future__ import annotations
 
 import uuid
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -142,8 +143,8 @@ class TestUpdateProfile:
 
         service.update_profile(user.id, display_name="X")
 
-        service._db.commit.assert_called_once()
-        service._db.refresh.assert_called_once_with(user)
+        cast(MagicMock, service._db).commit.assert_called_once()
+        cast(MagicMock, service._db).refresh.assert_called_once_with(user)
 
 
 # ---------------------------------------------------------------------------
@@ -264,7 +265,7 @@ class TestDeleteAvatar:
 
         service.delete_avatar(user.id)
 
-        service._db.commit.assert_called_once()
+        cast(MagicMock, service._db).commit.assert_called_once()
 
     def test_no_error_when_no_avatar(self):
         """Calling delete when avatar_url is None should not raise."""

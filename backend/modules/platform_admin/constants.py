@@ -11,6 +11,17 @@ to the database.
 
 from __future__ import annotations
 
+from typing import TypedDict
+
+
+class PlatformRoleBundle(TypedDict):
+    """Shape of one entry in ``CANDIDATE_PLATFORM_ROLE_BUNDLES``."""
+
+    code: str
+    name: str
+    permission_codes: frozenset[str]
+
+
 # ── Permission catalogue (spec.md §15.1) ────────────────────────────────────
 # Every literal code spec.md §15.1's "Permission Areas" table enumerates,
 # across all 15 areas. Cross-checked against every `x-permission` value in
@@ -166,7 +177,7 @@ PLATFORM_PERMISSION_CODES: frozenset[str] = frozenset(
 # hardcoded roles" (spec.md §15.2) — plain data (code, name, permission
 # codes), never enum members, so Phase 5's RBAC seeding can add/drop/rename
 # bundles without touching this catalogue's shape.
-CANDIDATE_PLATFORM_ROLE_BUNDLES: tuple[dict[str, object], ...] = (
+CANDIDATE_PLATFORM_ROLE_BUNDLES: tuple[PlatformRoleBundle, ...] = (
     {
         "code": "platform_owner",
         "name": "Platform Owner / Super Admin",

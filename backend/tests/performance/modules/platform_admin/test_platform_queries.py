@@ -170,7 +170,9 @@ class TestEpic9AIndexesExist:
         # ordinary company-scoping index every override lookup relies on.
         engine = db_session.get_bind()
         for table in ("entitlement_overrides", "tenant_quota_overrides"):
-            index_names = {ix["name"] for ix in inspect(engine).get_indexes(table)}
+            index_names = {
+                ix["name"] for ix in inspect(engine).get_indexes(table) if ix["name"]
+            }
             assert any("company" in name for name in index_names), (
                 f"{table} is missing its company-scoping index (found: {index_names})"
             )

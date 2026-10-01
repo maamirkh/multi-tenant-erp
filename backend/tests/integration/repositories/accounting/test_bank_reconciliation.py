@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -46,7 +47,7 @@ from modules.accounting.services.fiscal_service import FiscalCalendarService
 
 
 @pytest.fixture
-def setup(db_session: Session) -> dict:
+def setup(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -109,7 +110,7 @@ def reconciliation_service(db_session: Session) -> BankReconciliationService:
     return build_bank_reconciliation_service(db_session)
 
 
-def _make_bank_account(bank_account_service: BankAccountService, setup: dict):
+def _make_bank_account(bank_account_service: BankAccountService, setup: dict[str, Any]):
     return bank_account_service.create_bank_account(
         company_id=setup["company_id"],
         bank_name="Main Current Account",
@@ -124,7 +125,7 @@ class TestBankReconciliationFullWorkflow:
         self,
         bank_account_service: BankAccountService,
         reconciliation_service: BankReconciliationService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         account = _make_bank_account(bank_account_service, setup)
 
@@ -202,7 +203,7 @@ class TestBankReconciliationFullWorkflow:
         self,
         bank_account_service: BankAccountService,
         reconciliation_service: BankReconciliationService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         account = _make_bank_account(bank_account_service, setup)
         bank_account_service.record_bank_deposit(
@@ -233,7 +234,7 @@ class TestBankReconciliationFullWorkflow:
         self,
         bank_account_service: BankAccountService,
         reconciliation_service: BankReconciliationService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         account = _make_bank_account(bank_account_service, setup)
         transaction, _ = bank_account_service.record_bank_deposit(
@@ -288,7 +289,7 @@ class TestBankReconciliationFullWorkflow:
 
 class TestBankTransfer:
     def test_transfer_creates_balanced_two_leg_journal(
-        self, bank_account_service: BankAccountService, setup: dict
+        self, bank_account_service: BankAccountService, setup: dict[str, Any]
     ) -> None:
         from_account = bank_account_service.create_bank_account(
             company_id=setup["company_id"],
@@ -342,7 +343,7 @@ class TestBankTransfer:
 
 class TestChequeLifecycle:
     def test_cheque_status_transitions(
-        self, bank_account_service: BankAccountService, setup: dict
+        self, bank_account_service: BankAccountService, setup: dict[str, Any]
     ) -> None:
         account = _make_bank_account(bank_account_service, setup)
         cheque = bank_account_service.issue_cheque(
@@ -373,7 +374,7 @@ class TestChequeLifecycle:
         assert cleared.status == "CLEARED"
 
     def test_illegal_transition_raises(
-        self, bank_account_service: BankAccountService, setup: dict
+        self, bank_account_service: BankAccountService, setup: dict[str, Any]
     ) -> None:
         account = _make_bank_account(bank_account_service, setup)
         cheque = bank_account_service.issue_cheque(

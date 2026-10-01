@@ -67,6 +67,7 @@ def _make_service(
     sku_exists: bool = False,
     barcode_exists: bool = False,
     variant_sku_exists: bool = False,
+    uom_exists: bool = True,
 ) -> tuple[ProductService, MagicMock, MagicMock, MagicMock]:
     """Build a ProductService with mocked repositories."""
     db = MagicMock()
@@ -84,7 +85,7 @@ def _make_service(
     barcode_repo.get_by_value.return_value = None if not barcode_exists else MagicMock()
 
     uom_repo = MagicMock(spec=UOMRepository)
-    uom_repo.get_by_id.return_value = MagicMock()  # UOM exists
+    uom_repo.get_by_id.return_value = MagicMock() if uom_exists else None
 
     svc = ProductService(
         db=db,
@@ -208,8 +209,6 @@ class TestSkuUniqueness:
     def test_create_product_succeeds_with_unique_sku(self) -> None:
         svc, product_repo, _, _ = _make_service(sku_exists=False)
         product_repo.get_by_id.return_value = None
-        svc.db.add.return_value = None
-        svc.db.flush.return_value = None
 
         product = svc.create_product(
             company_id=uuid.uuid4(),
@@ -222,8 +221,6 @@ class TestSkuUniqueness:
 
     def test_product_code_normalised_to_uppercase(self) -> None:
         svc, _, _, _ = _make_service(sku_exists=False)
-        svc.db.add.return_value = None
-        svc.db.flush.return_value = None
         product = svc.create_product(
             company_id=uuid.uuid4(),
             product_code="abc-001",
@@ -254,8 +251,6 @@ class TestBarcodeUniqueness:
     def test_add_barcode_succeeds_with_unique_value(self) -> None:
         product = _make_product(status="ACTIVE")
         svc, _, _, barcode_repo = _make_service(product=product, barcode_exists=False)
-        svc.db.add.return_value = None
-        svc.db.flush.return_value = None
         barcode = svc.add_barcode(
             company_id=product.company_id,
             product_id=product.id,
@@ -310,7 +305,6 @@ class TestDeleteGuard:
     def test_delete_allowed_for_draft_product(self) -> None:
         product = _make_product(status="DRAFT")
         svc, _, _, _ = _make_service(product=product)
-        svc.db.flush.return_value = None
         svc.delete_product(product.company_id, product.id)
         assert product.is_deleted is True
 
@@ -332,8 +326,6 @@ class TestProductTypeValidation:
     )
     def test_valid_product_types_accepted(self, ptype: str) -> None:
         svc, _, _, _ = _make_service(sku_exists=False)
-        svc.db.add.return_value = None
-        svc.db.flush.return_value = None
         product = svc.create_product(
             company_id=uuid.uuid4(),
             product_code=f"{ptype}-001",
@@ -362,8 +354,7 @@ class TestProductTypeValidation:
 
 class TestUomValidation:
     def test_create_raises_when_uom_not_found(self) -> None:
-        svc, _, _, _ = _make_service(sku_exists=False)
-        svc._uom_repo.get_by_id.return_value = None
+        svc, _, _, _ = _make_service(sku_exists=False, uom_exists=False)
         with pytest.raises(UomNotFoundError):
             svc.create_product(
                 company_id=uuid.uuid4(),
@@ -393,8 +384,6 @@ class TestVariantManagement:
     def test_add_variant_succeeds_with_unique_code(self) -> None:
         product = _make_product(status="ACTIVE")
         svc, _, _, _ = _make_service(product=product, variant_sku_exists=False)
-        svc.db.add.return_value = None
-        svc.db.flush.return_value = None
         variant = svc.add_variant(
             company_id=product.company_id,
             product_id=product.id,
@@ -407,8 +396,6 @@ class TestVariantManagement:
     def test_add_variant_normalises_code_to_uppercase(self) -> None:
         product = _make_product(status="ACTIVE")
         svc, _, _, _ = _make_service(product=product, variant_sku_exists=False)
-        svc.db.add.return_value = None
-        svc.db.flush.return_value = None
         variant = svc.add_variant(
             company_id=product.company_id,
             product_id=product.id,
@@ -428,8 +415,6 @@ class TestVariantManagement:
     def test_variant_has_stock_tracking_enabled_by_default(self) -> None:
         product = _make_product(status="ACTIVE")
         svc, _, _, _ = _make_service(product=product, variant_sku_exists=False)
-        svc.db.add.return_value = None
-        svc.db.flush.return_value = None
         variant = svc.add_variant(
             company_id=product.company_id,
             product_id=product.id,
@@ -440,8 +425,6 @@ class TestVariantManagement:
     def test_variant_stock_tracking_can_be_disabled(self) -> None:
         product = _make_product(status="ACTIVE")
         svc, _, _, _ = _make_service(product=product, variant_sku_exists=False)
-        svc.db.add.return_value = None
-        svc.db.flush.return_value = None
         variant = svc.add_variant(
             company_id=product.company_id,
             product_id=product.id,

@@ -3,9 +3,9 @@
 Supports CSV/Excel imports of up to 10,000 supplier rows.
 
 Processing:
-  1. Parse rows from CSV bytes (or pre-parsed list of dicts)
+  1. Parse rows from CSV bytes (or pre-parsed list[Any] of dicts)
   2. Validate each row (schema + business rules)
-  3. Skip rows with errors (collect per-row error list)
+  3. Skip rows with errors (collect per-row error list[Any])
   4. Create valid suppliers via SupplierService
   5. Return BulkImportResult with totals and row-level errors
 
@@ -23,6 +23,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -79,16 +80,16 @@ class SupplierImportService:
             text = csv_bytes.decode("latin-1", errors="replace")
 
         reader = csv.DictReader(io.StringIO(text))
-        rows = list(reader)
+        rows = list[Any](reader)
         return self._process_rows(company_id=company_id, rows=rows, actor_id=actor_id)
 
     def import_from_rows(
         self,
         company_id: UUID,
-        rows: list[dict],
+        rows: list[dict[str, Any]],
         actor_id: UUID | None = None,
     ) -> BulkImportResult:
-        """Import suppliers from a pre-parsed list of dicts.
+        """Import suppliers from a pre-parsed list[Any] of dicts.
 
         Used by tests and Excel parsers.
         """
@@ -101,7 +102,7 @@ class SupplierImportService:
     def _process_rows(
         self,
         company_id: UUID,
-        rows: list[dict],
+        rows: list[dict[str, Any]],
         actor_id: UUID | None,
     ) -> BulkImportResult:
         total_rows = len(rows)

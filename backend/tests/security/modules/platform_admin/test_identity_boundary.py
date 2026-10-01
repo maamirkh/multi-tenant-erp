@@ -249,6 +249,7 @@ class TestDeactivatedAdministratorCannotAccessPlatformApis:
         db_session.rollback()
 
         reloaded = admin_repo.get_by_id(administrator.id)
+        assert reloaded is not None
         assert reloaded.is_active is True
 
         active_sessions = session_repo.get_active_by_administrator(administrator.id)

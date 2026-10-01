@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from typing import Any
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -41,7 +42,7 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -74,7 +75,7 @@ def _create_company(client: TestClient, token: str) -> uuid.UUID:
     return uuid.UUID(resp.json()["data"]["id"])
 
 
-def _setup_gl(db_session: Session, company_id: uuid.UUID) -> dict:
+def _setup_gl(db_session: Session, company_id: uuid.UUID) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -145,7 +146,7 @@ def _setup_gl(db_session: Session, company_id: uuid.UUID) -> dict:
 
 
 def _configure_accounts(
-    test_client: TestClient, token: str, cid: str, gl: dict
+    test_client: TestClient, token: str, cid: str, gl: dict[str, Any]
 ) -> None:
     for role, account in (
         ("default_ar_account_id", gl["ar"]),

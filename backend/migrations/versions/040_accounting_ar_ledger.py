@@ -11,6 +11,8 @@ Revises: 039
 Create Date: 2026-08-07
 """
 
+from typing import Any
+
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
@@ -22,7 +24,7 @@ branch_labels = None
 depends_on = None
 
 
-def _soft_delete_audit_columns() -> list[sa.Column]:
+def _soft_delete_audit_columns() -> list[sa.Column[Any]]:
     return [
         sa.Column("is_deleted", sa.Boolean(), server_default="false", nullable=False),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),

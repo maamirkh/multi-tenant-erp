@@ -18,6 +18,8 @@ Data model: specs/005-inventory-management/data-model.md §adjustment
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from sqlalchemy import (
     CheckConstraint,
     Index,
@@ -99,13 +101,13 @@ class InventoryAdjustment(TenantBaseModel):
         doc="ADJUSTMENT_IN (stock increase) or ADJUSTMENT_OUT (stock decrease)",
     )
 
-    quantity: Mapped[float] = mapped_column(
+    quantity: Mapped[Decimal] = mapped_column(
         Numeric(18, 4),
         nullable=False,
         doc="Adjustment quantity — always positive; direction derived from movement_type",
     )
 
-    unit_cost: Mapped[float | None] = mapped_column(
+    unit_cost: Mapped[Decimal | None] = mapped_column(
         Numeric(18, 4),
         nullable=True,
         doc="Unit cost at time of adjustment (used for WAC recalculation on IN)",
@@ -141,13 +143,13 @@ class InventoryAdjustment(TenantBaseModel):
 
     # ── Stock snapshot ───────────────────────────────────────────────────────
 
-    old_quantity: Mapped[float | None] = mapped_column(
+    old_quantity: Mapped[Decimal | None] = mapped_column(
         Numeric(18, 4),
         nullable=True,
         doc="qty_on_hand before this adjustment (captured at creation time)",
     )
 
-    new_quantity: Mapped[float | None] = mapped_column(
+    new_quantity: Mapped[Decimal | None] = mapped_column(
         Numeric(18, 4),
         nullable=True,
         doc="qty_on_hand after approval (null until the adjustment is APPROVED)",

@@ -14,6 +14,7 @@ Task: T163
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -34,17 +35,39 @@ from modules.purchase.services.gr_service import (
 # ---------------------------------------------------------------------------
 
 
-def _make_gr_service(db=None):
+@dataclass
+class _ServiceUnderTest:
+    service: GRService
+    gr_repo: MagicMock
+    line_repo: MagicMock
+    po_repo: MagicMock
+    po_line_repo: MagicMock
+    sequence_service: MagicMock
+
+
+def _make_gr_service(db: MagicMock | None = None) -> _ServiceUnderTest:
     db = db or MagicMock()
+    gr_repo = MagicMock()
+    line_repo = MagicMock()
+    po_repo = MagicMock()
+    po_line_repo = MagicMock()
+    sequence_service = MagicMock()
     svc = GRService(
         db=db,
-        gr_repo=MagicMock(),
-        line_repo=MagicMock(),
-        po_repo=MagicMock(),
-        po_line_repo=MagicMock(),
-        sequence_service=MagicMock(),
+        gr_repo=gr_repo,
+        line_repo=line_repo,
+        po_repo=po_repo,
+        po_line_repo=po_line_repo,
+        sequence_service=sequence_service,
     )
-    return svc
+    return _ServiceUnderTest(
+        service=svc,
+        gr_repo=gr_repo,
+        line_repo=line_repo,
+        po_repo=po_repo,
+        po_line_repo=po_line_repo,
+        sequence_service=sequence_service,
+    )
 
 
 def _make_gr(status: str = "DRAFT") -> MagicMock:
@@ -138,15 +161,15 @@ class TestComputePPV:
 
 class TestAssertDraft:
     def test_draft_passes(self):
-        svc = _make_gr_service()
+        m = _make_gr_service()
         gr = _make_gr(status="DRAFT")
-        svc._assert_draft(gr)  # should not raise
+        m.service._assert_draft(gr)  # should not raise
 
     def test_confirmed_raises_immutable_error(self):
-        svc = _make_gr_service()
+        m = _make_gr_service()
         gr = _make_gr(status="CONFIRMED")
         with pytest.raises(GRImmutableError):
-            svc._assert_draft(gr)
+            m.service._assert_draft(gr)
 
 
 # ---------------------------------------------------------------------------
@@ -156,39 +179,39 @@ class TestAssertDraft:
 
 class TestCreateGR:
     def test_invalid_po_status_raises_error(self):
-        svc = _make_gr_service()
+        m = _make_gr_service()
         po = _make_po(status="DRAFT")
-        svc.po_repo.get_by_id_or_none.return_value = po
+        m.po_repo.get_by_id_or_none.return_value = po
 
         from modules.purchase.schemas.goods_receipt import GoodsReceiptCreate
 
         payload = GoodsReceiptCreate(po_id=po.id, lines=[])
 
         with pytest.raises(GRInvalidPOStatusError):
-            svc.create_gr(payload=payload, company_id=uuid4(), user_id=uuid4())
+            m.service.create_gr(payload=payload, company_id=uuid4(), user_id=uuid4())
 
     def test_closed_po_raises_error(self):
-        svc = _make_gr_service()
+        m = _make_gr_service()
         po = _make_po(status="CLOSED")
-        svc.po_repo.get_by_id_or_none.return_value = po
+        m.po_repo.get_by_id_or_none.return_value = po
 
         from modules.purchase.schemas.goods_receipt import GoodsReceiptCreate
 
         payload = GoodsReceiptCreate(po_id=po.id, lines=[])
 
         with pytest.raises(GRInvalidPOStatusError):
-            svc.create_gr(payload=payload, company_id=uuid4(), user_id=uuid4())
+            m.service.create_gr(payload=payload, company_id=uuid4(), user_id=uuid4())
 
     def test_po_not_found_raises_404(self):
-        svc = _make_gr_service()
-        svc.po_repo.get_by_id_or_none.return_value = None
+        m = _make_gr_service()
+        m.po_repo.get_by_id_or_none.return_value = None
 
         from modules.purchase.schemas.goods_receipt import GoodsReceiptCreate
 
         payload = GoodsReceiptCreate(po_id=uuid4(), lines=[])
 
         with pytest.raises(NotFoundException):
-            svc.create_gr(payload=payload, company_id=uuid4(), user_id=uuid4())
+            m.service.create_gr(payload=payload, company_id=uuid4(), user_id=uuid4())
 
 
 # ---------------------------------------------------------------------------
@@ -198,13 +221,13 @@ class TestCreateGR:
 
 class TestOverReceiptPolicy:
     def _make_svc_with_open_qty(self, open_qty: Decimal) -> GRService:
-        svc = _make_gr_service()
+        m = _make_gr_service()
         # Mock _compute_open_qty to return the given open_qty
-        svc._compute_open_qty = MagicMock(return_value=open_qty)
-        svc._get_po_line = MagicMock(
+        m.service._compute_open_qty = MagicMock(return_value=open_qty)
+        m.service._get_po_line = MagicMock(
             return_value=MagicMock(quantity_ordered=Decimal("5"))
         )
-        return svc
+        return m.service
 
     def test_block_policy_raises_when_over(self):
         svc = self._make_svc_with_open_qty(Decimal("5"))
@@ -252,21 +275,21 @@ class TestOverReceiptPolicy:
 
 class TestConfirmGR:
     def test_no_lines_raises_conflict(self):
-        svc = _make_gr_service()
+        m = _make_gr_service()
         gr = _make_gr(status="DRAFT")
-        svc.gr_repo.get_by_id_or_none.return_value = gr
-        svc.line_repo.list_for_gr.return_value = []  # no lines
+        m.gr_repo.get_by_id_or_none.return_value = gr
+        m.line_repo.list_for_gr.return_value = []  # no lines
 
         with pytest.raises(ConflictException):
-            svc.confirm_gr(gr_id=gr.id, company_id=gr.company_id, user_id=uuid4())
+            m.service.confirm_gr(gr_id=gr.id, company_id=gr.company_id, user_id=uuid4())
 
     def test_already_confirmed_raises_immutable(self):
-        svc = _make_gr_service()
+        m = _make_gr_service()
         gr = _make_gr(status="CONFIRMED")
-        svc.gr_repo.get_by_id_or_none.return_value = gr
+        m.gr_repo.get_by_id_or_none.return_value = gr
 
         with pytest.raises(GRImmutableError):
-            svc.confirm_gr(gr_id=gr.id, company_id=gr.company_id, user_id=uuid4())
+            m.service.confirm_gr(gr_id=gr.id, company_id=gr.company_id, user_id=uuid4())
 
 
 # ---------------------------------------------------------------------------
@@ -276,13 +299,13 @@ class TestConfirmGR:
 
 class TestUpdateGR:
     def test_update_confirmed_raises_immutable(self):
-        svc = _make_gr_service()
+        m = _make_gr_service()
         gr = _make_gr(status="CONFIRMED")
-        svc.gr_repo.get_by_id_or_none.return_value = gr
+        m.gr_repo.get_by_id_or_none.return_value = gr
 
         from modules.purchase.schemas.goods_receipt import GoodsReceiptUpdate
 
         payload = GoodsReceiptUpdate(notes="Attempted edit")
 
         with pytest.raises(GRImmutableError):
-            svc.update_gr(gr_id=gr.id, company_id=gr.company_id, payload=payload)
+            m.service.update_gr(gr_id=gr.id, company_id=gr.company_id, payload=payload)

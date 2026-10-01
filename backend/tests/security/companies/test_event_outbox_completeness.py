@@ -28,8 +28,10 @@ Note: company.logo_uploaded is tested via test_company_logo.py.
 from __future__ import annotations
 
 import json as _json
+from typing import Any
 
 from fastapi.testclient import TestClient
+from httpx import Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -43,22 +45,23 @@ def _login(client: TestClient, email: str, password: str) -> str:
     resp = client.post(
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _auth_json(token: str) -> dict:
+def _auth_json(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 
-def _delete(client: TestClient, url: str, token: str, body: dict) -> object:
+def _delete(client: TestClient, url: str, token: str, body: dict[str, Any]) -> Response:
     """DELETE with a JSON body — TestClient.delete() does not support json= kwarg."""
-    return client.request(
+    resp: Response = client.request(
         "DELETE", url, content=_json.dumps(body), headers=_auth_json(token)
     )
+    return resp
 
 
 def _create_company(client: TestClient, token: str, name: str, email: str) -> str:
@@ -68,7 +71,7 @@ def _create_company(client: TestClient, token: str, name: str, email: str) -> st
         headers=_auth(token),
     )
     assert resp.status_code == 201, f"Company creation failed: {resp.json()}"
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _prepare_for_activation(client: TestClient, token: str, company_id: str) -> None:
@@ -86,7 +89,7 @@ def _prepare_for_activation(client: TestClient, token: str, company_id: str) -> 
 
 def _get_outbox_events(
     db_session: Session, company_id: str, event_type: str
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Query event_outbox for events matching the given type and aggregate_id.
 
     SQLite stores JSONB as TEXT, so we parse the payload from a string when needed.
@@ -111,7 +114,7 @@ def _get_outbox_events(
 
 
 def _assert_event(
-    events: list[dict],
+    events: list[dict[str, Any]],
     event_type: str,
     company_id: str,
     *,

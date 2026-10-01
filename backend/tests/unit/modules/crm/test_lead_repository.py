@@ -39,9 +39,9 @@ def _repo_with_mocked_matchers(
     match_by_email = MagicMock(return_value=email_result or [])
     match_by_phone = MagicMock(return_value=phone_result or [])
     match_by_legal_name = MagicMock(return_value=legal_name_result or [])
-    repo._match_by_email = match_by_email  # type: ignore[method-assign]
-    repo._match_by_phone = match_by_phone  # type: ignore[method-assign]
-    repo._match_by_legal_name = match_by_legal_name  # type: ignore[method-assign]
+    repo._match_by_email = match_by_email
+    repo._match_by_phone = match_by_phone
+    repo._match_by_legal_name = match_by_legal_name
     return _MockedRepo(repo, match_by_email, match_by_phone, match_by_legal_name)
 
 

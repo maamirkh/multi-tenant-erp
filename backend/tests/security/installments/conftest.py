@@ -17,6 +17,7 @@ distinctly-named fixture instead.
 from __future__ import annotations
 
 from collections.abc import Generator
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -53,7 +54,7 @@ pg_engine = _pg_engine
 #: Same cheap Argon2 settings tests/conftest.py's own test_client/crm_client
 #: fixtures use — not a security relaxation (see that file's own comment),
 #: just avoiding paying full production hash cost at every login call below.
-_TEST_ARGON2_KWARGS: dict[str, int] = {
+_TEST_ARGON2_KWARGS: dict[str, Any] = {
     "ARGON2_TIME_COST": 1,
     "ARGON2_MEMORY_COST": 19456,
     "ARGON2_PARALLELISM": 1,

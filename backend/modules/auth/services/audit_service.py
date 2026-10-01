@@ -15,9 +15,11 @@ Sensitive data sanitisation:
 from __future__ import annotations
 
 import logging
+from typing import Any
 from uuid import UUID
 
 from fastapi import Request
+from sqlalchemy.orm import Session
 
 from core.logging.setup import REQUEST_ID_CONTEXT
 from modules.auth.models.enums import AuditEventType
@@ -43,7 +45,7 @@ _SENSITIVE_KEYS: frozenset[str] = frozenset(
 )
 
 
-def _sanitise_metadata(metadata: dict | None) -> dict | None:
+def _sanitise_metadata(metadata: dict[str, Any] | None) -> dict[str, Any] | None:
     """Remove or mask sensitive fields from *metadata* before persistence."""
     if metadata is None:
         return None
@@ -60,7 +62,7 @@ class AuditService:
         db: SQLAlchemy session (shared with other services in the request).
     """
 
-    def __init__(self, db) -> None:
+    def __init__(self, db: Session) -> None:
         self._repo = AuditLogRepository(db)
 
     def emit(
@@ -70,7 +72,7 @@ class AuditService:
         request: Request,
         user_id: UUID | None = None,
         reason: str | None = None,
-        metadata: dict | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """Record a security event to the audit log.
 

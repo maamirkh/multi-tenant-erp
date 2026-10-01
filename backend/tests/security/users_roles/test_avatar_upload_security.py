@@ -19,9 +19,11 @@ Spec ref: spec.md FR-010, FR-011, FR-012, tasks T137.
 from __future__ import annotations
 
 import uuid
+from typing import Any, cast
 
 import fastapi
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -64,10 +66,10 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, f"Login failed: {resp.text}"
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -134,7 +136,7 @@ class TestAvatarFileWithWrongExtensionButValidMagicBytes:
         """PNG magic bytes in a .txt file → accepted (200)."""
         from modules.users_roles.dependencies import get_profile_service
 
-        app = test_client.app
+        app = cast(FastAPI, test_client.app)
         app.dependency_overrides[get_profile_service] = _make_profile_service_override()
         try:
             resp = _upload_avatar(
@@ -156,7 +158,7 @@ class TestAvatarFileWithWrongExtensionButValidMagicBytes:
         """JPEG magic bytes in a .exe file → accepted (200)."""
         from modules.users_roles.dependencies import get_profile_service
 
-        app = test_client.app
+        app = cast(FastAPI, test_client.app)
         app.dependency_overrides[get_profile_service] = _make_profile_service_override()
         try:
             resp = _upload_avatar(
@@ -178,7 +180,7 @@ class TestAvatarFileWithWrongExtensionButValidMagicBytes:
         """WebP magic bytes in a .bin file → accepted (200)."""
         from modules.users_roles.dependencies import get_profile_service
 
-        app = test_client.app
+        app = cast(FastAPI, test_client.app)
         app.dependency_overrides[get_profile_service] = _make_profile_service_override()
         try:
             resp = _upload_avatar(

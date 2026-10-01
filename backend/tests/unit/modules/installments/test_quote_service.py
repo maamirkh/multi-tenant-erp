@@ -15,13 +15,21 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
+from typing import cast
 
 import pytest
 
 from core.exceptions.base import ValidationException
 from modules.installments.exceptions import InstallmentNotFoundError
-from modules.installments.services.eligibility_service import EligibilityResult
+from modules.installments.services.configuration_service import (
+    InstallmentConfigurationService,
+)
+from modules.installments.services.eligibility_service import (
+    EligibilityResult,
+    InstallmentEligibilityService,
+)
 from modules.installments.services.quote_service import InstallmentQuoteService
+from modules.installments.services.sales_read_gateway import SalesInvoiceReadGateway
 
 
 @dataclass
@@ -81,9 +89,17 @@ def _make_service(
     )
     config = _FakeConfig(rounding_policy=rounding_policy) if rounding_policy else None
     return InstallmentQuoteService(
-        eligibility_service=_FakeEligibilityService(result=eligibility_result),
-        invoice_gateway=_FakeInvoiceGateway(_FakeInvoice(total_amount=invoice_amount)),
-        configuration_service=_FakeConfigurationService(config),
+        eligibility_service=cast(
+            InstallmentEligibilityService,
+            _FakeEligibilityService(result=eligibility_result),
+        ),
+        invoice_gateway=cast(
+            SalesInvoiceReadGateway,
+            _FakeInvoiceGateway(_FakeInvoice(total_amount=invoice_amount)),
+        ),
+        configuration_service=cast(
+            InstallmentConfigurationService, _FakeConfigurationService(config)
+        ),
     )
 
 
@@ -212,13 +228,19 @@ class TestQuotePreviewComposition:
 
     def test_ineligible_invoice_propagates_the_eligibility_error(self) -> None:
         svc = InstallmentQuoteService(
-            eligibility_service=_FakeEligibilityService(
-                error=InstallmentNotFoundError("SalesInvoice", "x")
+            eligibility_service=cast(
+                InstallmentEligibilityService,
+                _FakeEligibilityService(
+                    error=InstallmentNotFoundError("SalesInvoice", "x")
+                ),
             ),
-            invoice_gateway=_FakeInvoiceGateway(
-                _FakeInvoice(total_amount=Decimal("0"))
+            invoice_gateway=cast(
+                SalesInvoiceReadGateway,
+                _FakeInvoiceGateway(_FakeInvoice(total_amount=Decimal("0"))),
             ),
-            configuration_service=_FakeConfigurationService(None),
+            configuration_service=cast(
+                InstallmentConfigurationService, _FakeConfigurationService(None)
+            ),
         )
         with pytest.raises(InstallmentNotFoundError):
             svc.preview(

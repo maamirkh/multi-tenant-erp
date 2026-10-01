@@ -29,6 +29,7 @@ import threading
 import uuid
 from datetime import date
 from decimal import Decimal
+from typing import Any, cast
 
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
@@ -74,7 +75,7 @@ class TestConcurrentSettlementExecutions:
         session_a = session_factory()
         session_b = session_factory()
 
-        results: dict[str, object] = {}
+        results: dict[str, tuple[str, object]] = {}
 
         def _attempt(label: str, session) -> None:
             try:
@@ -116,7 +117,7 @@ class TestConcurrentSettlementExecutions:
 
         winner_label = "a" if results["a"][0] == "success" else "b"
         loser_label = "b" if winner_label == "a" else "a"
-        winner_payload = results[winner_label][1]
+        winner_payload = cast(dict[str, Any], results[winner_label][1])
         loser_exc = results[loser_label][1]
 
         # Deterministic, approved loser behavior: the winner's commit

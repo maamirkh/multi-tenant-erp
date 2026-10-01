@@ -28,15 +28,21 @@ from __future__ import annotations
 
 import threading
 import uuid
+from collections.abc import Generator
 from datetime import date
 from decimal import Decimal
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.events.outbox import EventOutboxRepository
-from modules.accounting.dependencies import build_ar_service, build_payment_service
+from modules.accounting.dependencies import (
+    build_allocation_engine,
+    build_ar_service,
+    build_payment_service,
+)
 from modules.accounting.models.ar import ARTransaction
 from modules.accounting.models.gl import JournalEntry
 from modules.accounting.models.payments import Payment
@@ -84,7 +90,7 @@ _REPETITIONS = 10
 
 
 @pytest.fixture
-def pg_engine(request: pytest.FixtureRequest):
+def pg_engine(request: pytest.FixtureRequest) -> Generator[Engine, None, None]:
     pg_url = request.getfixturevalue("pg_test_db")
     alembic_upgrade(pg_url, "072")
     engine = db_engine(pg_url)
@@ -95,7 +101,7 @@ def pg_engine(request: pytest.FixtureRequest):
 
 
 @pytest.fixture
-def db_session(pg_engine) -> Session:
+def db_session(pg_engine: Engine) -> Generator[Session, None, None]:
     session_factory = sessionmaker(bind=pg_engine)
     session = session_factory()
     try:
@@ -121,7 +127,9 @@ def _build_full_contract_service(session) -> InstallmentContractService:
     ar_service = build_ar_service(session, with_sales_sync=False)
     payment_service = build_payment_service(session)
     gateway = AccountingIntegrationGateway(
-        ar_service=ar_service, payment_service=payment_service, allocation_engine=None
+        ar_service=ar_service,
+        payment_service=payment_service,
+        allocation_engine=build_allocation_engine(session),
     )
     return InstallmentContractService(
         repo=InstallmentContractRepository(session),
@@ -177,7 +185,7 @@ class TestApproveRejectRaceAtScale:
 
             session_a = session_factory()
             session_b = session_factory()
-            results: dict[str, object] = {}
+            results: dict[str, tuple[str, object]] = {}
 
             def _approve(session) -> None:
                 try:
@@ -304,7 +312,7 @@ class TestCureWriteoffRaceAtScale:
 
             session_a = session_factory()
             session_b = session_factory()
-            results: dict[str, object] = {}
+            results: dict[str, tuple[str, object]] = {}
 
             def _cure(session) -> None:
                 try:
@@ -377,6 +385,7 @@ class TestCureWriteoffRaceAtScale:
             verify_session = session_factory()
             try:
                 refreshed = verify_session.get(InstallmentContract, contract_id)
+                assert refreshed is not None
                 winner_key = "writeoff" if loser_key == "cure" else "cure"
                 expected_status = (
                     "WRITTEN_OFF" if winner_key == "writeoff" else "ACTIVE"
@@ -419,7 +428,7 @@ class TestWriteoffCollectionRaceAtScale:
 
             session_a = session_factory()
             session_b = session_factory()
-            results: dict[str, object] = {}
+            results: dict[str, tuple[str, object]] = {}
 
             def _attempt_writeoff(session) -> None:
                 try:
@@ -490,8 +499,8 @@ class TestWriteoffCollectionRaceAtScale:
 
                 gateway = AccountingIntegrationGateway(
                     ar_service=build_ar_service(verify_session, with_sales_sync=False),
-                    payment_service=None,
-                    allocation_engine=None,
+                    payment_service=build_payment_service(verify_session),
+                    allocation_engine=build_allocation_engine(verify_session),
                 )
                 ar_transaction_id = gateway.get_invoice_ar_transaction_id(
                     company_id, ctx["contract"].sales_invoice_id

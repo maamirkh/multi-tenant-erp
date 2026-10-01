@@ -381,6 +381,55 @@ class AccountsPayableService:
             company_id, as_of_date
         )
 
+    def count_aging_rows(self, company_id: UUID, as_of_date: date) -> int:
+        """Epic 11 Reports additive seam — bounded population size behind
+        the AP aging report."""
+        return self._ledgers.count_ap_aging_rows(company_id, as_of_date)
+
+    def get_aging_page(
+        self, company_id: UUID, as_of_date: date, limit: int, offset: int
+    ) -> APAgingReport:
+        """Epic 11 Reports additive seam — the identical, unmodified
+        per-ledger aging-bucket formula (``APAgingCalculator._bucket_for``),
+        applied only to one SQL-level bounded page of supplier ledgers."""
+        from modules.accounting.services.aging_calculator import (
+            _BUCKET_FIELDS,
+            APAgingCalculator,
+            APAgingReport,
+            APAgingRow,
+        )
+
+        transactions = self._ledgers.get_ap_aging_page(
+            company_id, as_of_date, limit, offset
+        )
+        ledger_ids = list({t.supplier_ledger_id for t in transactions})
+        ledgers_by_id = {
+            ledger.id: ledger
+            for ledger in self._ledgers.get_ledgers_by_ids(company_id, ledger_ids)
+        }
+
+        rows_by_ledger: dict[UUID, APAgingRow] = {}
+        for txn in transactions:
+            ledger = ledgers_by_id.get(txn.supplier_ledger_id)
+            supplier_id = ledger.supplier_id if ledger else None
+            row = rows_by_ledger.setdefault(
+                txn.supplier_ledger_id,
+                APAgingRow(
+                    supplier_ledger_id=txn.supplier_ledger_id, supplier_id=supplier_id
+                ),
+            )
+            bucket = APAgingCalculator._bucket_for(txn.due_date, as_of_date)
+            setattr(row, bucket, getattr(row, bucket) + txn.outstanding_amount)
+
+        totals = APAgingRow(None, None)
+        for row in rows_by_ledger.values():
+            for f in _BUCKET_FIELDS:
+                setattr(totals, f, getattr(totals, f) + getattr(row, f))
+
+        return APAgingReport(
+            as_of_date=as_of_date, rows=list(rows_by_ledger.values()), totals=totals
+        )
+
     # ------------------------------------------------------------------
     # Adjustments
     # ------------------------------------------------------------------

@@ -8,9 +8,10 @@ Spec reference: data-model.md Section 2.4, tasks T024.
 from __future__ import annotations
 
 import logging
+from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import CursorResult, delete, select
 from sqlalchemy.orm import Session
 
 from modules.users_roles.models.role_permission import RolePermission
@@ -37,8 +38,8 @@ class RolePermissionRepository:
     def delete_by_role_id(self, role_id: UUID) -> int:
         """Delete all permission mappings for a role. Returns count deleted."""
         stmt = delete(RolePermission).where(RolePermission.role_id == role_id)
-        result = self.db.execute(stmt)
-        return result.rowcount  # type: ignore[return-value]
+        result = cast(CursorResult[Any], self.db.execute(stmt))
+        return result.rowcount
 
     def get_permissions_for_role(self, role_id: UUID) -> list[RolePermission]:
         """Return all permission mappings for a role."""

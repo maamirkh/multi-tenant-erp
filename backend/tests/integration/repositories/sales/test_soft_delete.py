@@ -21,6 +21,7 @@ Spec ref: specs/007-sales-management/spec.md §Soft Delete
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -47,10 +48,10 @@ def _login(client: TestClient, email: str) -> str:
         json={"email": email, "password": _TEST_PASSWORD},
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -58,9 +59,9 @@ def _sales_url(company_id: str, path: str) -> str:
     return f"/api/v1/companies/{company_id}/sales{path}"
 
 
-def _list_items(data) -> list:
+def _list_items(data) -> list[Any]:
     if isinstance(data, dict) and "items" in data:
-        return data["items"]
+        return list(data["items"])
     return data if isinstance(data, list) else []
 
 
@@ -78,7 +79,7 @@ def _create_company(client: TestClient, token: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 @pytest.fixture()
@@ -98,7 +99,7 @@ def ctx(test_client: TestClient, db_session: Session):
 class TestCustomerContactSoftDelete:
     """CustomerContact soft-delete is reflected in API."""
 
-    def test_deleted_contact_excluded_from_list(self, ctx: tuple) -> None:
+    def test_deleted_contact_excluded_from_list(self, ctx: tuple[Any, ...]) -> None:
         client, token, cid = ctx
 
         # Create customer
@@ -163,7 +164,7 @@ class TestCustomerContactSoftDelete:
 class TestCustomerAddressSoftDelete:
     """CustomerAddress soft-delete is reflected in API."""
 
-    def test_deleted_address_excluded_from_list(self, ctx: tuple) -> None:
+    def test_deleted_address_excluded_from_list(self, ctx: tuple[Any, ...]) -> None:
         client, token, cid = ctx
 
         cust = client.post(
@@ -229,7 +230,7 @@ class TestCustomerAddressSoftDelete:
 class TestQuotationSoftDelete:
     """Cancelled quotations are excluded from active query results."""
 
-    def test_cancelled_quotation_not_in_active_list(self, ctx: tuple) -> None:
+    def test_cancelled_quotation_not_in_active_list(self, ctx: tuple[Any, ...]) -> None:
         client, token, cid = ctx
 
         quot = client.post(
@@ -283,7 +284,7 @@ class TestQuotationSoftDelete:
 class TestSalesOrderSoftDelete:
     """Cancelled orders respect soft-delete semantics."""
 
-    def test_cancelled_order_still_retrievable(self, ctx: tuple) -> None:
+    def test_cancelled_order_still_retrievable(self, ctx: tuple[Any, ...]) -> None:
         client, token, cid = ctx
 
         order = client.post(
@@ -320,7 +321,9 @@ class TestSalesOrderSoftDelete:
         assert get_resp.status_code == 200
         assert get_resp.json()["data"]["status"] == "CANCELLED"
 
-    def test_cancelled_order_excluded_by_status_filter(self, ctx: tuple) -> None:
+    def test_cancelled_order_excluded_by_status_filter(
+        self, ctx: tuple[Any, ...]
+    ) -> None:
         client, token, cid = ctx
 
         order = client.post(
@@ -362,7 +365,7 @@ class TestSalesOrderSoftDelete:
 class TestInvoiceSoftDelete:
     """Cancelled invoices respect soft-delete semantics."""
 
-    def test_cancelled_invoice_still_retrievable(self, ctx: tuple) -> None:
+    def test_cancelled_invoice_still_retrievable(self, ctx: tuple[Any, ...]) -> None:
         client, token, cid = ctx
 
         inv = client.post(
@@ -411,7 +414,7 @@ class TestInvoiceSoftDelete:
 class TestReturnSoftDelete:
     """Cancelled returns respect soft-delete semantics."""
 
-    def test_cancelled_return_still_retrievable(self, ctx: tuple) -> None:
+    def test_cancelled_return_still_retrievable(self, ctx: tuple[Any, ...]) -> None:
         client, token, cid = ctx
 
         ret = client.post(

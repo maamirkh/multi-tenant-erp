@@ -62,7 +62,7 @@ def _return_payload(
         customer_id=customer_id or uuid4(),
         return_date="2026-08-04",
         reason_code_id=reason_code_id or uuid4(),
-        resolution_type=resolution_type,  # type: ignore[arg-type]
+        resolution_type=resolution_type,
         lines=_lines,
     )
 
@@ -80,7 +80,7 @@ class TestReturnCreation:
     def test_creates_in_draft(self, db_session: Session) -> None:
         company_id = uuid4()
         ret = _svc(db_session).create_return(
-            company_id, _return_payload(), created_by=None
+            company_id, _return_payload(), created_by=uuid4()
         )
         assert ret.status == "DRAFT"
         assert ret.company_id == company_id
@@ -88,15 +88,15 @@ class TestReturnCreation:
     def test_return_number_starts_with_sr(self, db_session: Session) -> None:
         company_id = uuid4()
         ret = _svc(db_session).create_return(
-            company_id, _return_payload(), created_by=None
+            company_id, _return_payload(), created_by=uuid4()
         )
         assert ret.return_number.startswith("SR-")
 
     def test_sequential_numbers(self, db_session: Session) -> None:
         company_id = uuid4()
         svc = _svc(db_session)
-        r1 = svc.create_return(company_id, _return_payload(), created_by=None)
-        r2 = svc.create_return(company_id, _return_payload(), created_by=None)
+        r1 = svc.create_return(company_id, _return_payload(), created_by=uuid4())
+        r2 = svc.create_return(company_id, _return_payload(), created_by=uuid4())
         assert r1.return_number != r2.return_number
 
     def test_lines_extended_amount(self, db_session: Session) -> None:
@@ -111,7 +111,7 @@ class TestReturnCreation:
                 )
             ]
         )
-        ret = svc.create_return(company_id, payload, created_by=None)
+        ret = svc.create_return(company_id, payload, created_by=uuid4())
         lines = svc.get_return_lines(company_id, ret.id)
         assert len(lines) == 1
         assert lines[0].extended_amount == Decimal("30.00")
@@ -133,15 +133,15 @@ class TestReturnCreation:
                 ),
             ]
         )
-        ret = svc.create_return(company_id, payload, created_by=None)
+        ret = svc.create_return(company_id, payload, created_by=uuid4())
         lines = svc.get_return_lines(company_id, ret.id)
         assert len(lines) == 2
 
     def test_independent_sequences_per_company(self, db_session: Session) -> None:
         c1, c2 = uuid4(), uuid4()
         svc = _svc(db_session)
-        r1 = svc.create_return(c1, _return_payload(), created_by=None)
-        r2 = svc.create_return(c2, _return_payload(), created_by=None)
+        r1 = svc.create_return(c1, _return_payload(), created_by=uuid4())
+        r2 = svc.create_return(c2, _return_payload(), created_by=uuid4())
         # Both start at 000001
         assert r1.return_number.endswith("000001")
         assert r2.return_number.endswith("000001")
@@ -156,14 +156,14 @@ class TestReturnStateMachineIntegration:
     def test_submit_transition(self, db_session: Session) -> None:
         company_id = uuid4()
         svc = _svc(db_session)
-        ret = svc.create_return(company_id, _return_payload(), created_by=None)
+        ret = svc.create_return(company_id, _return_payload(), created_by=uuid4())
         ret = svc.submit_return(company_id, ret.id, submitted_by=uuid4())
         assert ret.status == "PENDING_APPROVAL"
 
     def test_approve_transition(self, db_session: Session) -> None:
         company_id = uuid4()
         svc = _svc(db_session)
-        ret = svc.create_return(company_id, _return_payload(), created_by=None)
+        ret = svc.create_return(company_id, _return_payload(), created_by=uuid4())
         ret = svc.submit_return(company_id, ret.id, submitted_by=uuid4())
         ret = svc.approve_return(
             company_id, ret.id, ReturnApproveRequest(), approved_by=uuid4()
@@ -173,7 +173,7 @@ class TestReturnStateMachineIntegration:
     def test_reject_transition(self, db_session: Session) -> None:
         company_id = uuid4()
         svc = _svc(db_session)
-        ret = svc.create_return(company_id, _return_payload(), created_by=None)
+        ret = svc.create_return(company_id, _return_payload(), created_by=uuid4())
         ret = svc.submit_return(company_id, ret.id, submitted_by=uuid4())
         ret = svc.reject_return(
             company_id,
@@ -186,7 +186,7 @@ class TestReturnStateMachineIntegration:
     def test_rejected_is_terminal(self, db_session: Session) -> None:
         company_id = uuid4()
         svc = _svc(db_session)
-        ret = svc.create_return(company_id, _return_payload(), created_by=None)
+        ret = svc.create_return(company_id, _return_payload(), created_by=uuid4())
         ret = svc.submit_return(company_id, ret.id, submitted_by=uuid4())
         ret = svc.reject_return(
             company_id,
@@ -202,14 +202,14 @@ class TestReturnStateMachineIntegration:
     def test_cancel_from_draft(self, db_session: Session) -> None:
         company_id = uuid4()
         svc = _svc(db_session)
-        ret = svc.create_return(company_id, _return_payload(), created_by=None)
+        ret = svc.create_return(company_id, _return_payload(), created_by=uuid4())
         ret = svc.cancel_return(company_id, ret.id, cancelled_by=uuid4())
         assert ret.status == "CANCELLED"
 
     def test_cancel_from_pending_approval(self, db_session: Session) -> None:
         company_id = uuid4()
         svc = _svc(db_session)
-        ret = svc.create_return(company_id, _return_payload(), created_by=None)
+        ret = svc.create_return(company_id, _return_payload(), created_by=uuid4())
         ret = svc.submit_return(company_id, ret.id, submitted_by=uuid4())
         ret = svc.cancel_return(company_id, ret.id, cancelled_by=uuid4())
         assert ret.status == "CANCELLED"
@@ -217,7 +217,7 @@ class TestReturnStateMachineIntegration:
     def test_receive_transition(self, db_session: Session) -> None:
         company_id = uuid4()
         svc = _svc(db_session)
-        ret = svc.create_return(company_id, _return_payload(), created_by=None)
+        ret = svc.create_return(company_id, _return_payload(), created_by=uuid4())
         ret = svc.submit_return(company_id, ret.id, submitted_by=uuid4())
         ret = svc.approve_return(
             company_id, ret.id, ReturnApproveRequest(), approved_by=uuid4()
@@ -244,7 +244,9 @@ class TestReturnStateMachineIntegration:
         company_id = uuid4()
         svc = _svc(db_session)
         ret = svc.create_return(
-            company_id, _return_payload(resolution_type="CREDIT_NOTE"), created_by=None
+            company_id,
+            _return_payload(resolution_type="CREDIT_NOTE"),
+            created_by=uuid4(),
         )
         ret = svc.submit_return(company_id, ret.id, submitted_by=uuid4())
         ret = svc.approve_return(
@@ -279,7 +281,7 @@ class TestReturnStateMachineIntegration:
         ret = svc.create_return(
             company_id,
             _return_payload(resolution_type="REFUND_READINESS"),
-            created_by=None,
+            created_by=uuid4(),
         )
         ret = svc.submit_return(company_id, ret.id, submitted_by=uuid4())
         ret = svc.approve_return(
@@ -312,7 +314,9 @@ class TestReturnStateMachineIntegration:
         company_id = uuid4()
         svc = _svc(db_session)
         ret = svc.create_return(
-            company_id, _return_payload(resolution_type="CREDIT_NOTE"), created_by=None
+            company_id,
+            _return_payload(resolution_type="CREDIT_NOTE"),
+            created_by=uuid4(),
         )
         ret = svc.submit_return(company_id, ret.id, submitted_by=uuid4())
         ret = svc.approve_return(
@@ -350,7 +354,7 @@ class TestReturnListFilters:
     def test_list_by_status(self, db_session: Session) -> None:
         company_id = uuid4()
         svc = _svc(db_session)
-        ret = svc.create_return(company_id, _return_payload(), created_by=None)
+        ret = svc.create_return(company_id, _return_payload(), created_by=uuid4())
         svc.submit_return(company_id, ret.id, submitted_by=uuid4())
 
         draft_items, draft_total = svc.list_returns(company_id, status="DRAFT")
@@ -366,10 +370,10 @@ class TestReturnListFilters:
         customer_b = uuid4()
         svc = _svc(db_session)
         svc.create_return(
-            company_id, _return_payload(customer_id=customer_a), created_by=None
+            company_id, _return_payload(customer_id=customer_a), created_by=uuid4()
         )
         svc.create_return(
-            company_id, _return_payload(customer_id=customer_b), created_by=None
+            company_id, _return_payload(customer_id=customer_b), created_by=uuid4()
         )
 
         items_a, total_a = svc.list_returns(company_id, customer_id=str(customer_a))
@@ -378,7 +382,7 @@ class TestReturnListFilters:
     def test_tenant_isolation(self, db_session: Session) -> None:
         c1, c2 = uuid4(), uuid4()
         svc = _svc(db_session)
-        svc.create_return(c1, _return_payload(), created_by=None)
+        svc.create_return(c1, _return_payload(), created_by=uuid4())
 
         items_c2, total_c2 = svc.list_returns(c2)
         assert total_c2 == 0

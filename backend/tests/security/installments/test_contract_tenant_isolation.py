@@ -125,11 +125,11 @@ class TestInstallmentContractServiceIDOR:
 
         service = InstallmentContractService(
             repo=repo,
-            sequence_repo=None,  # not exercised by get()
-            eligibility_service=None,  # not exercised by get()
-            accounting_gateway=None,  # not exercised by get()
-            configuration_service=None,  # not exercised by get()
-            audit_service=None,  # not exercised by get()
+            sequence_repo=None,  # type: ignore[arg-type]  # not exercised by get()
+            eligibility_service=None,  # type: ignore[arg-type]  # not exercised by get()
+            accounting_gateway=None,  # type: ignore[arg-type]  # not exercised by get()
+            configuration_service=None,  # type: ignore[arg-type]  # not exercised by get()
+            audit_service=None,  # type: ignore[arg-type]  # not exercised by get()
         )
 
         # Genuinely non-existent id.

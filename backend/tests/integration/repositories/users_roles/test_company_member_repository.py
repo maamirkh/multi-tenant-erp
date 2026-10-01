@@ -10,6 +10,7 @@ Spec reference: tasks T039.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import pytest
 from sqlalchemy.orm import Session
@@ -28,7 +29,7 @@ from tests.fixtures.users_roles_fixtures import (
 )
 
 
-def _setup_company_and_roles(db: Session) -> tuple:
+def _setup_company_and_roles(db: Session) -> tuple[Any, ...]:
     """Create a test company with seeded roles and return (company_id, owner, roles)."""
     from modules.companies.repositories.company_repository import CompanyRepository
 

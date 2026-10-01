@@ -128,6 +128,7 @@ class TestCreditLimitRepository:
             result = repo.get_for_supplier(
                 company_id=company_id, supplier_id=supplier.id
             )
+            assert result is not None
             assert result.enforcement_mode == mode
 
 
@@ -299,6 +300,7 @@ class TestSupplierRatingRepository:
 
         repo = SupplierRatingRepository(db_session)
         result = repo.get_for_supplier(company_id=company_id, supplier_id=supplier.id)
+        assert result is not None
         assert result.manual_override_score == Decimal("8.0")
         assert result.manual_override_reason == "Manual override by PM"
 
@@ -399,7 +401,10 @@ class TestSupplierDocumentRepository:
 
         repo = SupplierDocumentRepository(db_session)
         result = repo.get_for_supplier(company_id=company_id, supplier_id=supplier.id)
-        expiry_days = [(d.expiry_date - today).days for d in result]
+        expiry_days = []
+        for d in result:
+            assert d.expiry_date is not None
+            expiry_days.append((d.expiry_date - today).days)
         assert expiry_days == sorted(expiry_days)
 
 

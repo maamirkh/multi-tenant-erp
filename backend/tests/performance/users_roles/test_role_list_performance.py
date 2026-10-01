@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import time
 import uuid as _uuid
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -111,7 +112,7 @@ class TestRoleListPerformance:
         self,
         test_client: TestClient,
         db_session: Session,
-        seeded_roles: tuple,
+        seeded_roles: tuple[Any, ...],
     ) -> None:
         """p95 latency for role list with 50 roles (8 system + 42 custom) < 200ms."""
         owner_token, company_id = seeded_roles
@@ -146,7 +147,7 @@ class TestRoleListPerformance:
         self,
         test_client: TestClient,
         db_session: Session,
-        seeded_roles: tuple,
+        seeded_roles: tuple[Any, ...],
     ) -> None:
         """Verify that all 50 roles are returned in the listing."""
         owner_token, company_id = seeded_roles
@@ -168,7 +169,7 @@ class TestRoleListPerformance:
         self,
         test_client: TestClient,
         db_session: Session,
-        seeded_roles: tuple,
+        seeded_roles: tuple[Any, ...],
     ) -> None:
         """p95 latency for role list with include_inactive=true < 200ms."""
         owner_token, company_id = seeded_roles

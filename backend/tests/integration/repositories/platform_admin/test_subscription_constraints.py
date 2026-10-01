@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from typing import cast
 
+from sqlalchemy import Table
 from sqlalchemy.exc import IntegrityError
 
 from core.database.session import SessionLocal
@@ -122,21 +124,29 @@ class TestOneActiveSubscriptionPerCompanyDbEnforced:
         finally:
             for sub_id in subscription_ids:
                 session.execute(
-                    Subscription.__table__.delete().where(Subscription.id == sub_id)
+                    cast(Table, Subscription.__table__)
+                    .delete()
+                    .where(Subscription.id == sub_id)
                 )
             if plan_id is not None:
-                session.execute(Plan.__table__.delete().where(Plan.id == plan_id))
+                session.execute(
+                    cast(Table, Plan.__table__).delete().where(Plan.id == plan_id)
+                )
             if company_id is not None:
                 session.execute(
-                    Company.__table__.delete().where(Company.id == company_id)
+                    cast(Table, Company.__table__)
+                    .delete()
+                    .where(Company.id == company_id)
                 )
             if admin_id is not None:
                 session.execute(
-                    PlatformAdministrator.__table__.delete().where(
-                        PlatformAdministrator.id == admin_id
-                    )
+                    cast(Table, PlatformAdministrator.__table__)
+                    .delete()
+                    .where(PlatformAdministrator.id == admin_id)
                 )
             if user_id is not None:
-                session.execute(User.__table__.delete().where(User.id == user_id))
+                session.execute(
+                    cast(Table, User.__table__).delete().where(User.id == user_id)
+                )
             session.commit()
             session.close()

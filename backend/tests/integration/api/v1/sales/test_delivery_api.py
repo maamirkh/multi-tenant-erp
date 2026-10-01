@@ -20,6 +20,7 @@ Spec ref: specs/007-sales-management/spec.md §Order Fulfilment
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
@@ -42,10 +43,10 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -112,7 +113,7 @@ def _create_approved_order(
     return order, line
 
 
-def _create_dn_payload(order_id, order_line_id, qty: int = 5) -> dict:
+def _create_dn_payload(order_id, order_line_id, qty: int = 5) -> dict[str, Any]:
     return {
         "order_id": str(order_id),
         "lines": [

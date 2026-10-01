@@ -109,6 +109,7 @@ def bootstrap_platform_owner(db: Session) -> tuple[int, str]:
     except ValidationError:
         return 1, f"{_EMAIL_VAR} is not a valid email address."
 
+    assert raw_hash is not None, "checked non-empty via `missing` above"
     if not _validate_password_hash(raw_hash):
         return 1, (
             f"{_PASSWORD_HASH_VAR} is not a usable Argon2 hash. Pre-hash the "

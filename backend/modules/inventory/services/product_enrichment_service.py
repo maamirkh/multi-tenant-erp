@@ -15,6 +15,7 @@ Spec ref: specs/005-inventory-management/spec.md §14, §35
 from __future__ import annotations
 
 import logging
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -120,7 +121,7 @@ class ProductEnrichmentService:
         value_text: str | None = None,
         value_number: str | None = None,
         value_bool: bool | None = None,
-        value_json: dict | None = None,
+        value_json: dict[str, Any] | None = None,
     ) -> ProductCustomFieldValue:
         self._require_product(company_id, product_id)
         cfv = self._cfv_repo.set_value(
@@ -231,7 +232,7 @@ class ProductEnrichmentService:
 
     def list_images(self, company_id: UUID, product_id: UUID) -> list[ProductImage]:
         self._require_product(company_id, product_id)
-        return list(
+        return list[Any](
             self.db.execute(
                 select(ProductImage)
                 .where(ProductImage.company_id == company_id)

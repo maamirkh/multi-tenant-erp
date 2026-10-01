@@ -127,7 +127,7 @@ def _login_with_config_permission(
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert response.status_code == 200, response.text
-    return response.json()["data"]["access_token"]
+    return str(response.json()["data"]["access_token"])
 
 
 def _auth_header(token: str) -> dict[str, str]:

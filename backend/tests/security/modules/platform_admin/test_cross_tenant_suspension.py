@@ -9,6 +9,7 @@ import uuid
 from datetime import timedelta
 
 from fastapi.testclient import TestClient
+from httpx import Response
 from sqlalchemy.orm import Session
 
 from core.config.settings import get_settings
@@ -88,19 +89,21 @@ def _make_company(db: Session, *, owner_id, label: str) -> Company:
     return company
 
 
-def _suspend(test_client: TestClient, platform_token: str, company_id) -> object:
-    return test_client.post(
+def _suspend(test_client: TestClient, platform_token: str, company_id) -> Response:
+    resp: Response = test_client.post(
         f"/api/v1/platform/tenants/{company_id}/suspend",
         json={"reason": "T098 cross-tenant isolation test"},
         headers={"Authorization": f"Bearer {platform_token}"},
     )
+    return resp
 
 
-def _probe(test_client: TestClient, token: str, company_id) -> object:
-    return test_client.get(
+def _probe(test_client: TestClient, token: str, company_id) -> Response:
+    resp: Response = test_client.get(
         f"/api/v1/companies/{company_id}/inventory/health",
         headers={"Authorization": f"Bearer {token}"},
     )
+    return resp
 
 
 class TestSuspendingOneTenantDoesNotAffectAnother:

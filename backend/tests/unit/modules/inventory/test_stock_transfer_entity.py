@@ -14,6 +14,7 @@ Spec ref: specs/005-inventory-management/spec.md §16 / FR-IO-013
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from decimal import Decimal
 from unittest.mock import MagicMock
 
@@ -73,7 +74,24 @@ def _make_transfer(**kwargs) -> MagicMock:
     return mock
 
 
-def _make_service() -> TransferService:
+@dataclass
+class _ServiceUnderTest:
+    """Bundles the real ``TransferService`` with its own constructor
+    mocks, so tests assert against the mocks directly (``m.wh_repo...``)
+    rather than through ``svc._wh_repo...`` — the latter is statically
+    typed as the real repository class regardless of what was actually
+    passed at construction, so MagicMock-only members like
+    ``.return_value``/``.assert_called_once()`` don't type-check on it."""
+
+    service: TransferService
+    db: MagicMock
+    transfer_repo: MagicMock
+    ledger: MagicMock
+    pos_repo: MagicMock
+    wh_repo: MagicMock
+
+
+def _make_service() -> _ServiceUnderTest:
     db = MagicMock()
     transfer_repo = MagicMock()
     stock_ledger = MagicMock()
@@ -87,7 +105,14 @@ def _make_service() -> TransferService:
         position_repo=pos_repo,
         warehouse_repo=wh_repo,
     )
-    return svc
+    return _ServiceUnderTest(
+        service=svc,
+        db=db,
+        transfer_repo=transfer_repo,
+        ledger=stock_ledger,
+        pos_repo=pos_repo,
+        wh_repo=wh_repo,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -97,10 +122,10 @@ def _make_service() -> TransferService:
 
 class TestCreateTransferInvariants:
     def test_same_warehouse_raises(self):
-        svc = _make_service()
+        m = _make_service()
         wh = uuid.uuid4()
         with pytest.raises(InvalidTransferError):
-            svc.create_transfer(
+            m.service.create_transfer(
                 company_id=uuid.uuid4(),
                 source_warehouse_id=wh,
                 destination_warehouse_id=wh,
@@ -108,12 +133,12 @@ class TestCreateTransferInvariants:
             )
 
     def test_empty_lines_raises(self):
-        svc = _make_service()
-        svc._wh_repo.get_by_id_or_none.return_value = MagicMock(
+        m = _make_service()
+        m.wh_repo.get_by_id_or_none.return_value = MagicMock(
             is_deleted=False, status="ACTIVE"
         )
         with pytest.raises(ValueError, match="least one"):
-            svc.create_transfer(
+            m.service.create_transfer(
                 company_id=uuid.uuid4(),
                 source_warehouse_id=uuid.uuid4(),
                 destination_warehouse_id=uuid.uuid4(),
@@ -121,12 +146,12 @@ class TestCreateTransferInvariants:
             )
 
     def test_inactive_source_warehouse_raises(self):
-        svc = _make_service()
-        svc._wh_repo.get_by_id_or_none.side_effect = [
+        m = _make_service()
+        m.wh_repo.get_by_id_or_none.side_effect = [
             MagicMock(is_deleted=False, status="INACTIVE"),
         ]
         with pytest.raises(WarehouseNotFoundError):
-            svc.create_transfer(
+            m.service.create_transfer(
                 company_id=uuid.uuid4(),
                 source_warehouse_id=uuid.uuid4(),
                 destination_warehouse_id=uuid.uuid4(),
@@ -134,12 +159,12 @@ class TestCreateTransferInvariants:
             )
 
     def test_zero_quantity_line_raises(self):
-        svc = _make_service()
-        svc._wh_repo.get_by_id_or_none.return_value = MagicMock(
+        m = _make_service()
+        m.wh_repo.get_by_id_or_none.return_value = MagicMock(
             is_deleted=False, status="ACTIVE"
         )
         with pytest.raises(InvalidStockQuantityError):
-            svc.create_transfer(
+            m.service.create_transfer(
                 company_id=uuid.uuid4(),
                 source_warehouse_id=uuid.uuid4(),
                 destination_warehouse_id=uuid.uuid4(),
@@ -147,12 +172,12 @@ class TestCreateTransferInvariants:
             )
 
     def test_negative_quantity_line_raises(self):
-        svc = _make_service()
-        svc._wh_repo.get_by_id_or_none.return_value = MagicMock(
+        m = _make_service()
+        m.wh_repo.get_by_id_or_none.return_value = MagicMock(
             is_deleted=False, status="ACTIVE"
         )
         with pytest.raises(InvalidStockQuantityError):
-            svc.create_transfer(
+            m.service.create_transfer(
                 company_id=uuid.uuid4(),
                 source_warehouse_id=uuid.uuid4(),
                 destination_warehouse_id=uuid.uuid4(),
@@ -160,14 +185,14 @@ class TestCreateTransferInvariants:
             )
 
     def test_create_returns_draft(self):
-        svc = _make_service()
-        svc._wh_repo.get_by_id_or_none.return_value = MagicMock(
+        m = _make_service()
+        m.wh_repo.get_by_id_or_none.return_value = MagicMock(
             is_deleted=False, status="ACTIVE"
         )
-        svc._db.add = MagicMock()
-        svc._db.flush = MagicMock()
+        m.db.add = MagicMock()
+        m.db.flush = MagicMock()
 
-        result = svc.create_transfer(
+        result = m.service.create_transfer(
             company_id=uuid.uuid4(),
             source_warehouse_id=uuid.uuid4(),
             destination_warehouse_id=uuid.uuid4(),
@@ -184,60 +209,60 @@ class TestCreateTransferInvariants:
 
 class TestDispatchTransfer:
     def test_dispatch_non_draft_raises(self):
-        svc = _make_service()
+        m = _make_service()
         transfer = _make_transfer(status="IN_TRANSIT")
-        svc._transfer_repo.get_by_id_with_lines.return_value = transfer
+        m.transfer_repo.get_by_id_with_lines.return_value = transfer
         with pytest.raises(InvalidTransferStateTransitionError):
-            svc.dispatch_transfer(
+            m.service.dispatch_transfer(
                 company_id=transfer.company_id,
                 transfer_id=transfer.id,
             )
 
     def test_dispatch_not_found_raises(self):
-        svc = _make_service()
-        svc._transfer_repo.get_by_id_with_lines.return_value = None
+        m = _make_service()
+        m.transfer_repo.get_by_id_with_lines.return_value = None
         with pytest.raises(TransferNotFoundError):
-            svc.dispatch_transfer(
+            m.service.dispatch_transfer(
                 company_id=uuid.uuid4(),
                 transfer_id=uuid.uuid4(),
             )
 
     def test_dispatch_insufficient_stock_raises(self):
-        svc = _make_service()
+        m = _make_service()
         transfer = _make_transfer(status="DRAFT")
-        svc._transfer_repo.get_by_id_with_lines.return_value = transfer
+        m.transfer_repo.get_by_id_with_lines.return_value = transfer
         mock_pos = MagicMock()
         mock_pos.qty_on_hand = Decimal("5")
         mock_pos.qty_reserved = Decimal("0")
         mock_pos.qty_damaged = Decimal("0")
-        svc._pos_repo.get_by_product_warehouse.return_value = mock_pos
+        m.pos_repo.get_by_product_warehouse.return_value = mock_pos
         with pytest.raises(InsufficientStockError):
-            svc.dispatch_transfer(
+            m.service.dispatch_transfer(
                 company_id=transfer.company_id,
                 transfer_id=transfer.id,
             )
 
     def test_dispatch_success_calls_ledger_and_transitions(self):
-        svc = _make_service()
+        m = _make_service()
         transfer = _make_transfer(status="DRAFT", version=1)
-        svc._transfer_repo.get_by_id_with_lines.return_value = transfer
+        m.transfer_repo.get_by_id_with_lines.return_value = transfer
         mock_pos = MagicMock()
         mock_pos.qty_on_hand = Decimal("100")
         mock_pos.qty_reserved = Decimal("0")
         mock_pos.qty_damaged = Decimal("0")
-        svc._pos_repo.get_by_product_warehouse.return_value = mock_pos
+        m.pos_repo.get_by_product_warehouse.return_value = mock_pos
         mock_movement = MagicMock()
         mock_movement.id = uuid.uuid4()
-        svc._ledger.record_transfer_movement.return_value = (mock_movement, mock_pos)
+        m.ledger.record_transfer_movement.return_value = (mock_movement, mock_pos)
         dispatched = _make_transfer(status="IN_TRANSIT", version=2)
-        svc._transfer_repo.update_status.return_value = dispatched
+        m.transfer_repo.update_status.return_value = dispatched
 
-        result = svc.dispatch_transfer(
+        result = m.service.dispatch_transfer(
             company_id=transfer.company_id,
             transfer_id=transfer.id,
         )
         assert result.status == "IN_TRANSIT"
-        svc._ledger.record_transfer_movement.assert_called_once()
+        m.ledger.record_transfer_movement.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -247,42 +272,42 @@ class TestDispatchTransfer:
 
 class TestReceiveTransfer:
     def test_receive_non_in_transit_raises(self):
-        svc = _make_service()
+        m = _make_service()
         transfer = _make_transfer(status="DRAFT")
-        svc._transfer_repo.get_by_id_with_lines.return_value = transfer
+        m.transfer_repo.get_by_id_with_lines.return_value = transfer
         with pytest.raises(InvalidTransferStateTransitionError):
-            svc.receive_transfer(
+            m.service.receive_transfer(
                 company_id=transfer.company_id,
                 transfer_id=transfer.id,
             )
 
     def test_receive_completed_raises(self):
-        svc = _make_service()
+        m = _make_service()
         transfer = _make_transfer(status="COMPLETED")
-        svc._transfer_repo.get_by_id_with_lines.return_value = transfer
+        m.transfer_repo.get_by_id_with_lines.return_value = transfer
         with pytest.raises(InvalidTransferStateTransitionError):
-            svc.receive_transfer(
+            m.service.receive_transfer(
                 company_id=transfer.company_id,
                 transfer_id=transfer.id,
             )
 
     def test_receive_success(self):
-        svc = _make_service()
+        m = _make_service()
         transfer = _make_transfer(status="IN_TRANSIT", version=2)
-        svc._transfer_repo.get_by_id_with_lines.return_value = transfer
+        m.transfer_repo.get_by_id_with_lines.return_value = transfer
         mock_pos = MagicMock()
         mock_movement = MagicMock()
         mock_movement.id = uuid.uuid4()
-        svc._ledger.record_transfer_movement.return_value = (mock_movement, mock_pos)
+        m.ledger.record_transfer_movement.return_value = (mock_movement, mock_pos)
         completed = _make_transfer(status="COMPLETED", version=3)
-        svc._transfer_repo.update_status.return_value = completed
+        m.transfer_repo.update_status.return_value = completed
 
-        result = svc.receive_transfer(
+        result = m.service.receive_transfer(
             company_id=transfer.company_id,
             transfer_id=transfer.id,
         )
         assert result.status == "COMPLETED"
-        svc._ledger.record_transfer_movement.assert_called_once()
+        m.ledger.record_transfer_movement.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -292,51 +317,51 @@ class TestReceiveTransfer:
 
 class TestCancelTransfer:
     def test_cancel_completed_raises(self):
-        svc = _make_service()
+        m = _make_service()
         transfer = _make_transfer(status="COMPLETED")
-        svc._transfer_repo.get_by_id_with_lines.return_value = transfer
+        m.transfer_repo.get_by_id_with_lines.return_value = transfer
         with pytest.raises(InvalidTransferStateTransitionError):
-            svc.cancel_transfer(
+            m.service.cancel_transfer(
                 company_id=transfer.company_id,
                 transfer_id=transfer.id,
                 cancelled_reason="mistake",
             )
 
     def test_cancel_draft_no_stock_change(self):
-        svc = _make_service()
+        m = _make_service()
         transfer = _make_transfer(status="DRAFT", version=1)
-        svc._transfer_repo.get_by_id_with_lines.return_value = transfer
+        m.transfer_repo.get_by_id_with_lines.return_value = transfer
         cancelled = _make_transfer(status="CANCELLED", version=2)
-        svc._transfer_repo.update_status.return_value = cancelled
+        m.transfer_repo.update_status.return_value = cancelled
 
-        result = svc.cancel_transfer(
+        result = m.service.cancel_transfer(
             company_id=transfer.company_id,
             transfer_id=transfer.id,
             cancelled_reason="no longer needed",
         )
         assert result.status == "CANCELLED"
-        svc._ledger.record_transfer_movement.assert_not_called()
+        m.ledger.record_transfer_movement.assert_not_called()
 
     def test_cancel_in_transit_creates_reversal(self):
-        svc = _make_service()
+        m = _make_service()
         transfer = _make_transfer(status="IN_TRANSIT", version=2)
-        svc._transfer_repo.get_by_id_with_lines.return_value = transfer
+        m.transfer_repo.get_by_id_with_lines.return_value = transfer
         mock_pos = MagicMock()
         mock_movement = MagicMock()
         mock_movement.id = uuid.uuid4()
-        svc._ledger.record_transfer_movement.return_value = (mock_movement, mock_pos)
+        m.ledger.record_transfer_movement.return_value = (mock_movement, mock_pos)
         cancelled = _make_transfer(status="CANCELLED", version=3)
-        svc._transfer_repo.update_status.return_value = cancelled
+        m.transfer_repo.update_status.return_value = cancelled
 
-        result = svc.cancel_transfer(
+        result = m.service.cancel_transfer(
             company_id=transfer.company_id,
             transfer_id=transfer.id,
             cancelled_reason="logistics issue",
         )
         assert result.status == "CANCELLED"
         # Must have called ledger to create reversal TRANSFER_IN
-        svc._ledger.record_transfer_movement.assert_called_once()
-        call_kwargs = svc._ledger.record_transfer_movement.call_args.kwargs
+        m.ledger.record_transfer_movement.assert_called_once()
+        call_kwargs = m.ledger.record_transfer_movement.call_args.kwargs
         assert call_kwargs["movement_type"] == "TRANSFER_IN"
         assert call_kwargs["reference_type"] == "TRANSFER_REVERSAL"
 
@@ -348,9 +373,9 @@ class TestCancelTransfer:
 
 class TestReservation:
     def test_reserve_zero_raises(self):
-        svc = _make_service()
+        m = _make_service()
         with pytest.raises(InvalidStockQuantityError):
-            svc.reserve_stock(
+            m.service.reserve_stock(
                 company_id=uuid.uuid4(),
                 product_id=uuid.uuid4(),
                 warehouse_id=uuid.uuid4(),
@@ -358,9 +383,9 @@ class TestReservation:
             )
 
     def test_reserve_negative_raises(self):
-        svc = _make_service()
+        m = _make_service()
         with pytest.raises(InvalidStockQuantityError):
-            svc.reserve_stock(
+            m.service.reserve_stock(
                 company_id=uuid.uuid4(),
                 product_id=uuid.uuid4(),
                 warehouse_id=uuid.uuid4(),
@@ -368,14 +393,14 @@ class TestReservation:
             )
 
     def test_reserve_exceeds_available_raises(self):
-        svc = _make_service()
+        m = _make_service()
         mock_pos = MagicMock()
         mock_pos.qty_on_hand = Decimal("10")
         mock_pos.qty_reserved = Decimal("8")
         mock_pos.qty_damaged = Decimal("0")
-        svc._pos_repo.get_or_create.return_value = (mock_pos, True)
+        m.pos_repo.get_or_create.return_value = (mock_pos, True)
         with pytest.raises(InsufficientStockError):
-            svc.reserve_stock(
+            m.service.reserve_stock(
                 company_id=uuid.uuid4(),
                 product_id=uuid.uuid4(),
                 warehouse_id=uuid.uuid4(),
@@ -383,15 +408,15 @@ class TestReservation:
             )
 
     def test_reserve_within_available_succeeds(self):
-        svc = _make_service()
+        m = _make_service()
         mock_pos = MagicMock()
         mock_pos.qty_on_hand = Decimal("100")
         mock_pos.qty_reserved = Decimal("10")
         mock_pos.qty_damaged = Decimal("0")
-        svc._pos_repo.get_or_create.return_value = (mock_pos, False)
-        svc._db.flush = MagicMock()
+        m.pos_repo.get_or_create.return_value = (mock_pos, False)
+        m.db.flush = MagicMock()
 
-        svc.reserve_stock(
+        m.service.reserve_stock(
             company_id=uuid.uuid4(),
             product_id=uuid.uuid4(),
             warehouse_id=uuid.uuid4(),
@@ -400,9 +425,9 @@ class TestReservation:
         assert Decimal(str(mock_pos.qty_reserved)) == Decimal("30")
 
     def test_release_zero_raises(self):
-        svc = _make_service()
+        m = _make_service()
         with pytest.raises(InvalidStockQuantityError):
-            svc.release_stock(
+            m.service.release_stock(
                 company_id=uuid.uuid4(),
                 product_id=uuid.uuid4(),
                 warehouse_id=uuid.uuid4(),
@@ -410,14 +435,14 @@ class TestReservation:
             )
 
     def test_release_exceeds_reserved_raises(self):
-        svc = _make_service()
+        m = _make_service()
         mock_pos = MagicMock()
         mock_pos.qty_on_hand = Decimal("100")
         mock_pos.qty_reserved = Decimal("5")
         mock_pos.qty_damaged = Decimal("0")
-        svc._pos_repo.get_or_create.return_value = (mock_pos, False)
+        m.pos_repo.get_or_create.return_value = (mock_pos, False)
         with pytest.raises(InsufficientStockError):
-            svc.release_stock(
+            m.service.release_stock(
                 company_id=uuid.uuid4(),
                 product_id=uuid.uuid4(),
                 warehouse_id=uuid.uuid4(),
@@ -425,15 +450,15 @@ class TestReservation:
             )
 
     def test_release_decrements_reserved(self):
-        svc = _make_service()
+        m = _make_service()
         mock_pos = MagicMock()
         mock_pos.qty_on_hand = Decimal("100")
         mock_pos.qty_reserved = Decimal("30")
         mock_pos.qty_damaged = Decimal("0")
-        svc._pos_repo.get_or_create.return_value = (mock_pos, False)
-        svc._db.flush = MagicMock()
+        m.pos_repo.get_or_create.return_value = (mock_pos, False)
+        m.db.flush = MagicMock()
 
-        svc.release_stock(
+        m.service.release_stock(
             company_id=uuid.uuid4(),
             product_id=uuid.uuid4(),
             warehouse_id=uuid.uuid4(),

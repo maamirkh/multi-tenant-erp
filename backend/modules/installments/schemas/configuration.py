@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from pydantic import Field
@@ -32,16 +33,16 @@ class InstallmentConfigurationUpsert(InstallmentsBaseSchema):
     max_financed_amount: Decimal | None = Field(None, ge=0)
     rounding_policy: str = "ROUND_HALF_UP"
     grace_period_days: int = Field(0, ge=0)
-    late_charge_policy: dict | None = None
-    early_settlement_policy: dict | None = None
+    late_charge_policy: dict[str, Any] | None = None
+    early_settlement_policy: dict[str, Any] | None = None
     approval_threshold_amount: Decimal | None = Field(None, ge=0)
     backdating_allowed: bool = False
     backdating_max_days: int | None = Field(None, ge=0)
-    cancellation_policy: dict | None = None
-    default_policy: dict | None = None
+    cancellation_policy: dict[str, Any] | None = None
+    default_policy: dict[str, Any] | None = None
     writeoff_requires_permission: bool = True
     cure_enabled: bool = False
-    eligibility_rules: dict | None = None
+    eligibility_rules: dict[str, Any] | None = None
 
 
 class InstallmentConfigurationRead(InstallmentsBaseSchema):
@@ -58,15 +59,15 @@ class InstallmentConfigurationRead(InstallmentsBaseSchema):
     max_financed_amount: Decimal | None
     rounding_policy: str
     grace_period_days: int
-    late_charge_policy: dict | None
-    early_settlement_policy: dict | None
+    late_charge_policy: dict[str, Any] | None
+    early_settlement_policy: dict[str, Any] | None
     approval_threshold_amount: Decimal | None
     backdating_allowed: bool
     backdating_max_days: int | None
-    cancellation_policy: dict | None
-    default_policy: dict | None
+    cancellation_policy: dict[str, Any] | None
+    default_policy: dict[str, Any] | None
     writeoff_requires_permission: bool
     cure_enabled: bool
-    eligibility_rules: dict | None
+    eligibility_rules: dict[str, Any] | None
     created_at: datetime
     updated_at: datetime

@@ -14,7 +14,10 @@ from __future__ import annotations
 
 import io
 import uuid
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
+
+from sqlalchemy import Table
 
 from modules.inventory.models.product_enrichment import (
     ImportJob,
@@ -42,7 +45,7 @@ class TestProductTagModel:
         assert "created_at" in cols
 
     def test_product_tag_unique_constraint_exists(self):
-        uq_names = {c.name for c in ProductTag.__table__.constraints}
+        uq_names = {c.name for c in cast(Table, ProductTag.__table__).constraints}
         assert "uq_inv_product_tags_product_tag" in uq_names
 
     def test_product_tag_instantiation(self):
@@ -77,7 +80,9 @@ class TestProductCustomFieldValueModel:
         assert "field_key" in cols
 
     def test_unique_constraint(self):
-        uq_names = {c.name for c in ProductCustomFieldValue.__table__.constraints}
+        uq_names = {
+            c.name for c in cast(Table, ProductCustomFieldValue.__table__).constraints
+        }
         assert "uq_inv_product_cfv_product_field" in uq_names
 
     def test_instantiation_text_value(self):
@@ -168,7 +173,7 @@ class TestImportJobModel:
         assert "error_message" in cols
 
     def test_check_constraint_exists(self):
-        ck_names = {c.name for c in ImportJob.__table__.constraints}
+        ck_names = {c.name for c in cast(Table, ImportJob.__table__).constraints}
         assert "ck_inv_import_jobs_status" in ck_names
 
     def test_instantiation_pending(self):
@@ -194,6 +199,7 @@ class TestImportJobModel:
             ],
             status="FAILED_WITH_ERRORS",
         )
+        assert job.error_rows is not None
         assert len(job.error_rows) == 1
         assert job.error_rows[0]["errors"] == ["invalid UOM"]
 
@@ -239,7 +245,7 @@ class TestBulkImportServiceCsvParsing:
         )
         return svc, product_repo, job_repo, product_service, job
 
-    def _make_csv(self, rows: list[dict]) -> bytes:
+    def _make_csv(self, rows: list[dict[str, Any]]) -> bytes:
         import csv
 
         fields = list(rows[0].keys()) if rows else []

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from modules.purchase.events import PurchaseDomainEvent
@@ -49,14 +50,14 @@ class SupplierCreated(PurchaseDomainEvent):
         return cls(
             event_type="supplier.created",
             aggregate_type="Supplier",
-            aggregate_id=supplier_id,
-            company_id=company_id,
+            aggregate_id=str(supplier_id),
+            company_id=str(company_id),
             supplier_code=supplier_code,
             legal_name=legal_name,
-            actor_id=actor_id,
+            actor_id=str(actor_id) if actor_id else None,
         )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = super().to_dict()
         d["supplier_code"] = self.supplier_code
         d["legal_name"] = self.legal_name
@@ -80,13 +81,13 @@ class SupplierUpdated(PurchaseDomainEvent):
         return cls(
             event_type="supplier.updated",
             aggregate_type="Supplier",
-            aggregate_id=supplier_id,
-            company_id=company_id,
+            aggregate_id=str(supplier_id),
+            company_id=str(company_id),
             changed_fields=changed_fields,
-            actor_id=actor_id,
+            actor_id=str(actor_id) if actor_id else None,
         )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = super().to_dict()
         d["changed_fields"] = self.changed_fields
         return d
@@ -112,13 +113,13 @@ class SupplierActivated(PurchaseDomainEvent):
         return cls(
             event_type="supplier.activated",
             aggregate_type="Supplier",
-            aggregate_id=supplier_id,
-            company_id=company_id,
+            aggregate_id=str(supplier_id),
+            company_id=str(company_id),
             previous_status=previous_status,
-            actor_id=actor_id,
+            actor_id=str(actor_id) if actor_id else None,
         )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = super().to_dict()
         d["previous_status"] = self.previous_status
         return d
@@ -141,13 +142,13 @@ class SupplierDeactivated(PurchaseDomainEvent):
         return cls(
             event_type="supplier.deactivated",
             aggregate_type="Supplier",
-            aggregate_id=supplier_id,
-            company_id=company_id,
+            aggregate_id=str(supplier_id),
+            company_id=str(company_id),
             reason=reason,
-            actor_id=actor_id,
+            actor_id=str(actor_id) if actor_id else None,
         )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = super().to_dict()
         d["reason"] = self.reason
         return d
@@ -170,13 +171,13 @@ class SupplierBlocked(PurchaseDomainEvent):
         return cls(
             event_type="supplier.blocked",
             aggregate_type="Supplier",
-            aggregate_id=supplier_id,
-            company_id=company_id,
+            aggregate_id=str(supplier_id),
+            company_id=str(company_id),
             reason=reason,
-            actor_id=actor_id,
+            actor_id=str(actor_id) if actor_id else None,
         )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = super().to_dict()
         d["reason"] = self.reason
         return d
@@ -201,14 +202,14 @@ class SupplierReactivated(PurchaseDomainEvent):
         return cls(
             event_type="supplier.reactivated",
             aggregate_type="Supplier",
-            aggregate_id=supplier_id,
-            company_id=company_id,
+            aggregate_id=str(supplier_id),
+            company_id=str(company_id),
             previous_status=previous_status,
             reason=reason,
-            actor_id=actor_id,
+            actor_id=str(actor_id) if actor_id else None,
         )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = super().to_dict()
         d["previous_status"] = self.previous_status
         d["reason"] = self.reason
@@ -235,13 +236,13 @@ class SupplierArchived(PurchaseDomainEvent):
         return cls(
             event_type="supplier.archived",
             aggregate_type="Supplier",
-            aggregate_id=supplier_id,
-            company_id=company_id,
+            aggregate_id=str(supplier_id),
+            company_id=str(company_id),
             previous_status=previous_status,
-            actor_id=actor_id,
+            actor_id=str(actor_id) if actor_id else None,
         )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = super().to_dict()
         d["previous_status"] = self.previous_status
         return d
@@ -277,15 +278,15 @@ class SupplierRatingUpdated(PurchaseDomainEvent):
         return cls(
             event_type="supplier.rating_updated",
             aggregate_type="Supplier",
-            aggregate_id=supplier_id,
-            company_id=company_id,
+            aggregate_id=str(supplier_id),
+            company_id=str(company_id),
             composite_score=composite_score,
             gr_count_window=gr_count_window,
             is_manual_override=is_manual_override,
-            actor_id=actor_id,
+            actor_id=str(actor_id) if actor_id else None,
         )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = super().to_dict()
         d["composite_score"] = str(self.composite_score)
         d["gr_count_window"] = self.gr_count_window
@@ -315,14 +316,14 @@ class PreferredSupplierDesignated(PurchaseDomainEvent):
         return cls(
             event_type="supplier.preferred_designated",
             aggregate_type="Supplier",
-            aggregate_id=supplier_id,
-            company_id=company_id,
+            aggregate_id=str(supplier_id),
+            company_id=str(company_id),
             is_preferred=is_preferred,
             previous_preferred=previous_preferred,
-            actor_id=actor_id,
+            actor_id=str(actor_id) if actor_id else None,
         )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = super().to_dict()
         d["is_preferred"] = self.is_preferred
         d["previous_preferred"] = self.previous_preferred

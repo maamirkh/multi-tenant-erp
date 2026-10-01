@@ -10,7 +10,7 @@ One user may have multiple concurrent active sessions (e.g., browser + mobile).
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, Uuid
@@ -69,7 +69,7 @@ class Session(BaseModel):
         doc="Raw User-Agent header from the login request.",
     )
 
-    device_info: Mapped[dict | None] = mapped_column(
+    device_info: Mapped[dict[str, Any] | None] = mapped_column(
         JSONB,
         nullable=True,
         doc="Parsed device metadata (OS, browser, device type) for display in UI.",

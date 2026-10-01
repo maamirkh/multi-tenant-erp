@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import threading
 import uuid
+from collections.abc import Generator
 from datetime import date
 from decimal import Decimal
 
@@ -62,7 +63,7 @@ def pg_engine(request: pytest.FixtureRequest):
 
 
 @pytest.fixture
-def db_session(pg_engine) -> Session:
+def db_session(pg_engine) -> Generator[Session, None, None]:
     session_factory = sessionmaker(bind=pg_engine)
     session = session_factory()
     try:

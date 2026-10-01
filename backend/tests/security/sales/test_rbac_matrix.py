@@ -19,6 +19,7 @@ Spec ref: specs/007-sales-management/spec.md §9 RBAC
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -40,10 +41,10 @@ def _login(client: TestClient, email: str) -> str:
         json={"email": email, "password": _TEST_PASSWORD},
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -65,7 +66,7 @@ def _create_company(client: TestClient, token: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +122,7 @@ class TestReadOperationsRequireAuth:
 # Write operations — unauthenticated returns 401
 # ---------------------------------------------------------------------------
 
-WRITE_ENDPOINTS: list[tuple[str, dict]] = [
+WRITE_ENDPOINTS: list[tuple[str, dict[str, Any]]] = [
     (
         "/customers",
         {
@@ -185,7 +186,7 @@ class TestWriteOperationsRequireAuth:
 
     @pytest.mark.parametrize("path_suffix,body", WRITE_ENDPOINTS)
     def test_post_requires_auth(
-        self, test_client: TestClient, path_suffix: str, body: dict
+        self, test_client: TestClient, path_suffix: str, body: dict[str, Any]
     ) -> None:
         cid = str(uuid.uuid4())
         resp = test_client.post(_sales_url(cid, path_suffix), json=body)
@@ -242,12 +243,16 @@ class TestLifecycleTransitionsRequireAuth:
 class TestAuthenticatedUserAccess:
     """Authenticated users get 2xx/4xx (not 401) for all sales operations."""
 
-    def test_authenticated_user_can_list_customers(self, auth_ctx: tuple) -> None:
+    def test_authenticated_user_can_list_customers(
+        self, auth_ctx: tuple[Any, ...]
+    ) -> None:
         client, token, cid = auth_ctx
         resp = client.get(_sales_url(cid, "/customers"), headers=_auth(token))
         assert resp.status_code == 200
 
-    def test_authenticated_user_can_create_customer(self, auth_ctx: tuple) -> None:
+    def test_authenticated_user_can_create_customer(
+        self, auth_ctx: tuple[Any, ...]
+    ) -> None:
         client, token, cid = auth_ctx
         resp = client.post(
             _sales_url(cid, "/customers"),
@@ -262,7 +267,9 @@ class TestAuthenticatedUserAccess:
         )
         assert resp.status_code == 201
 
-    def test_authenticated_user_can_create_quotation(self, auth_ctx: tuple) -> None:
+    def test_authenticated_user_can_create_quotation(
+        self, auth_ctx: tuple[Any, ...]
+    ) -> None:
         client, token, cid = auth_ctx
         resp = client.post(
             _sales_url(cid, "/quotations"),
@@ -277,7 +284,9 @@ class TestAuthenticatedUserAccess:
         )
         assert resp.status_code == 201
 
-    def test_authenticated_user_can_create_order(self, auth_ctx: tuple) -> None:
+    def test_authenticated_user_can_create_order(
+        self, auth_ctx: tuple[Any, ...]
+    ) -> None:
         client, token, cid = auth_ctx
         resp = client.post(
             _sales_url(cid, "/sales-orders"),
@@ -292,7 +301,9 @@ class TestAuthenticatedUserAccess:
         )
         assert resp.status_code == 201
 
-    def test_authenticated_user_can_create_invoice(self, auth_ctx: tuple) -> None:
+    def test_authenticated_user_can_create_invoice(
+        self, auth_ctx: tuple[Any, ...]
+    ) -> None:
         client, token, cid = auth_ctx
         resp = client.post(
             _sales_url(cid, "/invoices"),
@@ -314,7 +325,9 @@ class TestAuthenticatedUserAccess:
         )
         assert resp.status_code == 201
 
-    def test_authenticated_user_can_access_kpis(self, auth_ctx: tuple) -> None:
+    def test_authenticated_user_can_access_kpis(
+        self, auth_ctx: tuple[Any, ...]
+    ) -> None:
         client, token, cid = auth_ctx
         resp = client.get(
             _sales_url(cid, "/kpis"),
@@ -323,7 +336,9 @@ class TestAuthenticatedUserAccess:
         )
         assert resp.status_code == 200
 
-    def test_authenticated_user_can_view_feature_flags(self, auth_ctx: tuple) -> None:
+    def test_authenticated_user_can_view_feature_flags(
+        self, auth_ctx: tuple[Any, ...]
+    ) -> None:
         client, token, cid = auth_ctx
         resp = client.get(_sales_url(cid, "/feature-flags"), headers=_auth(token))
         assert resp.status_code == 200

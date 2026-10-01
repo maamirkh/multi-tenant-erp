@@ -256,6 +256,43 @@ class TestDueOverdueReports:
         assert rows[0]["state"] == "OVERDUE"
         assert rows[0]["days_overdue"] == 10
 
+    def test_combined_report_equals_due_then_overdue(self, db_session: Session) -> None:
+        """``get_due_overdue_report()`` classifies once but must return
+        exactly the due rows followed by the overdue rows, and paginate
+        that combined list."""
+        ctx = build_active_contract_with_schedule(
+            db_session, installment_count=3, installment_amount=Decimal("100.00")
+        )
+        business_date = get_business_date()
+        lines = (
+            db_session.query(InstallmentScheduleLine)
+            .filter_by(schedule_version_id=ctx["schedule_version"].id)
+            .order_by(InstallmentScheduleLine.due_date)
+            .all()
+        )
+        # One overdue, one due today, one upcoming (in neither report).
+        for line, offset in zip(lines, (-10, 0, 30), strict=True):
+            line.due_date = business_date + timedelta(days=offset)
+            db_session.add(line)
+        db_session.commit()
+        svc = _build_reporting_service(db_session)
+        company_id = ctx["company_id"]
+
+        due_rows, due_total = svc.get_due_report(company_id, skip=0, limit=20)
+        overdue_rows, overdue_total = svc.get_overdue_report(
+            company_id, skip=0, limit=20
+        )
+        rows, total = svc.get_due_overdue_report(company_id, skip=0, limit=20)
+
+        assert (due_total, overdue_total) == (1, 1)
+        assert total == 2
+        assert rows == due_rows + overdue_rows
+        page_two, page_two_total = svc.get_due_overdue_report(
+            company_id, skip=1, limit=1
+        )
+        assert page_two == overdue_rows
+        assert page_two_total == 2
+
 
 class TestAgingReport:
     def test_aging_report_buckets_an_overdue_line_correctly(
@@ -371,7 +408,7 @@ class TestDefaultWriteoffReport:
             db_session.query(InstallmentContract).filter_by(id=ctx["contract"].id).one()
         )
         contract.status = "DEFAULTED"
-        contract.defaulted_at = contract.contract_date
+        contract.defaulted_at = contract.contract_date  # type: ignore[assignment]
         db_session.add(contract)
         db_session.commit()
 
@@ -479,7 +516,7 @@ class TestDashboardSourcing:
             db_session.query(InstallmentContract).filter_by(id=ctx["contract"].id).one()
         )
         contract.status = "DEFAULTED"
-        contract.defaulted_at = contract.contract_date
+        contract.defaulted_at = contract.contract_date  # type: ignore[assignment]
         db_session.add(contract)
         db_session.commit()
 

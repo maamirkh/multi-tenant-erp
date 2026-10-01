@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from typing import Any
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -72,7 +73,7 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -107,7 +108,7 @@ def _create_company(client: TestClient, token: str) -> uuid.UUID:
     return uuid.UUID(resp.json()["data"]["id"])
 
 
-def _setup_gl(db_session: Session, company_id: uuid.UUID) -> dict:
+def _setup_gl(db_session: Session, company_id: uuid.UUID) -> dict[str, Any]:
     """Create AR/Revenue accounts and a fiscal year covering today."""
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
@@ -148,7 +149,7 @@ def _setup_gl(db_session: Session, company_id: uuid.UUID) -> dict:
 
 def _posting_body(
     ar_id: str, revenue_id: str, posting_date: str, amount: str = "500.00"
-) -> dict:
+) -> dict[str, Any]:
     return {
         "journal_type": "STANDARD",
         "posting_source": "MANUAL",
@@ -162,7 +163,7 @@ def _posting_body(
 
 
 def _create_and_submit_journal(
-    test_client: TestClient, token: str, cid: str, gl: dict
+    test_client: TestClient, token: str, cid: str, gl: dict[str, Any]
 ) -> str:
     resp = test_client.post(
         _url(cid, "/journals"),
@@ -175,7 +176,7 @@ def _create_and_submit_journal(
         _url(cid, f"/journals/{journal_id}/submit"), headers=_auth(token)
     )
     assert resp.status_code == 200, resp.text
-    return journal_id
+    return str(journal_id)
 
 
 def _setup_payment_approval(
@@ -184,7 +185,7 @@ def _setup_payment_approval(
     db_session: Session,
     cid: uuid.UUID,
     threshold: str = "100.00",
-) -> dict:
+) -> dict[str, Any]:
     """Configure GL accounts, a payment_approval_threshold, and enable the
     approval-workflow feature flag so that a payment above the threshold is
     created DRAFT (pending approval) rather than immediately POSTED."""
@@ -255,7 +256,11 @@ def _setup_payment_approval(
 
 
 def _create_draft_customer_payment(
-    test_client: TestClient, token: str, cid: str, gl: dict, amount: str = "500.00"
+    test_client: TestClient,
+    token: str,
+    cid: str,
+    gl: dict[str, Any],
+    amount: str = "500.00",
 ) -> str:
     resp = test_client.post(
         _url(cid, "/payments/customer"),
@@ -275,7 +280,7 @@ def _create_draft_customer_payment(
         "Payment should be DRAFT (pending approval) given amount > threshold "
         f"and the approval-workflow flag enabled: {payment}"
     )
-    return payment["id"]
+    return str(payment["id"])
 
 
 # ---------------------------------------------------------------------------

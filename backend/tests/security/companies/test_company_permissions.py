@@ -17,9 +17,11 @@ Spec ref: spec.md §8.2, Phase 3 RBAC simplification.
 from __future__ import annotations
 
 import uuid as _uuid
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -30,10 +32,10 @@ def _login(client: TestClient, email: str, password: str) -> str:
     resp = client.post(
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -44,7 +46,7 @@ def _create_company(client: TestClient, token: str, name: str, email: str) -> st
         headers=_auth(token),
     )
     assert resp.status_code == 201, f"Company creation failed: {resp.json()}"
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 @pytest.fixture()
@@ -76,7 +78,7 @@ class TestOwnerPermissions:
     """Owner has full read/write access to their own company."""
 
     def test_owner_can_get_company(
-        self, test_client: TestClient, owner_and_company: tuple
+        self, test_client: TestClient, owner_and_company: tuple[Any, ...]
     ) -> None:
         token_owner, _, company_id = owner_and_company
         resp = test_client.get(
@@ -85,7 +87,7 @@ class TestOwnerPermissions:
         assert resp.status_code == 200
 
     def test_owner_can_patch_company(
-        self, test_client: TestClient, owner_and_company: tuple
+        self, test_client: TestClient, owner_and_company: tuple[Any, ...]
     ) -> None:
         token_owner, _, company_id = owner_and_company
         resp = test_client.patch(
@@ -96,7 +98,7 @@ class TestOwnerPermissions:
         assert resp.status_code == 200
 
     def test_owner_can_view_audit_log(
-        self, test_client: TestClient, owner_and_company: tuple
+        self, test_client: TestClient, owner_and_company: tuple[Any, ...]
     ) -> None:
         token_owner, _, company_id = owner_and_company
         resp = test_client.get(
@@ -109,7 +111,7 @@ class TestNonOwnerPermissions:
     """Non-owner authenticated users receive 403 on company-specific operations."""
 
     def test_stranger_cannot_get_company(
-        self, test_client: TestClient, owner_and_company: tuple
+        self, test_client: TestClient, owner_and_company: tuple[Any, ...]
     ) -> None:
         _, token_stranger, company_id = owner_and_company
         resp = test_client.get(
@@ -118,7 +120,7 @@ class TestNonOwnerPermissions:
         assert resp.status_code == 403
 
     def test_stranger_cannot_patch_company(
-        self, test_client: TestClient, owner_and_company: tuple
+        self, test_client: TestClient, owner_and_company: tuple[Any, ...]
     ) -> None:
         _, token_stranger, company_id = owner_and_company
         resp = test_client.patch(
@@ -129,7 +131,7 @@ class TestNonOwnerPermissions:
         assert resp.status_code == 403
 
     def test_stranger_cannot_view_audit_log(
-        self, test_client: TestClient, owner_and_company: tuple
+        self, test_client: TestClient, owner_and_company: tuple[Any, ...]
     ) -> None:
         _, token_stranger, company_id = owner_and_company
         resp = test_client.get(
@@ -138,7 +140,7 @@ class TestNonOwnerPermissions:
         assert resp.status_code == 403
 
     def test_stranger_cannot_add_address(
-        self, test_client: TestClient, owner_and_company: tuple
+        self, test_client: TestClient, owner_and_company: tuple[Any, ...]
     ) -> None:
         _, token_stranger, company_id = owner_and_company
         resp = test_client.post(
@@ -198,7 +200,7 @@ class TestSuperAdminPermissions:
             mock.roles = ["super_admin"]
             return mock
 
-        app = test_client.app
+        app = cast(FastAPI, test_client.app)
         app.dependency_overrides[require_authenticated] = _fake_super_admin
         try:
             resp = test_client.get(

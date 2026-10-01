@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -42,7 +43,7 @@ from modules.accounting.services.fiscal_service import FiscalCalendarService
 
 
 @pytest.fixture
-def setup(db_session: Session) -> dict:
+def setup(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -141,7 +142,7 @@ def gl_reports(db_session: Session) -> GLReportRepository:
     return GLReportRepository(db_session)
 
 
-def _make_till(cash_service: CashAccountService, setup: dict):
+def _make_till(cash_service: CashAccountService, setup: dict[str, Any]):
     return cash_service.create_cash_account(
         company_id=setup["company_id"],
         account_name="Main Till",
@@ -150,7 +151,7 @@ def _make_till(cash_service: CashAccountService, setup: dict):
     )
 
 
-def _make_petty_cash_box(cash_service: CashAccountService, setup: dict):
+def _make_petty_cash_box(cash_service: CashAccountService, setup: dict[str, Any]):
     return cash_service.create_cash_account(
         company_id=setup["company_id"],
         account_name="Petty Cash Box 1",
@@ -165,7 +166,7 @@ class TestCashReceiptsAndPayments:
     def test_record_receipt_posts_balanced_journal_and_updates_balance(
         self,
         cash_service: CashAccountService,
-        setup: dict,
+        setup: dict[str, Any],
         gl_reports: GLReportRepository,
     ) -> None:
         till = _make_till(cash_service, setup)
@@ -192,7 +193,7 @@ class TestCashReceiptsAndPayments:
         assert balances["total_debit"] - balances["total_credit"] == Decimal("200.00")
 
     def test_record_payment_posts_balanced_journal_and_updates_balance(
-        self, cash_service: CashAccountService, setup: dict
+        self, cash_service: CashAccountService, setup: dict[str, Any]
     ) -> None:
         till = _make_till(cash_service, setup)
         cash_service.record_cash_receipt(
@@ -218,7 +219,7 @@ class TestCashReceiptsAndPayments:
         assert refreshed.current_balance == Decimal("380.00")
 
     def test_zero_amount_receipt_rejected(
-        self, cash_service: CashAccountService, setup: dict
+        self, cash_service: CashAccountService, setup: dict[str, Any]
     ) -> None:
         till = _make_till(cash_service, setup)
         with pytest.raises(PostingValidationError):
@@ -236,7 +237,7 @@ class TestPettyCashReplenishment:
     def test_vouchers_totalling_150_replenish_creates_correct_gl_entry(
         self,
         cash_service: CashAccountService,
-        setup: dict,
+        setup: dict[str, Any],
         gl_reports: GLReportRepository,
     ) -> None:
         box = _make_petty_cash_box(cash_service, setup)
@@ -303,7 +304,7 @@ class TestPettyCashReplenishment:
         assert refreshed_box.current_balance == Decimal("150.00")
 
     def test_double_replenishment_of_same_voucher_raises(
-        self, cash_service: CashAccountService, setup: dict
+        self, cash_service: CashAccountService, setup: dict[str, Any]
     ) -> None:
         box = _make_petty_cash_box(cash_service, setup)
         voucher = cash_service.create_petty_cash_voucher(
@@ -337,7 +338,7 @@ class TestPettyCashReplenishment:
             )
 
     def test_replenish_with_unknown_voucher_raises_not_found(
-        self, cash_service: CashAccountService, setup: dict
+        self, cash_service: CashAccountService, setup: dict[str, Any]
     ) -> None:
         box = _make_petty_cash_box(cash_service, setup)
         with pytest.raises(PettyCashVoucherNotFoundError):
@@ -353,7 +354,7 @@ class TestPettyCashReplenishment:
 
 class TestCashReconciliation:
     def test_reconciliation_with_no_difference(
-        self, cash_service: CashAccountService, setup: dict
+        self, cash_service: CashAccountService, setup: dict[str, Any]
     ) -> None:
         till = _make_till(cash_service, setup)
         cash_service.record_cash_receipt(
@@ -379,7 +380,7 @@ class TestCashReconciliation:
     def test_reconciliation_overage_posts_to_short_over_account(
         self,
         cash_service: CashAccountService,
-        setup: dict,
+        setup: dict[str, Any],
         gl_reports: GLReportRepository,
     ) -> None:
         till = _make_till(cash_service, setup)
@@ -421,7 +422,7 @@ class TestCashReconciliation:
         assert refreshed_till.current_balance == Decimal("310.00")
 
     def test_reconciliation_shortage_requires_difference_account(
-        self, cash_service: CashAccountService, setup: dict
+        self, cash_service: CashAccountService, setup: dict[str, Any]
     ) -> None:
         till = _make_till(cash_service, setup)
         cash_service.record_cash_receipt(

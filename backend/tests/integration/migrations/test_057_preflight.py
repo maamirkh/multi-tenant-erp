@@ -63,7 +63,11 @@ def _companies_column_names(engine: sa.engine.Engine) -> set[str]:
 
 def _current_alembic_version(engine: sa.engine.Engine) -> str:
     with engine.connect() as conn:
-        return conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar()
+        version = conn.execute(
+            sa.text("SELECT version_num FROM alembic_version")
+        ).scalar()
+        assert version is not None
+        return str(version)
 
 
 def _companies_check_constraint_names(engine: sa.engine.Engine) -> set[str]:

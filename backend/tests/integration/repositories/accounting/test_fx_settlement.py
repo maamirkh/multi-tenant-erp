@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -51,7 +52,7 @@ from modules.accounting.services.payment_service import PaymentService
 
 
 @pytest.fixture
-def setup(db_session: Session) -> dict:
+def setup(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -151,7 +152,7 @@ def payment_service(db_session: Session) -> PaymentService:
 
 
 def _make_ar_invoice(
-    db_session: Session, setup: dict, amount: Decimal, rate: Decimal
+    db_session: Session, setup: dict[str, Any], amount: Decimal, rate: Decimal
 ) -> ARTransaction:
     ledger = CustomerLedgerRepository(db_session).create(
         CustomerLedger(company_id=setup["company_id"], customer_id=uuid4())
@@ -174,7 +175,7 @@ def _make_ar_invoice(
 
 
 def _make_ap_bill(
-    db_session: Session, setup: dict, amount: Decimal, rate: Decimal
+    db_session: Session, setup: dict[str, Any], amount: Decimal, rate: Decimal
 ) -> APTransaction:
     ledger = SupplierLedgerRepository(db_session).create(
         SupplierLedger(company_id=setup["company_id"], supplier_id=uuid4())
@@ -198,7 +199,7 @@ def _make_ap_bill(
 
 class TestARFXSettlementGain:
     def test_eur_invoice_booked_at_1_10_settled_at_1_15_posts_realized_gain(
-        self, payment_service: PaymentService, setup: dict
+        self, payment_service: PaymentService, setup: dict[str, Any]
     ) -> None:
         invoice = _make_ar_invoice(
             payment_service.db, setup, amount=Decimal("1000.00"), rate=Decimal("1.10")
@@ -232,6 +233,7 @@ class TestARFXSettlementGain:
         refreshed_invoice = ar_repo.get_by_id_or_none(
             id=invoice.id, company_id=setup["company_id"]
         )
+        assert refreshed_invoice is not None
         assert refreshed_invoice.outstanding_amount == Decimal("0")
         assert refreshed_invoice.status == "PAID"
 
@@ -246,7 +248,7 @@ class TestARFXSettlementGain:
 
 class TestAPFXSettlementLoss:
     def test_eur_bill_booked_at_1_10_settled_at_1_15_posts_realized_loss(
-        self, payment_service: PaymentService, setup: dict
+        self, payment_service: PaymentService, setup: dict[str, Any]
     ) -> None:
         bill = _make_ap_bill(
             payment_service.db, setup, amount=Decimal("1000.00"), rate=Decimal("1.10")
@@ -282,6 +284,7 @@ class TestAPFXSettlementLoss:
         refreshed_bill = ap_repo.get_by_id_or_none(
             id=bill.id, company_id=setup["company_id"]
         )
+        assert refreshed_bill is not None
         assert refreshed_bill.outstanding_amount == Decimal("0")
         assert refreshed_bill.status == "PAID"
 

@@ -20,8 +20,10 @@ Spec ref: spec.md §6.3 Logo Upload, BR-027.
 from __future__ import annotations
 
 import uuid as _uuid
+from typing import Any, cast
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -67,10 +69,10 @@ def _login(client: TestClient, email: str, password: str) -> str:
     resp = client.post(
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -94,7 +96,7 @@ def owner_and_company(test_client: TestClient, db_session: Session):
 
 
 @pytest.fixture()
-def logo_url(test_client: TestClient, owner_and_company: tuple):
+def logo_url(test_client: TestClient, owner_and_company: tuple[Any, ...]):
     """Resolve the POST /{company_id}/logo URL."""
     _, company_id = owner_and_company
     return f"/api/v1/companies/{company_id}/logo"
@@ -119,7 +121,7 @@ class TestLogoUploadSecurity:
     def test_svg_with_script_tag_returns_400(
         self,
         test_client: TestClient,
-        owner_and_company: tuple,
+        owner_and_company: tuple[Any, ...],
         logo_url: str,
     ) -> None:
         """SVG containing <script> is rejected to prevent stored XSS."""
@@ -138,7 +140,7 @@ class TestLogoUploadSecurity:
     def test_svg_with_javascript_event_handler_returns_400(
         self,
         test_client: TestClient,
-        owner_and_company: tuple,
+        owner_and_company: tuple[Any, ...],
         logo_url: str,
     ) -> None:
         """SVG with JavaScript event handler attributes is rejected."""
@@ -157,7 +159,7 @@ class TestLogoUploadSecurity:
     def test_corrupted_file_magic_bytes_returns_400(
         self,
         test_client: TestClient,
-        owner_and_company: tuple,
+        owner_and_company: tuple[Any, ...],
         logo_url: str,
     ) -> None:
         """File with no recognisable magic bytes is rejected."""
@@ -170,7 +172,7 @@ class TestLogoUploadSecurity:
     def test_pdf_disguised_as_jpg_returns_400(
         self,
         test_client: TestClient,
-        owner_and_company: tuple,
+        owner_and_company: tuple[Any, ...],
         logo_url: str,
     ) -> None:
         """PDF magic bytes with .jpg extension are rejected via MIME detection."""
@@ -183,7 +185,7 @@ class TestLogoUploadSecurity:
     def test_missing_file_field_returns_422(
         self,
         test_client: TestClient,
-        owner_and_company: tuple,
+        owner_and_company: tuple[Any, ...],
         logo_url: str,
     ) -> None:
         """Multipart request without logo_file field returns 422."""
@@ -194,7 +196,7 @@ class TestLogoUploadSecurity:
     def test_png_with_exe_extension_is_accepted(
         self,
         test_client: TestClient,
-        owner_and_company: tuple,
+        owner_and_company: tuple[Any, ...],
         logo_url: str,
     ) -> None:
         """PNG magic bytes detected correctly regardless of .exe extension."""
@@ -206,7 +208,7 @@ class TestLogoUploadSecurity:
         def _mock_service():
             return CompanyLogoService(storage=_FakeStorage(), max_bytes=2 * 1024 * 1024)
 
-        app = test_client.app
+        app = cast(FastAPI, test_client.app)
         app.dependency_overrides[get_company_logo_service] = _mock_service
         try:
             resp = _upload(
@@ -226,7 +228,7 @@ class TestLogoUploadSecurity:
     def test_valid_png_upload_succeeds(
         self,
         test_client: TestClient,
-        owner_and_company: tuple,
+        owner_and_company: tuple[Any, ...],
         logo_url: str,
     ) -> None:
         """Valid PNG upload returns 200 with a logo_url."""
@@ -238,7 +240,7 @@ class TestLogoUploadSecurity:
         def _mock_service():
             return CompanyLogoService(storage=_FakeStorage(), max_bytes=2 * 1024 * 1024)
 
-        app = test_client.app
+        app = cast(FastAPI, test_client.app)
         app.dependency_overrides[get_company_logo_service] = _mock_service
         try:
             resp = _upload(
@@ -254,7 +256,7 @@ class TestLogoUploadSecurity:
     def test_path_traversal_filename_uses_uuid_key(
         self,
         test_client: TestClient,
-        owner_and_company: tuple,
+        owner_and_company: tuple[Any, ...],
         logo_url: str,
     ) -> None:
         """Path traversal in filename does not affect the stored key (UUID-based)."""
@@ -280,7 +282,7 @@ class TestLogoUploadSecurity:
                 storage=_CapturingStorage(), max_bytes=2 * 1024 * 1024
             )
 
-        app = test_client.app
+        app = cast(FastAPI, test_client.app)
         app.dependency_overrides[get_company_logo_service] = _mock_service
         try:
             resp = _upload(

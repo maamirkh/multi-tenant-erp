@@ -30,7 +30,7 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -267,7 +267,7 @@ class TestWarehouseStatusTransitions:
             headers=_auth(token),
         )
         assert resp.status_code == 201
-        return resp.json()["data"]["id"]
+        return str(resp.json()["data"]["id"])
 
     def test_deactivate(self, test_client: TestClient, db_session: Session):
         email, password, cid = _setup(db_session, test_client)
@@ -358,7 +358,7 @@ class TestWarehouseLocations:
             headers=_auth(token),
         )
         assert resp.status_code == 201
-        return resp.json()["data"]["id"]
+        return str(resp.json()["data"]["id"])
 
     def test_add_location(self, test_client: TestClient, db_session: Session):
         email, password, cid = _setup(db_session, test_client)

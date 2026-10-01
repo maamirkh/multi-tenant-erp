@@ -15,11 +15,13 @@ Task: T202
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import cast
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
+from modules.purchase.models.goods_receipt import GRLine
 from modules.purchase.services.cost_service import (
     CostEntryAlreadyExistsError,
     CostService,
@@ -399,7 +401,7 @@ class TestCreateCostEntry:
             "modules.purchase.services.cost_service.get_event_bus", return_value=bus
         ):
             entry = svc.create_cost_entry_on_gr_confirm(
-                gr=gr, lines=gr_lines, company_id=COMPANY_ID
+                gr=gr, lines=cast(list[GRLine], gr_lines), company_id=COMPANY_ID
             )
 
         # subtotal = 20*3 + 5*2 = 70.00
@@ -407,7 +409,7 @@ class TestCreateCostEntry:
         assert entry.total_charges == Decimal("10.00")
         assert entry.total_discounts == Decimal("5.00")
         assert entry.total == Decimal("75.00")
-        svc.db.add.assert_called_once()
+        cast(MagicMock, svc.db).add.assert_called_once()
         bus.publish.assert_called_once()
 
     def test_raises_on_duplicate_entry(self):

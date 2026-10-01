@@ -7,14 +7,20 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
+from typing import cast
 
 import pytest
 from sqlalchemy import select
 
 from core.events.outbox import EventOutboxRepository, OutboxRecord
-from modules.accounting.dependencies import build_ar_service
+from modules.accounting.dependencies import (
+    build_allocation_engine,
+    build_ar_service,
+    build_payment_service,
+)
 from modules.accounting.models.ar import ARTransaction
 from modules.accounting.models.gl import JournalEntry
+from modules.accounting.services.ar_service import AccountsReceivableService
 from modules.installments.exceptions import InstallmentIdempotencyConflictError
 from modules.installments.models.audit import InstallmentAuditLog
 from modules.installments.models.contract import InstallmentContract
@@ -88,9 +94,9 @@ class TestWriteoffAccountingIntegration:
         real_ar_service = build_ar_service(db_session, with_sales_sync=False)
         counting_ar_service = _CountingAccountsReceivableService(real_ar_service)
         gateway = AccountingIntegrationGateway(
-            ar_service=counting_ar_service,
-            payment_service=None,
-            allocation_engine=None,
+            ar_service=cast(AccountsReceivableService, counting_ar_service),
+            payment_service=build_payment_service(db_session),
+            allocation_engine=build_allocation_engine(db_session),
         )
         svc = InstallmentContractService(
             repo=InstallmentContractRepository(db_session),
@@ -140,7 +146,9 @@ def _build_counting_contract_service(
     real_ar_service = build_ar_service(db_session, with_sales_sync=False)
     counting_ar_service = _CountingAccountsReceivableService(real_ar_service)
     gateway = AccountingIntegrationGateway(
-        ar_service=counting_ar_service, payment_service=None, allocation_engine=None
+        ar_service=cast(AccountsReceivableService, counting_ar_service),
+        payment_service=build_payment_service(db_session),
+        allocation_engine=build_allocation_engine(db_session),
     )
     svc = InstallmentContractService(
         repo=InstallmentContractRepository(db_session),

@@ -16,6 +16,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from typing import Any, cast
 
 import pytest
 from sqlalchemy.orm import Session
@@ -25,10 +26,20 @@ from modules.installments.exceptions import InstallmentNotFoundError
 from modules.installments.repositories.audit import InstallmentAuditLogRepository
 from modules.installments.repositories.contract import InstallmentContractRepository
 from modules.installments.repositories.sequence import InstallmentSequenceRepository
+from modules.installments.services.accounting_gateway import (
+    AccountingIntegrationGateway,
+)
 from modules.installments.services.audit_service import InstallmentAuditService
+from modules.installments.services.configuration_service import (
+    InstallmentConfigurationService,
+)
 from modules.installments.services.contract_service import InstallmentContractService
 from modules.installments.services.eligibility_service import (
     InstallmentEligibilityService,
+)
+from modules.installments.services.sales_read_gateway import (
+    SalesCustomerReadGateway,
+    SalesInvoiceReadGateway,
 )
 
 
@@ -47,7 +58,9 @@ class _FakeCustomer:
 
 
 class _FakeInvoiceGateway:
-    def __init__(self, invoices_by_company: dict[uuid.UUID, dict]) -> None:
+    def __init__(
+        self, invoices_by_company: dict[uuid.UUID, dict[uuid.UUID, _FakeInvoice]]
+    ) -> None:
         self._invoices = invoices_by_company
 
     def get_invoice(self, company_id, sales_invoice_id):
@@ -94,23 +107,25 @@ def _build_service(
     )
     accounting_gateway = _FakeAccountingGateway(outstanding_amount)
     eligibility_service = InstallmentEligibilityService(
-        invoice_gateway=invoice_gateway,
-        customer_gateway=customer_gateway,
-        ar_gateway=accounting_gateway,
+        invoice_gateway=cast(SalesInvoiceReadGateway, invoice_gateway),
+        customer_gateway=cast(SalesCustomerReadGateway, customer_gateway),
+        ar_gateway=cast(AccountingIntegrationGateway, accounting_gateway),
     )
     return InstallmentContractService(
         repo=InstallmentContractRepository(db_session),
         sequence_repo=InstallmentSequenceRepository(db_session),
         eligibility_service=eligibility_service,
-        accounting_gateway=accounting_gateway,
-        configuration_service=_FakeConfigurationService(config=None),
+        accounting_gateway=cast(AccountingIntegrationGateway, accounting_gateway),
+        configuration_service=cast(
+            InstallmentConfigurationService, _FakeConfigurationService(config=None)
+        ),
         audit_service=InstallmentAuditService(
             db=db_session, audit_repo=InstallmentAuditLogRepository(db_session)
         ),
     )
 
 
-def _base_create_kwargs(sales_invoice_id: uuid.UUID) -> dict:
+def _base_create_kwargs(sales_invoice_id: uuid.UUID) -> dict[str, Any]:
     return {
         "sales_invoice_id": sales_invoice_id,
         "down_payment_amount": Decimal("100.00"),

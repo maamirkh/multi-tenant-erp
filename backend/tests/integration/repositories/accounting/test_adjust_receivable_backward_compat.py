@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -39,7 +40,7 @@ from modules.accounting.services.fiscal_service import FiscalCalendarService
 
 
 @pytest.fixture
-def setup(db_session: Session) -> dict:
+def setup(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -100,7 +101,7 @@ def ar_service(db_session: Session) -> AccountsReceivableService:
 
 class TestAdjustReceivableBackwardCompat:
     def test_returns_ar_transaction_and_commits_immediately(
-        self, ar_service: AccountsReceivableService, setup: dict
+        self, ar_service: AccountsReceivableService, setup: dict[str, Any]
     ) -> None:
         """The public wrapper's contract is unchanged: one call returns a
         committed, refreshed ARTransaction — the caller never needs to
@@ -125,7 +126,7 @@ class TestAdjustReceivableBackwardCompat:
         assert ledger.total_outstanding_base == Decimal("100.00")
 
     def test_negative_amount_reduces_receivable(
-        self, ar_service: AccountsReceivableService, setup: dict
+        self, ar_service: AccountsReceivableService, setup: dict[str, Any]
     ) -> None:
         customer_id = uuid4()
         ar_service.adjust_receivable(
@@ -141,7 +142,7 @@ class TestAdjustReceivableBackwardCompat:
         assert ledger.total_outstanding_base == Decimal("-25.00")
 
     def test_reconciliation_still_holds(
-        self, ar_service: AccountsReceivableService, setup: dict
+        self, ar_service: AccountsReceivableService, setup: dict[str, Any]
     ) -> None:
         customer_id = uuid4()
         ar_service.record_sales_invoice(

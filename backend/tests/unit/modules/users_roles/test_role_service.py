@@ -10,6 +10,7 @@ Spec reference: tasks T055.
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from unittest.mock import MagicMock
 
 import pytest
@@ -24,6 +25,17 @@ from modules.users_roles.exceptions import (
 )
 from modules.users_roles.models.role import Role
 from modules.users_roles.services.role_service import RoleService
+
+
+@dataclass
+class _ServiceMocks:
+    db: MagicMock
+    role_repo: MagicMock
+    permission_repo: MagicMock
+    role_permission_repo: MagicMock
+    member_repo: MagicMock
+    audit_service: MagicMock
+    outbox_repo: MagicMock
 
 
 def _make_settings(**overrides):
@@ -66,7 +78,7 @@ def _make_service(
     active_member_count: int = 0,
     max_roles: int = 50,
     permission_codes_valid: bool = True,
-) -> RoleService:
+) -> tuple[RoleService, _ServiceMocks]:
     """Create a RoleService with mocked dependencies."""
     db = MagicMock()
     role_repo = MagicMock()
@@ -92,7 +104,7 @@ def _make_service(
     else:
         permission_repo.get_by_codes.return_value = []
 
-    return RoleService(
+    service = RoleService(
         db=db,
         role_repo=role_repo,
         permission_repo=permission_repo,
@@ -102,6 +114,15 @@ def _make_service(
         outbox_repo=outbox_repo,
         settings=settings,
     )
+    return service, _ServiceMocks(
+        db=db,
+        role_repo=role_repo,
+        permission_repo=permission_repo,
+        role_permission_repo=role_permission_repo,
+        member_repo=member_repo,
+        audit_service=audit_service,
+        outbox_repo=outbox_repo,
+    )
 
 
 class TestCreateCustomRole:
@@ -109,7 +130,7 @@ class TestCreateCustomRole:
 
     def test_create_role_success(self):
         """create_custom_role creates a role with correct fields."""
-        service = _make_service()
+        service, mocks = _make_service()
 
         service.create_custom_role(
             company_id=uuid.uuid4(),
@@ -119,8 +140,8 @@ class TestCreateCustomRole:
             permission_codes=["members.read", "roles.read"],
         )
 
-        service._db.add.assert_called_once()
-        added = service._db.add.call_args[0][0]
+        mocks.db.add.assert_called_once()
+        added = mocks.db.add.call_args[0][0]
         assert isinstance(added, Role)
         assert added.name == "Warehouse Supervisor"
         assert added.rank == 35
@@ -128,7 +149,7 @@ class TestCreateCustomRole:
 
     def test_create_role_writes_audit_log(self):
         """create_custom_role writes ROLE_CREATED audit."""
-        service = _make_service()
+        service, mocks = _make_service()
 
         service.create_custom_role(
             company_id=uuid.uuid4(),
@@ -137,13 +158,13 @@ class TestCreateCustomRole:
             actor_user_id=uuid.uuid4(),
         )
 
-        service._audit_service.record.assert_called_once()
-        call_kwargs = service._audit_service.record.call_args[1]
+        mocks.audit_service.record.assert_called_once()
+        call_kwargs = mocks.audit_service.record.call_args[1]
         assert call_kwargs["action"] == "ROLE_CREATED"
 
     def test_create_role_publishes_event(self):
         """create_custom_role publishes a RoleCreatedEvent."""
-        service = _make_service()
+        service, mocks = _make_service()
 
         service.create_custom_role(
             company_id=uuid.uuid4(),
@@ -152,11 +173,11 @@ class TestCreateCustomRole:
             actor_user_id=uuid.uuid4(),
         )
 
-        service._outbox_repo.create.assert_called_once()
+        mocks.outbox_repo.create.assert_called_once()
 
     def test_create_role_assigns_permissions(self):
         """create_custom_role assigns permissions via bulk_set."""
-        service = _make_service()
+        service, mocks = _make_service()
         codes = ["members.read", "roles.read"]
 
         service.create_custom_role(
@@ -167,7 +188,7 @@ class TestCreateCustomRole:
             permission_codes=codes,
         )
 
-        service._role_permission_repo.bulk_set_permissions_for_role.assert_called_once()
+        mocks.role_permission_repo.bulk_set_permissions_for_role.assert_called_once()
 
 
 class TestCreateRoleNameConflict:
@@ -176,7 +197,7 @@ class TestCreateRoleNameConflict:
     def test_duplicate_name_raises(self):
         """create_custom_role raises RoleNameConflictError for duplicate name."""
         existing = _make_role(name="Existing Role")
-        service = _make_service(existing_role_by_name=existing)
+        service, mocks = _make_service(existing_role_by_name=existing)
 
         with pytest.raises(RoleNameConflictError):
             service.create_custom_role(
@@ -192,7 +213,7 @@ class TestCreateRoleRankValidation:
 
     def test_rank_zero_raises(self):
         """create_custom_role raises InvalidRoleRankError for rank 0."""
-        service = _make_service()
+        service, mocks = _make_service()
 
         with pytest.raises(InvalidRoleRankError):
             service.create_custom_role(
@@ -204,7 +225,7 @@ class TestCreateRoleRankValidation:
 
     def test_rank_100_raises(self):
         """create_custom_role raises InvalidRoleRankError for rank 100."""
-        service = _make_service()
+        service, mocks = _make_service()
 
         with pytest.raises(InvalidRoleRankError):
             service.create_custom_role(
@@ -216,7 +237,7 @@ class TestCreateRoleRankValidation:
 
     def test_system_rank_conflict_raises(self):
         """create_custom_role raises InvalidRoleRankError for system role rank."""
-        service = _make_service()
+        service, mocks = _make_service()
 
         # Rank 80 is Admin system role rank
         with pytest.raises(InvalidRoleRankError):
@@ -229,7 +250,7 @@ class TestCreateRoleRankValidation:
 
     def test_valid_rank_succeeds(self):
         """create_custom_role succeeds with non-conflicting rank."""
-        service = _make_service()
+        service, mocks = _make_service()
 
         # Rank 35 is not a system rank
         service.create_custom_role(
@@ -239,7 +260,7 @@ class TestCreateRoleRankValidation:
             actor_user_id=uuid.uuid4(),
         )
 
-        service._db.add.assert_called_once()
+        mocks.db.add.assert_called_once()
 
 
 class TestCreateRoleLimits:
@@ -247,7 +268,7 @@ class TestCreateRoleLimits:
 
     def test_limit_exceeded_raises(self):
         """create_custom_role raises CustomRoleLimitExceededError at limit."""
-        service = _make_service(custom_role_count=50, max_roles=50)
+        service, mocks = _make_service(custom_role_count=50, max_roles=50)
 
         with pytest.raises(CustomRoleLimitExceededError):
             service.create_custom_role(
@@ -264,7 +285,7 @@ class TestUpdateCustomRole:
     def test_update_system_role_raises(self):
         """update_custom_role raises SystemRoleImmutableError for system role."""
         system_role = _make_role(is_system=True, name="Admin", slug="admin", rank=80)
-        service = _make_service(existing_role_by_id=system_role)
+        service, mocks = _make_service(existing_role_by_id=system_role)
 
         with pytest.raises(SystemRoleImmutableError):
             service.update_custom_role(
@@ -276,7 +297,7 @@ class TestUpdateCustomRole:
 
     def test_update_nonexistent_role_raises(self):
         """update_custom_role raises RoleNotFoundError for unknown role."""
-        service = _make_service(existing_role_by_id=None)
+        service, mocks = _make_service(existing_role_by_id=None)
 
         with pytest.raises(RoleNotFoundError):
             service.update_custom_role(
@@ -290,9 +311,9 @@ class TestUpdateCustomRole:
         """update_custom_role updates name and regenerates slug."""
         role = _make_role(name="Old Name", slug="old-name")
         # Need to configure slug lookup for conflict check
-        service = _make_service(existing_role_by_id=role)
-        service._role_repo.get_by_name.return_value = None
-        service._role_repo.get_by_slug.return_value = None
+        service, mocks = _make_service(existing_role_by_id=role)
+        mocks.role_repo.get_by_name.return_value = None
+        mocks.role_repo.get_by_slug.return_value = None
 
         service.update_custom_role(
             company_id=role.company_id,
@@ -311,7 +332,7 @@ class TestDeactivateRole:
     def test_deactivate_custom_role(self):
         """deactivate_role sets is_active to False."""
         role = _make_role(is_active=True)
-        service = _make_service(existing_role_by_id=role)
+        service, mocks = _make_service(existing_role_by_id=role)
 
         service.deactivate_role(
             company_id=role.company_id,
@@ -324,7 +345,7 @@ class TestDeactivateRole:
     def test_deactivate_system_role_raises(self):
         """deactivate_role raises SystemRoleImmutableError for system role."""
         role = _make_role(is_system=True)
-        service = _make_service(existing_role_by_id=role)
+        service, mocks = _make_service(existing_role_by_id=role)
 
         with pytest.raises(SystemRoleImmutableError):
             service.deactivate_role(
@@ -340,7 +361,7 @@ class TestDeleteRole:
     def test_delete_with_active_assignments_raises(self):
         """delete_role raises RoleHasActiveAssignmentsError when members assigned."""
         role = _make_role()
-        service = _make_service(existing_role_by_id=role, active_member_count=3)
+        service, mocks = _make_service(existing_role_by_id=role, active_member_count=3)
 
         with pytest.raises(RoleHasActiveAssignmentsError):
             service.delete_role(
@@ -352,7 +373,7 @@ class TestDeleteRole:
     def test_delete_system_role_raises(self):
         """delete_role raises SystemRoleImmutableError for system role."""
         role = _make_role(is_system=True)
-        service = _make_service(existing_role_by_id=role)
+        service, mocks = _make_service(existing_role_by_id=role)
 
         with pytest.raises(SystemRoleImmutableError):
             service.delete_role(
@@ -364,7 +385,7 @@ class TestDeleteRole:
     def test_delete_empty_role_succeeds(self):
         """delete_role soft-deletes a role with zero assignments."""
         role = _make_role()
-        service = _make_service(existing_role_by_id=role, active_member_count=0)
+        service, mocks = _make_service(existing_role_by_id=role, active_member_count=0)
 
         service.delete_role(
             company_id=role.company_id,
@@ -373,13 +394,13 @@ class TestDeleteRole:
         )
 
         assert role.is_deleted is True
-        service._audit_service.record.assert_called_once()
-        call_kwargs = service._audit_service.record.call_args[1]
+        mocks.audit_service.record.assert_called_once()
+        call_kwargs = mocks.audit_service.record.call_args[1]
         assert call_kwargs["action"] == "ROLE_DELETED"
 
     def test_delete_nonexistent_role_raises(self):
         """delete_role raises RoleNotFoundError for unknown role."""
-        service = _make_service(existing_role_by_id=None)
+        service, mocks = _make_service(existing_role_by_id=None)
 
         with pytest.raises(RoleNotFoundError):
             service.delete_role(

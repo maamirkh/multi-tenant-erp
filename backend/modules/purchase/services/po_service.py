@@ -17,7 +17,7 @@ Provides the complete PO lifecycle:
   close_po           — APPROVED/PARTIALLY_RECEIVED/FULLY_RECEIVED → CLOSED
   auto_update_status_on_gr — called by GRService; transitions PO on GR confirmation
   get_po             — retrieve a single PO with lines, charges, amendments
-  list_pos           — paginated PO list
+  list_pos           — paginated PO list[Any]
   get_overdue_pos    — POs past expected_delivery_date
 
 State Machine (T123):
@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import logging
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -788,7 +789,7 @@ class POService:
         self,
         po_id: UUID,
         company_id: UUID,
-        changes: dict,
+        changes: dict[str, Any],
         reason: str,
         actor_id: UUID,
     ) -> PurchaseOrderRead:
@@ -1005,7 +1006,7 @@ class POService:
         skip: int = 0,
         limit: int = 50,
     ) -> tuple[list[PurchaseOrderListRead], int]:
-        """Return a paginated list of POs."""
+        """Return a paginated list[Any] of POs."""
         items = self.po_repo.list_for_company(
             company_id,
             status=status,

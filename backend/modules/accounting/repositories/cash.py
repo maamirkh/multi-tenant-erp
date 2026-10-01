@@ -10,9 +10,10 @@ Spec ref: specs/008-accounting-finance/tasks.md T192-T195
 
 from __future__ import annotations
 
+from datetime import date
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from modules.accounting.models.cash import (
@@ -59,16 +60,55 @@ class CashTransactionRepository(BaseAccountingRepository[CashTransaction]):
         super().__init__(db=db, model=CashTransaction)
 
     def find_by_cash_account(
-        self, company_id: UUID, cash_account_id: UUID
+        self,
+        company_id: UUID,
+        cash_account_id: UUID,
+        *,
+        from_date: date | None = None,
+        to_date: date | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[CashTransaction]:
+        """``from_date``/``to_date``/``limit``/``offset`` are optional,
+        SQL-level bounds (Epic 11 Reports, additive seam)."""
         stmt = (
             select(CashTransaction)
             .where(CashTransaction.company_id == company_id)
             .where(CashTransaction.cash_account_id == cash_account_id)
             .where(CashTransaction.is_deleted == False)  # noqa: E712
-            .order_by(CashTransaction.transaction_date)
         )
+        if from_date is not None:
+            stmt = stmt.where(CashTransaction.transaction_date >= from_date)
+        if to_date is not None:
+            stmt = stmt.where(CashTransaction.transaction_date <= to_date)
+        # CashTransaction.id: unique tiebreaker (Epic 11 T270) — same-day rows would
+        # otherwise come back in unspecified order across offset pages.
+        stmt = stmt.order_by(CashTransaction.transaction_date, CashTransaction.id)
+        if limit is not None:
+            stmt = stmt.offset(offset).limit(limit)
         return list(self.db.execute(stmt).scalars().all())
+
+    def count_cash_transactions(
+        self,
+        company_id: UUID,
+        cash_account_id: UUID,
+        *,
+        from_date: date | None = None,
+        to_date: date | None = None,
+    ) -> int:
+        """Epic 11 Reports additive seam — cheap SQL-level count."""
+        stmt = (
+            select(func.count())
+            .select_from(CashTransaction)
+            .where(CashTransaction.company_id == company_id)
+            .where(CashTransaction.cash_account_id == cash_account_id)
+            .where(CashTransaction.is_deleted == False)  # noqa: E712
+        )
+        if from_date is not None:
+            stmt = stmt.where(CashTransaction.transaction_date >= from_date)
+        if to_date is not None:
+            stmt = stmt.where(CashTransaction.transaction_date <= to_date)
+        return int(self.db.execute(stmt).scalar_one())
 
 
 class PettyCashVoucherRepository(BaseAccountingRepository[PettyCashVoucher]):

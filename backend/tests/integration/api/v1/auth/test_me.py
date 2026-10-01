@@ -16,7 +16,7 @@ def _get_access_token(client: TestClient, db: Session, email: str) -> str:
     resp = client.post(
         "/api/v1/auth/login", json={"email": user.email, "password": password}
     )
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
 class TestGetMeValid:

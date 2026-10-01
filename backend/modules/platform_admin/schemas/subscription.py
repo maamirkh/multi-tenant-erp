@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 
 class AssignSubscriptionRequest(BaseModel):
@@ -35,7 +35,9 @@ class AssignSubscriptionRequest(BaseModel):
 
     @field_validator("end_date")
     @classmethod
-    def _end_date_not_before_effective_date(cls, value, info):
+    def _end_date_not_before_effective_date(
+        cls, value: date | None, info: ValidationInfo
+    ) -> date | None:
         effective_date = info.data.get("effective_date")
         if value is not None and effective_date is not None and value < effective_date:
             raise ValueError("end_date must not be before effective_date.")

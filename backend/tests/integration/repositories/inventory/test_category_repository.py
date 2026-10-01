@@ -29,7 +29,7 @@ def _make_category(
     company_id: uuid.UUID | None = None,
     code: str = "CAT",
     name: str = "Category",
-    parent_id: str | None = None,
+    parent_id: uuid.UUID | str | None = None,
     status: str = "active",
 ) -> Category:
     cid = company_id or uuid.uuid4()

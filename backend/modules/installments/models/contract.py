@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
@@ -108,7 +109,7 @@ class InstallmentContract(TenantBaseModel):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="DRAFT"
     )
-    terms_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    terms_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     active_schedule_version_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), nullable=True
     )

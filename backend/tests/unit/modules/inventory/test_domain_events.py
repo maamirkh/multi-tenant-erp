@@ -12,6 +12,7 @@ T262 — specs/005-inventory-management/tasks.md
 from __future__ import annotations
 
 import json
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -66,9 +67,9 @@ _TRANSFER = uuid4()
 _VARIANT = uuid4()
 
 
-def _round_trip(event: InventoryDomainEvent) -> dict:
+def _round_trip(event: InventoryDomainEvent) -> dict[str, Any]:
     """Serialise to JSON string then parse back to dict."""
-    return json.loads(json.dumps(event.to_dict()))
+    return dict(json.loads(json.dumps(event.to_dict())))
 
 
 # ---------------------------------------------------------------------------
@@ -733,7 +734,7 @@ class TestBaseFields:
 
     @pytest.mark.parametrize("event_cls", ALL_EVENT_TYPES)
     def test_base_fields_present(self, event_cls: type[InventoryDomainEvent]) -> None:
-        event = event_cls(aggregate_id=_PRODUCT, company_id=_COMPANY)
+        event = event_cls(aggregate_id=_PRODUCT, company_id=_COMPANY)  # type: ignore[call-arg]  # subclasses redeclare event_type/aggregate_type with defaults
         d = event.to_dict()
         required = {
             "event_id",
@@ -748,7 +749,7 @@ class TestBaseFields:
 
     @pytest.mark.parametrize("event_cls", ALL_EVENT_TYPES)
     def test_json_serialisable(self, event_cls: type[InventoryDomainEvent]) -> None:
-        event = event_cls(aggregate_id=_PRODUCT, company_id=_COMPANY)
+        event = event_cls(aggregate_id=_PRODUCT, company_id=_COMPANY)  # type: ignore[call-arg]  # subclasses redeclare event_type/aggregate_type with defaults
         d = _round_trip(event)
         assert d["event_type"] == event.event_type
 
@@ -756,15 +757,15 @@ class TestBaseFields:
     def test_event_id_unique_per_instance(
         self, event_cls: type[InventoryDomainEvent]
     ) -> None:
-        e1 = event_cls(aggregate_id=_PRODUCT, company_id=_COMPANY)
-        e2 = event_cls(aggregate_id=_PRODUCT, company_id=_COMPANY)
+        e1 = event_cls(aggregate_id=_PRODUCT, company_id=_COMPANY)  # type: ignore[call-arg]  # subclasses redeclare event_type/aggregate_type with defaults
+        e2 = event_cls(aggregate_id=_PRODUCT, company_id=_COMPANY)  # type: ignore[call-arg]  # subclasses redeclare event_type/aggregate_type with defaults
         assert e1.event_id != e2.event_id
 
     @pytest.mark.parametrize("event_cls", ALL_EVENT_TYPES)
     def test_event_type_matches_class_name(
         self, event_cls: type[InventoryDomainEvent]
     ) -> None:
-        event = event_cls(aggregate_id=_PRODUCT, company_id=_COMPANY)
+        event = event_cls(aggregate_id=_PRODUCT, company_id=_COMPANY)  # type: ignore[call-arg]  # subclasses redeclare event_type/aggregate_type with defaults
         assert event.event_type == event_cls.__name__, (
             f"{event_cls.__name__}.event_type={event.event_type!r} does not match class name"
         )

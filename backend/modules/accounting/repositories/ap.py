@@ -17,7 +17,7 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from modules.accounting.models.ap import (
@@ -103,6 +103,76 @@ class SupplierLedgerRepository(BaseAccountingRepository[SupplierLedger]):
             .where(APTransaction.transaction_date >= from_date)
             .where(APTransaction.transaction_date <= to_date)
             .order_by(APTransaction.transaction_date)
+        )
+        return list(self.db.execute(stmt).scalars().all())
+
+    def count_ap_aging_rows(self, company_id: UUID, as_of_date: date) -> int:
+        """Count of distinct supplier ledgers with an open AP position as of
+        *as_of_date* (Epic 11 Reports, additive seam)."""
+        stmt = (
+            select(func.count(func.distinct(APTransaction.supplier_ledger_id)))
+            .where(APTransaction.company_id == company_id)
+            .where(APTransaction.is_deleted == False)  # noqa: E712
+            .where(
+                APTransaction.status.in_(
+                    ["OPEN", "PARTIALLY_PAID", "OVERDUE", "DISPUTED"]
+                )
+            )
+            .where(APTransaction.transaction_date <= as_of_date)
+        )
+        return int(self.db.execute(stmt).scalar_one())
+
+    def get_ap_aging_page(
+        self, company_id: UUID, as_of_date: date, limit: int, offset: int
+    ) -> list[APTransaction]:
+        """Same predicate as ``get_aging_data``, bounded to one SQL-level
+        page of *supplier ledgers* (Epic 11 Reports, additive seam)."""
+        ledger_ids_stmt = (
+            select(APTransaction.supplier_ledger_id)
+            .distinct()
+            .where(APTransaction.company_id == company_id)
+            .where(APTransaction.is_deleted == False)  # noqa: E712
+            .where(
+                APTransaction.status.in_(
+                    ["OPEN", "PARTIALLY_PAID", "OVERDUE", "DISPUTED"]
+                )
+            )
+            .where(APTransaction.transaction_date <= as_of_date)
+            .order_by(APTransaction.supplier_ledger_id)
+            .limit(limit)
+            .offset(offset)
+        )
+        ledger_ids = [row[0] for row in self.db.execute(ledger_ids_stmt).all()]
+        if not ledger_ids:
+            return []
+
+        stmt = (
+            select(APTransaction)
+            .where(APTransaction.company_id == company_id)
+            .where(APTransaction.is_deleted == False)  # noqa: E712
+            .where(
+                APTransaction.status.in_(
+                    ["OPEN", "PARTIALLY_PAID", "OVERDUE", "DISPUTED"]
+                )
+            )
+            .where(APTransaction.transaction_date <= as_of_date)
+            .where(APTransaction.supplier_ledger_id.in_(ledger_ids))
+            .order_by(APTransaction.supplier_ledger_id, APTransaction.due_date)
+        )
+        return list(self.db.execute(stmt).scalars().all())
+
+    def get_ledgers_by_ids(
+        self, company_id: UUID, ledger_ids: list[UUID]
+    ) -> list[SupplierLedger]:
+        """Scoped ledger lookup for a bounded set of IDs (Epic 11 Reports,
+        additive seam)."""
+        if not ledger_ids:
+            return []
+        stmt = (
+            select(SupplierLedger)
+            .where(SupplierLedger.company_id == company_id)
+            .where(SupplierLedger.id.in_(ledger_ids))
+            .where(SupplierLedger.is_deleted == False)  # noqa: E712
         )
         return list(self.db.execute(stmt).scalars().all())
 

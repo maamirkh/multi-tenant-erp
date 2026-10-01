@@ -44,6 +44,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from sqlalchemy.orm import Session
@@ -70,7 +71,7 @@ from modules.accounting.services.fiscal_service import FiscalCalendarService
 
 
 @pytest.fixture
-def setup(db_session: Session) -> dict:
+def setup(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -169,6 +170,7 @@ def setup(db_session: Session) -> dict:
 
     period_repo = FiscalPeriodRepository(db_session)
     period = period_repo.find_open_period_for_date(company_id, today)
+    assert period is not None
     fiscal_service.lock_period(
         company_id, period.id, locked_by_user_id=None, lock_reason="T117 fixture"
     )
@@ -184,12 +186,12 @@ def setup(db_session: Session) -> dict:
 
 
 def _count(db_session: Session, model) -> int:
-    return db_session.query(model).count()
+    return int(db_session.query(model).count())
 
 
 class TestFiscalPeriodPropagation:
     def test_stage_adjustment_rejects_locked_period_before_staging(
-        self, db_session: Session, setup: dict
+        self, db_session: Session, setup: dict[str, Any]
     ) -> None:
         ar_service = build_ar_service(db_session, with_sales_sync=False)
         journal_count_before = _count(db_session, JournalEntry)
@@ -211,7 +213,7 @@ class TestFiscalPeriodPropagation:
         assert _count(db_session, ARTransaction) == ar_count_before
 
     def test_stage_customer_payment_rejects_locked_period_before_staging(
-        self, db_session: Session, setup: dict
+        self, db_session: Session, setup: dict[str, Any]
     ) -> None:
         payment_service = build_payment_service(db_session)
         journal_count_before = _count(db_session, JournalEntry)
@@ -234,7 +236,7 @@ class TestFiscalPeriodPropagation:
         assert _count(db_session, Payment) == payment_count_before
 
     def test_stage_write_off_rejects_locked_period_before_staging(
-        self, db_session: Session, setup: dict
+        self, db_session: Session, setup: dict[str, Any]
     ) -> None:
         ar_service = build_ar_service(db_session, with_sales_sync=False)
         journal_count_before = _count(db_session, JournalEntry)
@@ -252,5 +254,6 @@ class TestFiscalPeriodPropagation:
         refreshed_invoice = ar_service.get_transaction_by_id(
             setup["company_id"], setup["invoice_id"]
         )
+        assert refreshed_invoice is not None
         assert refreshed_invoice.status == "OPEN"
         assert refreshed_invoice.outstanding_amount == Decimal("200.00")

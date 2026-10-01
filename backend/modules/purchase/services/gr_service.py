@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 from decimal import Decimal
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
@@ -61,6 +62,14 @@ from modules.purchase.schemas.goods_receipt import (
     GROpenQuantity,
 )
 from modules.purchase.services.sequence_service import PurchaseSequenceService
+
+if TYPE_CHECKING:
+    from modules.inventory.services.stock_service import StockLedgerService
+    from modules.purchase.services.cost_service import CostService
+    from modules.purchase.services.po_service import POService
+    from modules.purchase.services.supplier_rating_service import (
+        SupplierRatingService,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -142,10 +151,11 @@ class GRService:
         po_repo: PurchaseOrderRepository,
         po_line_repo: POLineRepository,
         sequence_service: PurchaseSequenceService,
-        po_service=None,  # POService — injected to avoid circular import at module load
-        rating_service=None,  # SupplierRatingService — injected
-        stock_ledger_service=None,  # StockLedgerService (Epic 5) — injected
-        cost_service=None,  # CostService — injected for Phase 8 cost entry creation
+        po_service: POService
+        | None = None,  # injected to avoid circular import at module load
+        rating_service: SupplierRatingService | None = None,
+        stock_ledger_service: StockLedgerService | None = None,  # Epic 5
+        cost_service: CostService | None = None,  # Phase 8 cost entry creation
     ) -> None:
         self.db = db
         self.gr_repo = gr_repo
@@ -687,8 +697,12 @@ class GRService:
         supplier_id = UUID(str(gr.supplier_id))
 
         # Compute fill rate and rejection rate from this GR
-        total_received = sum(Decimal(str(ln.quantity_received)) for ln in lines)
-        total_rejected = sum(Decimal(str(ln.quantity_rejected)) for ln in lines)
+        total_received = sum(
+            (Decimal(str(ln.quantity_received)) for ln in lines), start=Decimal("0")
+        )
+        total_rejected = sum(
+            (Decimal(str(ln.quantity_rejected)) for ln in lines), start=Decimal("0")
+        )
 
         # Get PO to compute fill rate and on-time rate
         po = self.po_repo.get_by_id_or_none(UUID(str(gr.po_id)), company_id)
@@ -713,15 +727,16 @@ class GRService:
             if delivery_date > po.expected_delivery_date:
                 on_time = Decimal("0")
 
-        self.rating_service.upsert_rating(
-            company_id=company_id,
-            supplier_id=supplier_id,
-            on_time_rate=on_time,
-            fill_rate=fill_rate,
-            rejection_rate=rejection_rate,
-            gr_count_window=1,
-            actor_id=actor_id,
-        )
+        if self.rating_service is not None:
+            self.rating_service.upsert_rating(
+                company_id=company_id,
+                supplier_id=supplier_id,
+                on_time_rate=on_time,
+                fill_rate=fill_rate,
+                rejection_rate=rejection_rate,
+                gr_count_window=1,
+                actor_id=actor_id,
+            )
 
     def _publish_gr_events(
         self,

@@ -42,7 +42,7 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
 def _seed_uom(db: Session, company_id: uuid.UUID) -> UOM:
@@ -104,7 +104,7 @@ def _create_company(client: TestClient, token: str) -> uuid.UUID:
     return uuid.UUID(resp.json()["data"]["id"])
 
 
-def _auth(client: TestClient, db: Session) -> tuple[str, uuid.UUID]:
+def _auth(client: TestClient, db: Session) -> tuple[dict[str, str], uuid.UUID]:
     """Create user, return (auth_headers_dict, company_id)."""
     email = f"e2e-{uuid.uuid4().hex[:8]}@test.com"
     create_test_user(db, email=email, password="TestPass123!")

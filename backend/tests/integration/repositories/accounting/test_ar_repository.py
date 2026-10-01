@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -45,7 +46,7 @@ from modules.accounting.services.fiscal_service import FiscalCalendarService
 
 
 @pytest.fixture
-def setup(db_session: Session) -> dict:
+def setup(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -122,7 +123,7 @@ def ar_service(db_session: Session) -> AccountsReceivableService:
 
 class TestSalesInvoiceRecording:
     def test_record_invoice_creates_transaction_and_updates_ledger(
-        self, ar_service: AccountsReceivableService, setup: dict
+        self, ar_service: AccountsReceivableService, setup: dict[str, Any]
     ) -> None:
         customer_id = uuid4()
         transaction, result = ar_service.record_sales_invoice(
@@ -146,7 +147,7 @@ class TestSalesInvoiceRecording:
         assert ledger.credit_status == "GOOD"
 
     def test_reconciliation_holds_after_invoice_posting(
-        self, ar_service: AccountsReceivableService, setup: dict
+        self, ar_service: AccountsReceivableService, setup: dict[str, Any]
     ) -> None:
         ar_service.record_sales_invoice(
             company_id=setup["company_id"],
@@ -163,7 +164,7 @@ class TestSalesInvoiceRecording:
         assert balance == Decimal("500.00")
 
     def test_reconciliation_holds_after_credit_note(
-        self, ar_service: AccountsReceivableService, setup: dict
+        self, ar_service: AccountsReceivableService, setup: dict[str, Any]
     ) -> None:
         customer_id = uuid4()
         invoice_id = uuid4()
@@ -195,7 +196,7 @@ class TestSalesInvoiceRecording:
         assert balance == Decimal("500.00")
 
     def test_reconciliation_holds_after_adjustment(
-        self, ar_service: AccountsReceivableService, setup: dict
+        self, ar_service: AccountsReceivableService, setup: dict[str, Any]
     ) -> None:
         customer_id = uuid4()
         ar_service.record_sales_invoice(
@@ -223,7 +224,7 @@ class TestSalesInvoiceRecording:
         assert balance == Decimal("950.00")
 
     def test_reconciliation_holds_after_write_off(
-        self, ar_service: AccountsReceivableService, setup: dict
+        self, ar_service: AccountsReceivableService, setup: dict[str, Any]
     ) -> None:
         customer_id = uuid4()
         transaction, _ = ar_service.record_sales_invoice(

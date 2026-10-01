@@ -30,6 +30,7 @@ import ast
 import inspect
 import uuid
 from datetime import date
+from types import ModuleType
 
 import modules.installments.schemas.collection as collection_schemas
 import modules.installments.schemas.configuration as configuration_schemas
@@ -77,7 +78,7 @@ def _is_input_schema_class_name(name: str) -> bool:
     )
 
 
-def _collect_input_schema_field_names(module: object) -> dict[str, set[str]]:
+def _collect_input_schema_field_names(module: ModuleType) -> dict[str, set[str]]:
     tree = ast.parse(inspect.getsource(module))
     fields_by_class: dict[str, set[str]] = {}
     for node in ast.walk(tree):

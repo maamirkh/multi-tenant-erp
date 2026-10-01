@@ -116,10 +116,10 @@ class TestSelfEscalationRejected:
             .all()
         )
         assert len(audit_events) == 1
-        assert audit_events[0].after_state["denial_reason"] == "self_escalation"
-        assert audit_events[0].after_state["platform_administrator_id"] == str(
-            target.id
-        )
+        after_state = audit_events[0].after_state
+        assert after_state is not None
+        assert after_state["denial_reason"] == "self_escalation"
+        assert after_state["platform_administrator_id"] == str(target.id)
         assert db_session.query(PlatformAuditEvent).count() == audit_count_before + 1
 
     def test_actor_who_already_holds_owner_role_can_grant_it(
@@ -230,7 +230,9 @@ class TestLastPlatformOwnerRemovalRejected:
             .all()
         )
         assert len(audit_events) == 1
-        assert audit_events[0].after_state["denial_reason"] == "last_platform_owner"
+        after_state = audit_events[0].after_state
+        assert after_state is not None
+        assert after_state["denial_reason"] == "last_platform_owner"
         assert audit_events[0].target_id == sole_owner.id
         assert db_session.query(PlatformAuditEvent).count() == audit_count_before + 1
 

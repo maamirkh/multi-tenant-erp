@@ -20,6 +20,7 @@ Spec ref: specs/007-sales-management/spec.md §18
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -44,10 +45,10 @@ def _login(client: TestClient, email: str, password: str = _TEST_PASSWORD) -> st
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -72,7 +73,7 @@ def _create_company(client: TestClient, token: str):
     return resp.json()["data"]["id"]
 
 
-def _create_invoice_payload(customer_id: str | None = None) -> dict:
+def _create_invoice_payload(customer_id: str | None = None) -> dict[str, Any]:
     return {
         "customer_id": customer_id or str(uuid4()),
         "invoice_date": "2026-08-03",
@@ -580,3 +581,78 @@ class TestTenantIsolationAPI:
             f"due_date {data['due_date']} reflects Company B's NET90 term — "
             "cross-tenant payment_term_id lookup regression."
         )
+
+
+# ---------------------------------------------------------------------------
+# Export Invoice PDF (feature-flagged)
+# ---------------------------------------------------------------------------
+
+
+class TestExportInvoicePdfAPI:
+    def test_export_pdf_succeeds_by_default(
+        self, test_client: TestClient, db_session: Session
+    ) -> None:
+        """Regression test — ``InvoiceService.export_pdf()`` called
+        ``SalesFeatureFlagService.is_enabled("sales.invoice_pdf_export",
+        company_id=company_id)``, but the real signature is
+        ``is_enabled(self, company_id, flag_key)``. Passing the flag key
+        positionally as the first argument bound it to the ``company_id``
+        parameter, and the explicit ``company_id=`` keyword then collided
+        with it, raising ``TypeError: is_enabled() got multiple values for
+        argument 'company_id'`` on every call — silently swallowed by a
+        bare ``except Exception`` a few lines below, so the feature flag
+        was never actually enforced (export always proceeded regardless of
+        its configured state). Fixed by passing both arguments as keywords
+        matching the real signature, and by registering the previously
+        undeclared ``sales.invoice_pdf_export`` key in the flag catalogue
+        (default enabled, preserving prior de-facto behavior)."""
+        email = _unique_email()
+        create_test_user(db_session, email)
+        token = _login(test_client, email, _TEST_PASSWORD)
+        company_id = _create_company(test_client, token)
+        create_resp = test_client.post(
+            _invoice_url(str(company_id)),
+            json=_create_invoice_payload(),
+            headers=_auth(token),
+        )
+        assert create_resp.status_code == 201, create_resp.text
+        invoice_id = create_resp.json()["data"]["id"]
+
+        export_resp = test_client.get(
+            _invoice_url(str(company_id), f"/{invoice_id}/export"),
+            headers=_auth(token),
+        )
+        assert export_resp.status_code == 200, export_resp.text
+        assert export_resp.headers["content-type"] == "application/pdf"
+
+    def test_export_pdf_blocked_when_flag_disabled(
+        self, test_client: TestClient, db_session: Session
+    ) -> None:
+        """When ``sales.invoice_pdf_export`` is explicitly disabled for a
+        company, export must now be rejected with 409 — proving the flag
+        check genuinely executes and raises ``ConflictException`` rather
+        than silently swallowing a ``TypeError`` and proceeding anyway."""
+        email = _unique_email()
+        create_test_user(db_session, email)
+        token = _login(test_client, email, _TEST_PASSWORD)
+        company_id = _create_company(test_client, token)
+        create_resp = test_client.post(
+            _invoice_url(str(company_id)),
+            json=_create_invoice_payload(),
+            headers=_auth(token),
+        )
+        assert create_resp.status_code == 201, create_resp.text
+        invoice_id = create_resp.json()["data"]["id"]
+
+        flag_resp = test_client.put(
+            f"/api/v1/companies/{company_id}/sales/feature-flags/sales.invoice_pdf_export",
+            json={"is_enabled": False},
+            headers=_auth(token),
+        )
+        assert flag_resp.status_code == 200, flag_resp.text
+
+        export_resp = test_client.get(
+            _invoice_url(str(company_id), f"/{invoice_id}/export"),
+            headers=_auth(token),
+        )
+        assert export_resp.status_code == 409, export_resp.text

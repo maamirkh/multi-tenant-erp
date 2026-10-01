@@ -32,14 +32,14 @@ def _change_password(
             "confirm_password": new_pass,
         },
     )
-    return resp.status_code
+    return int(resp.status_code)
 
 
 def _login(client: TestClient, email: str, password: str) -> str:
     resp = client.post(
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
 class TestPasswordHistoryEnforcement:

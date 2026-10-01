@@ -93,7 +93,7 @@ class TestQualifyDisqualifyPreconditions:
     def test_qualify_method_sets_notes_then_transitions(self) -> None:
         service = _service()
         lead = _lead("CONTACTED")
-        service._get_or_raise = MagicMock(return_value=lead)  # type: ignore[method-assign]
+        service._get_or_raise = MagicMock(return_value=lead)
 
         result = service.qualify(lead.id, lead.company_id, "Budget confirmed")
 
@@ -103,7 +103,7 @@ class TestQualifyDisqualifyPreconditions:
     def test_disqualify_method_sets_reason_then_transitions(self) -> None:
         service = _service()
         lead = _lead("CONTACTED")
-        service._get_or_raise = MagicMock(return_value=lead)  # type: ignore[method-assign]
+        service._get_or_raise = MagicMock(return_value=lead)
 
         result = service.disqualify(lead.id, lead.company_id, "Not a fit")
 
@@ -119,7 +119,7 @@ class TestQualifyDisqualifyPreconditions:
 class TestGetOrRaise:
     def test_raises_lead_not_found_when_repo_returns_none(self) -> None:
         service = _service()
-        service._repo.get_by_id_or_none = MagicMock(return_value=None)  # type: ignore[method-assign]
+        service._repo.get_by_id_or_none = MagicMock(return_value=None)
         with pytest.raises(LeadNotFoundError):
             service.get(uuid4(), uuid4())
 
@@ -128,8 +128,8 @@ class TestAssign:
     def test_rejects_owner_with_no_membership(self) -> None:
         service = _service()
         lead = _lead("NEW")
-        service._get_or_raise = MagicMock(return_value=lead)  # type: ignore[method-assign]
-        service._member_repo.get_by_user_id = MagicMock(return_value=None)  # type: ignore[method-assign]
+        service._get_or_raise = MagicMock(return_value=lead)
+        service._member_repo.get_by_user_id = MagicMock(return_value=None)
 
         with pytest.raises(ValidationException):
             service.assign(lead.id, lead.company_id, uuid4())
@@ -137,9 +137,9 @@ class TestAssign:
     def test_rejects_inactive_member(self) -> None:
         service = _service()
         lead = _lead("NEW")
-        service._get_or_raise = MagicMock(return_value=lead)  # type: ignore[method-assign]
+        service._get_or_raise = MagicMock(return_value=lead)
         inactive_member = MagicMock(status="inactive")
-        service._member_repo.get_by_user_id = MagicMock(return_value=inactive_member)  # type: ignore[method-assign]
+        service._member_repo.get_by_user_id = MagicMock(return_value=inactive_member)
 
         with pytest.raises(ValidationException):
             service.assign(lead.id, lead.company_id, uuid4())
@@ -147,10 +147,10 @@ class TestAssign:
     def test_assigns_active_member(self) -> None:
         service = _service()
         lead = _lead("NEW")
-        service._get_or_raise = MagicMock(return_value=lead)  # type: ignore[method-assign]
+        service._get_or_raise = MagicMock(return_value=lead)
         active_member = MagicMock(status="active")
-        service._member_repo.get_by_user_id = MagicMock(return_value=active_member)  # type: ignore[method-assign]
-        service._repo.update = MagicMock(side_effect=lambda entity: entity)  # type: ignore[method-assign]
+        service._member_repo.get_by_user_id = MagicMock(return_value=active_member)
+        service._repo.update = MagicMock(side_effect=lambda entity: entity)
         owner_id = uuid4()
 
         result = service.assign(lead.id, lead.company_id, owner_id)

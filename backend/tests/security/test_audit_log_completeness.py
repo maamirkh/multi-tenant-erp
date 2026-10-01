@@ -10,6 +10,8 @@ Spec ref: spec.md §7 FR-072–FR-075, §8 NFR-022.
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -22,7 +24,7 @@ _NEW_PASSWORD = "NewAuditPass@5678"
 _SENSITIVE_KEYWORDS = ("password", "secret", "token", "hash", "bearer")
 
 
-def _assert_no_sensitive_data(metadata: dict | None, event_type: str) -> None:
+def _assert_no_sensitive_data(metadata: dict[str, Any] | None, event_type: str) -> None:
     """Fail if any sensitive keyword appears in metadata values."""
     if not metadata:
         return

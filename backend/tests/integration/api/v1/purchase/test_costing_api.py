@@ -16,6 +16,7 @@ Task: T204
 from __future__ import annotations
 
 import uuid as _uuid
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -33,10 +34,10 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -54,7 +55,7 @@ def _create_company(client: TestClient, token: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _purchase_url(company_id: str, path: str = "") -> str:
@@ -71,7 +72,7 @@ def _setup(client: TestClient, db: Session, suffix: str = "") -> tuple[str, str]
 
 def _create_approved_po(
     client: TestClient, token: str, company_id: str
-) -> tuple[dict, str]:
+) -> tuple[dict[str, str], str]:
     """Create a PO with one line, then approve it (or auto-approve)."""
     resp = client.post(
         _purchase_url(company_id, "purchase-orders"),
@@ -119,7 +120,7 @@ def _create_and_confirm_gr(
     po_id: str,
     po_line_id: str,
     unit_cost: str = "55.00",
-) -> dict:
+) -> dict[str, Any]:
     """Create a DRAFT GR then confirm it."""
     resp = client.post(
         _purchase_url(company_id, "goods-receipts"),
@@ -146,7 +147,7 @@ def _create_and_confirm_gr(
         headers=_auth(token),
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]
+    return dict(resp.json()["data"])
 
 
 # ===========================================================================

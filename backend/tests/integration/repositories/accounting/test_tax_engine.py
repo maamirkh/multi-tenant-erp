@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -52,7 +53,7 @@ from modules.accounting.services.tax_service import TaxService
 
 
 @pytest.fixture
-def setup(db_session: Session) -> dict:
+def setup(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -188,7 +189,7 @@ class TestPostInvoiceWithVATAndSummaryReconciliation:
         posting_engine: PostingEngine,
         tax_calculator: TaxCalculator,
         tax_service: TaxService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         tax_lines = tax_calculator.calculate(
             company_id=setup["company_id"],
@@ -244,7 +245,7 @@ class TestPostInvoiceWithVATAndSummaryReconciliation:
         posting_engine: PostingEngine,
         tax_calculator: TaxCalculator,
         tax_service: TaxService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         total_expected_tax = Decimal("0")
         for base in (Decimal("1000.00"), Decimal("2000.00"), Decimal("500.00")):
@@ -297,7 +298,7 @@ class TestPostInvoiceWithVATAndSummaryReconciliation:
         posting_engine: PostingEngine,
         tax_calculator: TaxCalculator,
         tax_service: TaxService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         for base in (Decimal("100.00"), Decimal("200.00")):
             tax_amount = tax_calculator.calculate(
@@ -346,7 +347,7 @@ class TestCostCenterPLAggregation:
         self,
         posting_engine: PostingEngine,
         cost_center_service: CostCenterService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         cost_center = CostCenterRepository(posting_engine.db).create(
             CostCenter(
@@ -410,7 +411,7 @@ class TestCostCenterPLAggregation:
         assert report["net_income"] == Decimal("200.00")
 
     def test_posting_rejects_missing_cost_center_on_required_account(
-        self, posting_engine: PostingEngine, setup: dict
+        self, posting_engine: PostingEngine, setup: dict[str, Any]
     ) -> None:
         account_repo = AccountRepository(posting_engine.db)
         required_expense = account_repo.create(
@@ -448,7 +449,10 @@ class TestCostCenterPLAggregation:
 
 class TestWHTReport:
     def test_wht_report_reads_payment_wht_amount_by_supplier(
-        self, payment_service: PaymentService, tax_service: TaxService, setup: dict
+        self,
+        payment_service: PaymentService,
+        tax_service: TaxService,
+        setup: dict[str, Any],
     ) -> None:
         from modules.accounting.models.banking import BankAccount
         from modules.accounting.repositories.banking import BankAccountRepository

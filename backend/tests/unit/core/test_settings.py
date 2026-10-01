@@ -16,7 +16,7 @@ def test_settings_raises_when_database_url_missing(
     monkeypatch.delenv("DATABASE_URL", raising=False)
     with pytest.raises(ValidationError) as exc_info:
         Settings(
-            _env_file=None,  # type: ignore[call-arg]
+            _env_file=None,
             SECRET_KEY="test-secret-key-minimum-32-chars-ok",
             JWT_SECRET_KEY="test-jwt-secret-key-minimum-32-chars-ok",
         )
@@ -30,7 +30,7 @@ def test_settings_raises_when_secret_key_missing(
     monkeypatch.delenv("SECRET_KEY", raising=False)
     with pytest.raises(ValidationError) as exc_info:
         Settings(
-            _env_file=None,  # type: ignore[call-arg]
+            _env_file=None,
             DATABASE_URL="postgresql://u:p@localhost/db",
             JWT_SECRET_KEY="test-jwt-secret-key-minimum-32-chars-ok",
         )
@@ -51,7 +51,13 @@ def test_settings_loads_with_required_vars() -> None:
     assert settings.SECRET_KEY == "test-secret-key-minimum-32-chars-ok"
 
 
-def test_settings_default_debug_is_false() -> None:
+def test_settings_default_debug_is_false(monkeypatch: pytest.MonkeyPatch) -> None:
+    # _env_file=None only bypasses the .env FILE — it does not protect against
+    # os.environ already carrying DEBUG from an earlier in-process load_dotenv()
+    # call (e.g. migrations/env.py, invoked by any real-Postgres test that ran
+    # earlier in the same pytest session). Isolate explicitly like the two
+    # ValidationError tests above already do.
+    monkeypatch.delenv("DEBUG", raising=False)
     settings = Settings(**_BASE)  # type: ignore[arg-type]
     assert settings.DEBUG is False
 

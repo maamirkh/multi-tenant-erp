@@ -1,5 +1,6 @@
-"""CapabilitySeedService — idempotent seeding of the five module
-`Capability` rows (T124, plan.md §34 rollout step 2).
+"""CapabilitySeedService — idempotent seeding of the seven module
+`Capability` rows (T124, plan.md §34 rollout step 2; Epic 11 T004 adds the
+seventh, `reports`).
 
 Mirrors `PlatformRbacSeedService`'s check-then-create idempotency
 technique. Capability rows are configuration data (adding a future module
@@ -19,7 +20,7 @@ from modules.platform_admin.repositories.capability_repository import (
 
 logger = logging.getLogger(__name__)
 
-# The five existing business modules, at module grain (plan.md §12) —
+# The seven existing business modules, at module grain (plan.md §12) —
 # every future module needs only one additional row here, never a schema
 # change to `capabilities`.
 MODULE_CAPABILITY_CATALOGUE: tuple[dict[str, str], ...] = (
@@ -29,6 +30,7 @@ MODULE_CAPABILITY_CATALOGUE: tuple[dict[str, str], ...] = (
     {"key": "accounting", "module": "accounting", "display_name": "Accounting"},
     {"key": "crm", "module": "crm", "display_name": "CRM"},
     {"key": "installments", "module": "installments", "display_name": "Installments"},
+    {"key": "reports", "module": "reports", "display_name": "Reports & Analytics"},
 )
 
 

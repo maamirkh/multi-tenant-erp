@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -52,7 +53,7 @@ from tests.fixtures.users_roles_fixtures import grant_permission_to_user
 
 
 @pytest.fixture
-def setup(db_session: Session) -> dict:
+def setup(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -157,7 +158,7 @@ class TestFullSalesToCashFlow:
         self,
         ar_service: AccountsReceivableService,
         payment_service: PaymentService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         customer_id = uuid4()
         invoice, _ = ar_service.record_sales_invoice(
@@ -199,6 +200,7 @@ class TestFullSalesToCashFlow:
         refreshed_invoice = ar_repo.get_by_id_or_none(
             id=invoice.id, company_id=setup["company_id"]
         )
+        assert refreshed_invoice is not None
         assert refreshed_invoice.outstanding_amount == Decimal("0")
         assert refreshed_invoice.status == "PAID"
 
@@ -211,7 +213,7 @@ class TestFullSalesToCashFlow:
         self,
         ar_service: AccountsReceivableService,
         payment_service: PaymentService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         customer_id = uuid4()
         invoice, _ = ar_service.record_sales_invoice(
@@ -251,6 +253,7 @@ class TestFullSalesToCashFlow:
         refreshed_invoice = ar_repo.get_by_id_or_none(
             id=invoice.id, company_id=setup["company_id"]
         )
+        assert refreshed_invoice is not None
         assert refreshed_invoice.outstanding_amount == Decimal("1200.00")
         assert refreshed_invoice.status == "PARTIALLY_PAID"
 
@@ -265,7 +268,7 @@ class TestFullPurchaseToPayFlow:
         self,
         ap_service: AccountsPayableService,
         payment_service: PaymentService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         supplier_id = uuid4()
         bill, _ = ap_service.record_supplier_bill(
@@ -307,6 +310,7 @@ class TestFullPurchaseToPayFlow:
         refreshed_bill = ap_repo.get_by_id_or_none(
             id=bill.id, company_id=setup["company_id"]
         )
+        assert refreshed_bill is not None
         assert refreshed_bill.outstanding_amount == Decimal("0")
         assert refreshed_bill.status == "PAID"
 
@@ -318,7 +322,7 @@ class TestFullPurchaseToPayFlow:
 
 class TestCancelAndRefund:
     def test_cancel_unallocated_payment_reverses_gl_and_closes_credit(
-        self, payment_service: PaymentService, setup: dict
+        self, payment_service: PaymentService, setup: dict[str, Any]
     ) -> None:
         payment, result = payment_service.create_customer_payment(
             company_id=setup["company_id"],
@@ -367,7 +371,7 @@ class TestCancelAndRefund:
         self,
         ar_service: AccountsReceivableService,
         payment_service: PaymentService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         customer_id = uuid4()
         invoice, _ = ar_service.record_sales_invoice(
@@ -409,6 +413,7 @@ class TestCancelAndRefund:
             source_document_type="Payment",
             source_document_id=payment.id,
         )
+        assert credit_txn is not None
         assert credit_txn.outstanding_amount == Decimal("-200.00")
 
         # Regression: process_refund() was fixed during the pre-Epic-9
@@ -437,6 +442,7 @@ class TestCancelAndRefund:
         refreshed_credit = ar_repo.get_by_id_or_none(
             id=credit_txn.id, company_id=setup["company_id"]
         )
+        assert refreshed_credit is not None
         assert refreshed_credit.outstanding_amount == Decimal("0")
         assert refreshed_credit.status == "PAID"
 
@@ -452,7 +458,7 @@ class TestReallocation:
         self,
         ar_service: AccountsReceivableService,
         payment_service: PaymentService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         customer_id = uuid4()
         invoice_a, _ = ar_service.record_sales_invoice(
@@ -504,6 +510,7 @@ class TestReallocation:
         refreshed_a = ar_repo.get_by_id_or_none(
             id=invoice_a.id, company_id=setup["company_id"]
         )
+        assert refreshed_a is not None
         assert refreshed_a.outstanding_amount == Decimal("0")
         assert refreshed_a.status == "PAID"
 
@@ -521,12 +528,14 @@ class TestReallocation:
         refreshed_a_after = ar_repo.get_by_id_or_none(
             id=invoice_a.id, company_id=setup["company_id"]
         )
+        assert refreshed_a_after is not None
         assert refreshed_a_after.outstanding_amount == Decimal("600.00")
         assert refreshed_a_after.status == "OPEN"
 
         refreshed_b = ar_repo.get_by_id_or_none(
             id=invoice_b.id, company_id=setup["company_id"]
         )
+        assert refreshed_b is not None
         assert refreshed_b.outstanding_amount == Decimal("0")
         assert refreshed_b.status == "PAID"
 
@@ -552,7 +561,7 @@ class TestUnallocatedPaymentsReport:
         self,
         ar_service: AccountsReceivableService,
         payment_service: PaymentService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         customer_id = uuid4()
         invoice, _ = ar_service.record_sales_invoice(
@@ -603,7 +612,7 @@ class TestUnallocatedPaymentsReport:
         self,
         ar_service: AccountsReceivableService,
         payment_service: PaymentService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         customer_id = uuid4()
         invoice, _ = ar_service.record_sales_invoice(

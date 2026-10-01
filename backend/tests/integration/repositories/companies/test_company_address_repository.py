@@ -7,9 +7,11 @@ Uses the shared ``db_session`` fixture (SQLite in-memory with rollback isolation
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from sqlalchemy.orm import Session
 
+from modules.companies.models.company import Company
 from modules.companies.models.enums import AddressType
 from modules.companies.repositories.company_address_repository import (
     CompanyAddressRepository,
@@ -30,7 +32,7 @@ def _addr_repo(db: Session) -> CompanyAddressRepository:
     return CompanyAddressRepository(db)
 
 
-def _create_company(db: Session, **overrides: object) -> object:
+def _create_company(db: Session, **overrides: Any) -> Company:
     return _company_repo(db).create(make_company_data(**overrides))
 
 

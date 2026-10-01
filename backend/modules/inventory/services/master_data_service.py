@@ -9,7 +9,9 @@ Data model: specs/005-inventory-management/data-model.md §1.2
 
 from __future__ import annotations
 
+import builtins
 import logging
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -636,7 +638,7 @@ class CustomFieldService:
         field_key: str,
         field_label: str,
         data_type: str,
-        options: list | dict | None = None,
+        options: list[Any] | dict[str, Any] | None = None,
         is_required: bool = False,
         sort_order: int = 0,
         placeholder: str | None = None,
@@ -748,7 +750,7 @@ class AttributeDefinitionService:
         company_id: UUID,
         name: str,
         data_type: str,
-        options: list | dict | None = None,
+        options: list[Any] | dict[str, Any] | None = None,
         is_required: bool = False,
         description: str | None = None,
         actor_id: UUID | None = None,
@@ -805,7 +807,7 @@ class AttributeDefinitionService:
         attr_id: UUID,
         description: str | None = None,
         is_required: bool | None = None,
-        options: list | dict | None = None,
+        options: builtins.list[Any] | dict[str, Any] | None = None,
     ) -> AttributeDefinition:
         """Update attribute definition."""
         attr = self.get_by_id(company_id=company_id, attr_id=attr_id)
@@ -953,7 +955,7 @@ class AttributeSetService:
 
     def list_attributes(
         self, company_id: UUID, attr_set_id: UUID
-    ) -> list[AttributeSetMembership]:
+    ) -> builtins.list[AttributeSetMembership]:
         """Return all attribute memberships for a set."""
         return self._membership_repo.list_for_set(
             company_id=company_id, attribute_set_id=attr_set_id

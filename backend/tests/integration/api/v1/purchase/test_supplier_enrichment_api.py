@@ -17,6 +17,7 @@ Spec ref: specs/006-purchase-management/tasks.md §Phase 2
 from __future__ import annotations
 
 import uuid as _uuid
+from typing import Any
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -33,7 +34,7 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -58,7 +59,7 @@ def _create_company(client: TestClient, token: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _setup(
@@ -79,14 +80,14 @@ def _create_supplier(
     *,
     code: str = "SUP-E01",
     legal_name: str = "Enrichment Corp",
-) -> dict:
+) -> dict[str, Any]:
     resp = client.post(
         _url(company_id),
         json={"supplier_code": code, "legal_name": legal_name},
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]
+    return dict(resp.json()["data"])
 
 
 # ---------------------------------------------------------------------------

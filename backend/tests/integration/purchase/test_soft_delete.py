@@ -16,6 +16,7 @@ Task: T253
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -34,10 +35,10 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
-def _auth(token: str) -> dict:
+def _auth(token: str) -> dict[str, Any]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -59,7 +60,7 @@ def _create_company(client: TestClient, token: str) -> str:
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 @pytest.fixture()
@@ -85,7 +86,7 @@ def _create_supplier(client, token, cid, code: str) -> str:
         },
     )
     assert resp.status_code in (200, 201), resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 def _activate_supplier(client, token, cid, sid: str) -> None:
@@ -99,7 +100,7 @@ def _create_po(client, token, cid, supplier_id: str) -> str:
         json={"supplier_id": supplier_id, "currency_code": "USD"},
     )
     assert resp.status_code in (200, 201), resp.text
-    return resp.json()["data"]["id"]
+    return str(resp.json()["data"]["id"])
 
 
 # ---------------------------------------------------------------------------

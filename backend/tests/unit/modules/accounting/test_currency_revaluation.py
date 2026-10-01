@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -27,6 +28,7 @@ from modules.accounting.events import (
     InProcessEventBus,
     set_event_bus,
 )
+from modules.accounting.events.currency_events import RevaluationCompletedEvent
 from modules.accounting.exceptions import FiscalPeriodNotFoundError
 from modules.accounting.models.ap import APTransaction, SupplierLedger
 from modules.accounting.models.ar import ARTransaction, CustomerLedger
@@ -68,7 +70,7 @@ def fresh_accounting_bus() -> InProcessEventBus:
 
 
 @pytest.fixture
-def setup(db_session: Session) -> dict:
+def setup(db_session: Session) -> dict[str, Any]:
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
         db=db_session,
@@ -168,7 +170,7 @@ def currency_service(db_session: Session) -> CurrencyService:
 
 def _make_ar_invoice(
     db_session: Session,
-    setup: dict,
+    setup: dict[str, Any],
     amount_foreign: Decimal,
     exchange_rate: Decimal,
     currency_code: str,
@@ -196,7 +198,7 @@ def _make_ar_invoice(
 
 def _make_ap_bill(
     db_session: Session,
-    setup: dict,
+    setup: dict[str, Any],
     amount_foreign: Decimal,
     exchange_rate: Decimal,
     currency_code: str,
@@ -229,7 +231,7 @@ class TestARRevaluationGain:
         self,
         service: CurrencyRevaluationService,
         currency_service: CurrencyService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         invoice = _make_ar_invoice(
             service.db,
@@ -287,7 +289,7 @@ class TestAPRevaluationGain:
         self,
         service: CurrencyRevaluationService,
         currency_service: CurrencyService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         _make_ap_bill(
             service.db,
@@ -322,7 +324,7 @@ class TestAPRevaluationGain:
 
 class TestNoRevaluationNeeded:
     def test_base_currency_transaction_is_never_revalued(
-        self, service: CurrencyRevaluationService, setup: dict
+        self, service: CurrencyRevaluationService, setup: dict[str, Any]
     ) -> None:
         _make_ar_invoice(
             service.db,
@@ -346,7 +348,7 @@ class TestNoRevaluationNeeded:
         self,
         service: CurrencyRevaluationService,
         currency_service: CurrencyService,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         invoice = _make_ar_invoice(
             service.db,
@@ -375,7 +377,7 @@ class TestNoRevaluationNeeded:
 
 class TestInvalidPeriod:
     def test_unknown_period_id_raises(
-        self, service: CurrencyRevaluationService, setup: dict
+        self, service: CurrencyRevaluationService, setup: dict[str, Any]
     ) -> None:
         with pytest.raises(FiscalPeriodNotFoundError):
             service.run_revaluation(
@@ -401,7 +403,7 @@ class TestRevaluationCompletedEvent:
         service: CurrencyRevaluationService,
         currency_service: CurrencyService,
         fresh_accounting_bus: InProcessEventBus,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         _make_ar_invoice(
             service.db,
@@ -427,6 +429,7 @@ class TestRevaluationCompletedEvent:
 
         assert len(received) == 1
         event = received[0]
+        assert isinstance(event, RevaluationCompletedEvent)
         assert event.company_id == setup["company_id"]
         assert event.aggregate_type == "CurrencyRevaluationRun"
         assert event.aggregate_id == run.id
@@ -442,7 +445,7 @@ class TestRevaluationCompletedEvent:
         self,
         service: CurrencyRevaluationService,
         fresh_accounting_bus: InProcessEventBus,
-        setup: dict,
+        setup: dict[str, Any],
     ) -> None:
         received: list[AccountingDomainEvent] = []
         fresh_accounting_bus.subscribe(
@@ -456,5 +459,7 @@ class TestRevaluationCompletedEvent:
         )
 
         assert len(received) == 1
-        assert received[0].journal_entry_id is None
+        event = received[0]
+        assert isinstance(event, RevaluationCompletedEvent)
+        assert event.journal_entry_id is None
         assert run.journal_entry_id is None

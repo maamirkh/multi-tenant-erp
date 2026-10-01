@@ -14,6 +14,7 @@ Spec ref: specs/008-accounting-finance/tasks.md T112
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -38,7 +39,7 @@ def _login(client: TestClient, email: str, password: str) -> str:
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["data"]["access_token"]
+    return str(resp.json()["data"]["access_token"])
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -97,7 +98,7 @@ def _add_member(db_session: Session, company_id: uuid.UUID, user_id: uuid.UUID) 
     )
 
 
-def _setup_gl(db_session: Session, company_id: uuid.UUID) -> dict:
+def _setup_gl(db_session: Session, company_id: uuid.UUID) -> dict[str, Any]:
     """Create AR/Revenue accounts and a fiscal year covering today, directly via the DB."""
     account_repo = AccountRepository(db_session)
     fiscal_service = FiscalCalendarService(
@@ -140,7 +141,7 @@ def _setup_gl(db_session: Session, company_id: uuid.UUID) -> dict:
 
 def _posting_body(
     ar_id: str, revenue_id: str, posting_date: str, amount: str = "500.00"
-) -> dict:
+) -> dict[str, Any]:
     return {
         "journal_type": "STANDARD",
         "posting_source": "MANUAL",

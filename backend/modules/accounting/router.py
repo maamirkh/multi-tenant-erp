@@ -59,7 +59,16 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    HTTPException,
+    Path,
+    Query,
+    Response,
+    status,
+)
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -390,7 +399,7 @@ async def list_feature_flags(
 async def update_feature_flag(
     company_id: UUID = Path(...),
     flag_key: str = Path(...),
-    body: AccountingFeatureFlagUpdate = ...,
+    body: AccountingFeatureFlagUpdate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     flag_service: AccountingFeatureFlagService = Depends(
         get_accounting_feature_flag_service
@@ -464,7 +473,7 @@ async def get_configuration(
 )
 async def update_configuration(
     company_id: UUID = Path(...),
-    body: AccountingConfigurationUpdate = ...,
+    body: AccountingConfigurationUpdate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     config_service: AccountingConfigurationService = Depends(
         get_accounting_configuration_service
@@ -517,7 +526,7 @@ async def list_currencies(
 )
 async def create_currency(
     company_id: UUID = Path(...),
-    body: CurrencyCreate = ...,
+    body: CurrencyCreate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     currency_service: CurrencyService = Depends(get_currency_service),
     db: Session = Depends(get_db),
@@ -586,7 +595,7 @@ async def list_exchange_rates(
 )
 async def create_exchange_rate(
     company_id: UUID = Path(...),
-    body: ExchangeRateCreate = ...,
+    body: ExchangeRateCreate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     currency_service: CurrencyService = Depends(get_currency_service),
     db: Session = Depends(get_db),
@@ -654,7 +663,7 @@ async def list_accounts(
 )
 async def create_account(
     company_id: UUID = Path(...),
-    body: AccountCreateRequest = ...,
+    body: AccountCreateRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     coa_service: ChartOfAccountsService = Depends(get_chart_of_accounts_service),
     db: Session = Depends(get_db),
@@ -703,7 +712,7 @@ async def export_accounts(
 )
 async def bulk_import_accounts(
     company_id: UUID = Path(...),
-    rows: list[dict[str, Any]] = ...,
+    rows: list[dict[str, Any]] = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     coa_service: ChartOfAccountsService = Depends(get_chart_of_accounts_service),
     db: Session = Depends(get_db),
@@ -752,7 +761,7 @@ async def get_account(
 async def update_account(
     company_id: UUID = Path(...),
     account_id: UUID = Path(...),
-    body: AccountUpdateRequest = ...,
+    body: AccountUpdateRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     coa_service: ChartOfAccountsService = Depends(get_chart_of_accounts_service),
     db: Session = Depends(get_db),
@@ -857,7 +866,7 @@ async def list_account_groups(
 )
 async def create_account_group(
     company_id: UUID = Path(...),
-    body: AccountGroupCreate = ...,
+    body: AccountGroupCreate = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     coa_service: ChartOfAccountsService = Depends(get_chart_of_accounts_service),
     db: Session = Depends(get_db),
@@ -908,7 +917,7 @@ async def get_system_accounts(
 )
 async def set_system_account(
     company_id: UUID = Path(...),
-    body: SystemAccountConfigRequest = ...,
+    body: SystemAccountConfigRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     coa_service: ChartOfAccountsService = Depends(get_chart_of_accounts_service),
     config_service: AccountingConfigurationService = Depends(
@@ -972,7 +981,7 @@ async def list_coa_templates(
 )
 async def apply_coa_template(
     company_id: UUID = Path(...),
-    body: COATemplateApplyRequest = ...,
+    body: COATemplateApplyRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     coa_service: ChartOfAccountsService = Depends(get_chart_of_accounts_service),
     db: Session = Depends(get_db),
@@ -1027,7 +1036,7 @@ async def list_fiscal_years(
 )
 async def create_fiscal_year(
     company_id: UUID = Path(...),
-    body: FiscalYearCreateRequest = ...,
+    body: FiscalYearCreateRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     fiscal_service: FiscalCalendarService = Depends(get_fiscal_calendar_service),
     db: Session = Depends(get_db),
@@ -1084,7 +1093,7 @@ async def get_fiscal_year(
 async def update_fiscal_year(
     company_id: UUID = Path(...),
     fiscal_year_id: UUID = Path(...),
-    body: FiscalYearUpdateRequest = ...,
+    body: FiscalYearUpdateRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     fiscal_service: FiscalCalendarService = Depends(get_fiscal_calendar_service),
     db: Session = Depends(get_db),
@@ -1137,7 +1146,7 @@ async def lock_fiscal_period(
     company_id: UUID = Path(...),
     fiscal_year_id: UUID = Path(...),
     period_id: UUID = Path(...),
-    body: PeriodLockRequest = ...,
+    body: PeriodLockRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     fiscal_service: FiscalCalendarService = Depends(get_fiscal_calendar_service),
     db: Session = Depends(get_db),
@@ -1168,7 +1177,7 @@ async def unlock_fiscal_period(
     company_id: UUID = Path(...),
     fiscal_year_id: UUID = Path(...),
     period_id: UUID = Path(...),
-    body: PeriodUnlockRequest = ...,
+    body: PeriodUnlockRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     fiscal_service: FiscalCalendarService = Depends(get_fiscal_calendar_service),
     db: Session = Depends(get_db),
@@ -1225,7 +1234,7 @@ async def list_opening_balances(
 async def setup_opening_balances(
     company_id: UUID = Path(...),
     fiscal_year_id: UUID = Path(...),
-    body: OpeningBalanceImportRequest = ...,
+    body: OpeningBalanceImportRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     fiscal_service: FiscalCalendarService = Depends(get_fiscal_calendar_service),
     db: Session = Depends(get_db),
@@ -1348,7 +1357,7 @@ async def list_journals(
 )
 async def create_journal(
     company_id: UUID = Path(...),
-    body: PostingRequest = ...,
+    body: PostingRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     posting_engine: PostingEngine = Depends(get_posting_engine),
     db: Session = Depends(get_db),
@@ -1453,7 +1462,7 @@ async def approve_journal(
 async def reject_journal(
     company_id: UUID = Path(...),
     journal_id: UUID = Path(...),
-    body: RejectRequest = ...,
+    body: RejectRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     posting_engine: PostingEngine = Depends(get_posting_engine),
 ) -> StandardResponse[JournalEntryResponse]:
@@ -1729,7 +1738,7 @@ async def export_audit_log(
 )
 async def batch_post_journals(
     company_id: UUID = Path(...),
-    body: BatchPostingRequest = ...,
+    body: BatchPostingRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     journal_service: JournalEntryService = Depends(get_journal_entry_service),
     db: Session = Depends(get_db),
@@ -1796,7 +1805,7 @@ async def list_recurring_templates(
 )
 async def create_recurring_template(
     company_id: UUID = Path(...),
-    body: RecurringTemplateCreateRequest = ...,
+    body: RecurringTemplateCreateRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: RecurringJournalService = Depends(get_recurring_journal_service),
 ) -> StandardResponse[RecurringTemplateDetailResponse]:
@@ -1848,7 +1857,7 @@ async def get_recurring_template(
 async def update_recurring_template(
     company_id: UUID = Path(...),
     template_id: UUID = Path(...),
-    body: RecurringTemplateUpdateRequest = ...,
+    body: RecurringTemplateUpdateRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: RecurringJournalService = Depends(get_recurring_journal_service),
 ) -> StandardResponse[RecurringTemplateResponse]:
@@ -2020,7 +2029,7 @@ async def get_customer_statement(
 async def place_customer_credit_hold(
     company_id: UUID = Path(...),
     customer_id: UUID = Path(...),
-    body: CreditHoldRequest = ...,
+    body: CreditHoldRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: AccountsReceivableService = Depends(get_ar_service),
 ) -> StandardResponse[CustomerLedgerResponse]:
@@ -2045,7 +2054,7 @@ async def place_customer_credit_hold(
 async def release_customer_credit_hold(
     company_id: UUID = Path(...),
     customer_id: UUID = Path(...),
-    body: CreditHoldReleaseRequest = ...,
+    body: CreditHoldReleaseRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: AccountsReceivableService = Depends(get_ar_service),
     db: Session = Depends(get_db),
@@ -2075,7 +2084,7 @@ async def release_customer_credit_hold(
 async def set_customer_credit_limit(
     company_id: UUID = Path(...),
     customer_id: UUID = Path(...),
-    body: CreditLimitRequest = ...,
+    body: CreditLimitRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: AccountsReceivableService = Depends(get_ar_service),
     db: Session = Depends(get_db),
@@ -2105,7 +2114,7 @@ async def set_customer_credit_limit(
 async def write_off_ar_transaction(
     company_id: UUID = Path(...),
     ar_transaction_id: UUID = Path(...),
-    body: WriteOffRequest = ...,
+    body: WriteOffRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: AccountsReceivableService = Depends(get_ar_service),
     db: Session = Depends(get_db),
@@ -2222,7 +2231,7 @@ async def get_supplier_statement(
 )
 async def reconcile_supplier_statement(
     company_id: UUID = Path(...),
-    body: ReconcileStatementRequest = ...,
+    body: ReconcileStatementRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: AccountsPayableService = Depends(get_ap_service),
 ) -> StandardResponse[SupplierStatementReconciliationResponse]:
@@ -2275,7 +2284,7 @@ async def get_remittance_advice(
 )
 async def create_supplier_bill(
     company_id: UUID = Path(...),
-    body: BillCreateRequest = ...,
+    body: BillCreateRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: AccountsPayableService = Depends(get_ap_service),
 ) -> StandardResponse[APTransactionResponse]:
@@ -2305,7 +2314,7 @@ async def create_supplier_bill(
 )
 async def create_supplier_credit_note(
     company_id: UUID = Path(...),
-    body: CreditNoteCreateRequest = ...,
+    body: CreditNoteCreateRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: AccountsPayableService = Depends(get_ap_service),
 ) -> StandardResponse[APTransactionResponse]:
@@ -2359,7 +2368,7 @@ async def list_bank_accounts(
 )
 async def create_bank_account(
     company_id: UUID = Path(...),
-    body: BankAccountCreateRequest = ...,
+    body: BankAccountCreateRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: BankAccountService = Depends(get_bank_account_service),
     db: Session = Depends(get_db),
@@ -2421,7 +2430,7 @@ async def get_bank_account(
 async def update_bank_account(
     company_id: UUID = Path(...),
     bank_account_id: UUID = Path(...),
-    body: BankAccountUpdateRequest = ...,
+    body: BankAccountUpdateRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: BankAccountService = Depends(get_bank_account_service),
     db: Session = Depends(get_db),
@@ -2479,7 +2488,7 @@ async def get_bank_book(
 async def transfer_between_bank_accounts(
     company_id: UUID = Path(...),
     bank_account_id: UUID = Path(...),
-    body: BankTransferRequest = ...,
+    body: BankTransferRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: BankAccountService = Depends(get_bank_account_service),
     db: Session = Depends(get_db),
@@ -2520,7 +2529,7 @@ async def transfer_between_bank_accounts(
 async def deposit_to_bank_account(
     company_id: UUID = Path(...),
     bank_account_id: UUID = Path(...),
-    body: BankDepositRequest = ...,
+    body: BankDepositRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: BankAccountService = Depends(get_bank_account_service),
     db: Session = Depends(get_db),
@@ -2557,7 +2566,7 @@ async def deposit_to_bank_account(
 async def start_bank_reconciliation(
     company_id: UUID = Path(...),
     bank_account_id: UUID = Path(...),
-    body: ReconciliationStartRequest = ...,
+    body: ReconciliationStartRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: BankReconciliationService = Depends(get_bank_reconciliation_service),
     db: Session = Depends(get_db),
@@ -2612,7 +2621,7 @@ async def import_bank_statement(
     company_id: UUID = Path(...),
     bank_account_id: UUID = Path(...),
     reconciliation_id: UUID = Path(...),
-    body: BankStatementImportRequest = ...,
+    body: BankStatementImportRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: BankReconciliationService = Depends(get_bank_reconciliation_service),
 ) -> StandardResponse[list[BankStatementLineResponse]]:
@@ -2670,7 +2679,7 @@ async def manual_match_bank_reconciliation(
     company_id: UUID = Path(...),
     bank_account_id: UUID = Path(...),
     reconciliation_id: UUID = Path(...),
-    body: ReconciliationMatchRequest = ...,
+    body: ReconciliationMatchRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: BankReconciliationService = Depends(get_bank_reconciliation_service),
     db: Session = Depends(get_db),
@@ -2736,7 +2745,7 @@ async def post_bank_charge(
     company_id: UUID = Path(...),
     bank_account_id: UUID = Path(...),
     reconciliation_id: UUID = Path(...),
-    body: BankChargeRequest = ...,
+    body: BankChargeRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: BankReconciliationService = Depends(get_bank_reconciliation_service),
     db: Session = Depends(get_db),
@@ -2849,7 +2858,7 @@ async def list_cheques(
 )
 async def create_cheque(
     company_id: UUID = Path(...),
-    body: ChequeCreateRequest = ...,
+    body: ChequeCreateRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: BankAccountService = Depends(get_bank_account_service),
 ) -> StandardResponse[ChequeResponse]:
@@ -2877,7 +2886,7 @@ async def create_cheque(
 async def update_cheque_status(
     company_id: UUID = Path(...),
     cheque_id: UUID = Path(...),
-    body: ChequeStatusUpdateRequest = ...,
+    body: ChequeStatusUpdateRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: BankAccountService = Depends(get_bank_account_service),
 ) -> StandardResponse[ChequeResponse]:
@@ -2930,7 +2939,7 @@ async def list_cash_accounts(
 )
 async def create_cash_account(
     company_id: UUID = Path(...),
-    body: CashAccountCreateRequest = ...,
+    body: CashAccountCreateRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CashAccountService = Depends(get_cash_account_service),
 ) -> StandardResponse[CashAccountResponse]:
@@ -2959,7 +2968,7 @@ async def create_cash_account(
 async def record_cash_receipt(
     company_id: UUID = Path(...),
     cash_account_id: UUID = Path(...),
-    body: CashReceiptRequest = ...,
+    body: CashReceiptRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CashAccountService = Depends(get_cash_account_service),
 ) -> StandardResponse[CashTransactionResponse]:
@@ -2991,7 +3000,7 @@ async def record_cash_receipt(
 async def record_cash_payment(
     company_id: UUID = Path(...),
     cash_account_id: UUID = Path(...),
-    body: CashPaymentRequest = ...,
+    body: CashPaymentRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CashAccountService = Depends(get_cash_account_service),
 ) -> StandardResponse[CashTransactionResponse]:
@@ -3044,7 +3053,7 @@ async def list_petty_cash_vouchers(
 async def create_petty_cash_voucher(
     company_id: UUID = Path(...),
     cash_account_id: UUID = Path(...),
-    body: PettyCashVoucherRequest = ...,
+    body: PettyCashVoucherRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CashAccountService = Depends(get_cash_account_service),
 ) -> StandardResponse[PettyCashVoucherResponse]:
@@ -3076,7 +3085,7 @@ async def create_petty_cash_voucher(
 async def replenish_petty_cash(
     company_id: UUID = Path(...),
     cash_account_id: UUID = Path(...),
-    body: PettyCashReplenishmentRequest = ...,
+    body: PettyCashReplenishmentRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CashAccountService = Depends(get_cash_account_service),
 ) -> StandardResponse[PettyCashReplenishmentResponse]:
@@ -3110,7 +3119,7 @@ async def replenish_petty_cash(
 async def reconcile_cash(
     company_id: UUID = Path(...),
     cash_account_id: UUID = Path(...),
-    body: CashReconciliationRequest = ...,
+    body: CashReconciliationRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CashAccountService = Depends(get_cash_account_service),
 ) -> StandardResponse[CashReconciliationResponse]:
@@ -3189,7 +3198,7 @@ async def list_customer_payments(
 )
 async def create_customer_payment(
     company_id: UUID = Path(...),
-    body: CustomerPaymentRequest = ...,
+    body: CustomerPaymentRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: PaymentService = Depends(get_payment_service),
     db: Session = Depends(get_db),
@@ -3251,7 +3260,7 @@ async def list_supplier_payments(
 )
 async def create_supplier_payment(
     company_id: UUID = Path(...),
-    body: SupplierPaymentRequest = ...,
+    body: SupplierPaymentRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: PaymentService = Depends(get_payment_service),
     db: Session = Depends(get_db),
@@ -3315,7 +3324,7 @@ async def approve_payment(
 async def reject_payment(
     company_id: UUID = Path(...),
     payment_id: UUID = Path(...),
-    body: RejectRequest = ...,
+    body: RejectRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: PaymentService = Depends(get_payment_service),
 ) -> StandardResponse[PaymentResponse]:
@@ -3341,7 +3350,7 @@ async def reject_payment(
 async def allocate_payment(
     company_id: UUID = Path(...),
     payment_id: UUID = Path(...),
-    body: PaymentAllocationRequest = ...,
+    body: PaymentAllocationRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: PaymentService = Depends(get_payment_service),
 ) -> StandardResponse[list[PaymentAllocationLineResponse]]:
@@ -3366,7 +3375,7 @@ async def allocate_payment(
 async def reallocate_payment(
     company_id: UUID = Path(...),
     payment_id: UUID = Path(...),
-    body: PaymentAllocationRequest = ...,
+    body: PaymentAllocationRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: PaymentService = Depends(get_payment_service),
 ) -> StandardResponse[list[PaymentAllocationLineResponse]]:
@@ -3391,7 +3400,7 @@ async def reallocate_payment(
 async def cancel_payment(
     company_id: UUID = Path(...),
     payment_id: UUID = Path(...),
-    body: CancelPaymentRequest = ...,
+    body: CancelPaymentRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: PaymentService = Depends(get_payment_service),
 ) -> StandardResponse[PaymentResponse]:
@@ -3417,7 +3426,7 @@ async def cancel_payment(
 async def refund_payment(
     company_id: UUID = Path(...),
     payment_id: UUID = Path(...),
-    body: RefundRequest = ...,
+    body: RefundRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: PaymentService = Depends(get_payment_service),
 ) -> StandardResponse[PaymentRefundResponse]:
@@ -3512,7 +3521,7 @@ async def list_tax_codes(
 )
 async def create_tax_code(
     company_id: UUID = Path(...),
-    body: TaxCodeCreateRequest = ...,
+    body: TaxCodeCreateRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: TaxService = Depends(get_tax_service),
     db: Session = Depends(get_db),
@@ -3566,7 +3575,7 @@ async def get_tax_code(
 async def update_tax_code(
     company_id: UUID = Path(...),
     tax_code_id: UUID = Path(...),
-    body: TaxCodeUpdateRequest = ...,
+    body: TaxCodeUpdateRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: TaxService = Depends(get_tax_service),
     db: Session = Depends(get_db),
@@ -3615,7 +3624,7 @@ async def list_tax_rates(
 async def create_tax_rate(
     company_id: UUID = Path(...),
     tax_code_id: UUID = Path(...),
-    body: TaxRateCreateRequest = ...,
+    body: TaxRateCreateRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: TaxService = Depends(get_tax_service),
     db: Session = Depends(get_db),
@@ -3667,7 +3676,7 @@ async def list_tax_groups(
 )
 async def create_tax_group(
     company_id: UUID = Path(...),
-    body: TaxGroupCreateRequest = ...,
+    body: TaxGroupCreateRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: TaxService = Depends(get_tax_service),
     db: Session = Depends(get_db),
@@ -3718,7 +3727,7 @@ async def list_tax_group_lines(
 async def add_tax_group_line(
     company_id: UUID = Path(...),
     tax_group_id: UUID = Path(...),
-    body: TaxGroupLineCreateRequest = ...,
+    body: TaxGroupLineCreateRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: TaxService = Depends(get_tax_service),
     db: Session = Depends(get_db),
@@ -3748,7 +3757,7 @@ async def add_tax_group_line(
 )
 async def calculate_tax(
     company_id: UUID = Path(...),
-    body: TaxCalculationRequest = ...,
+    body: TaxCalculationRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     calculator: TaxCalculator = Depends(get_tax_calculator),
 ) -> StandardResponse[TaxCalculationResult]:
@@ -3887,7 +3896,7 @@ async def list_cost_centers(
 )
 async def create_cost_center(
     company_id: UUID = Path(...),
-    body: CostCenterCreateRequest = ...,
+    body: CostCenterCreateRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CostCenterService = Depends(get_cost_center_service),
 ) -> StandardResponse[CostCenterResponse]:
@@ -3935,7 +3944,7 @@ async def list_departments(
 )
 async def create_department(
     company_id: UUID = Path(...),
-    body: DepartmentCreateRequest = ...,
+    body: DepartmentCreateRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CostCenterService = Depends(get_cost_center_service),
 ) -> StandardResponse[DepartmentResponse]:
@@ -3980,7 +3989,7 @@ async def list_projects(
 )
 async def create_project(
     company_id: UUID = Path(...),
-    body: ProjectCreateRequest = ...,
+    body: ProjectCreateRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CostCenterService = Depends(get_cost_center_service),
 ) -> StandardResponse[ProjectResponse]:
@@ -4076,7 +4085,7 @@ async def get_project_pl_report(
 )
 async def run_currency_revaluation(
     company_id: UUID = Path(...),
-    body: RevaluationRequest = ...,
+    body: RevaluationRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: CurrencyRevaluationService = Depends(get_currency_revaluation_service),
     db: Session = Depends(get_db),
@@ -4608,7 +4617,7 @@ async def get_ai_cashflow_history(
 )
 async def create_anomaly_report(
     company_id: UUID = Path(...),
-    body: AnomalyReportRequest = ...,
+    body: AnomalyReportRequest = Body(...),
     user: CurrentUser = Depends(require_authenticated),
     service: AIReadinessService = Depends(get_ai_service),
     flag_service: AccountingFeatureFlagService = Depends(

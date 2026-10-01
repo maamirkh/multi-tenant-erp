@@ -114,6 +114,81 @@ class CustomerLedgerRepository(BaseAccountingRepository[CustomerLedger]):
         )
         return list(self.db.execute(stmt).scalars().all())
 
+    def count_ar_aging_rows(self, company_id: UUID, as_of_date: date) -> int:
+        """Count of distinct customer ledgers with an open AR position as of
+        *as_of_date* — the real, bounded population size behind the AR aging
+        report (Epic 11 Reports, additive seam)."""
+        stmt = (
+            select(func.count(func.distinct(ARTransaction.customer_ledger_id)))
+            .where(ARTransaction.company_id == company_id)
+            .where(ARTransaction.is_deleted == False)  # noqa: E712
+            .where(
+                ARTransaction.status.in_(
+                    ["OPEN", "PARTIALLY_PAID", "OVERDUE", "DISPUTED"]
+                )
+            )
+            .where(ARTransaction.transaction_date <= as_of_date)
+        )
+        return int(self.db.execute(stmt).scalar_one())
+
+    def get_ar_aging_page(
+        self, company_id: UUID, as_of_date: date, limit: int, offset: int
+    ) -> list[ARTransaction]:
+        """Same predicate as ``get_aging_data``, bounded to one SQL-level
+        page of *customer ledgers* (not transactions) — every open
+        transaction for the page's ledgers is returned so the aging bucket
+        math for those ledgers is complete (Epic 11 Reports, additive seam).
+        """
+        ledger_ids_stmt = (
+            select(ARTransaction.customer_ledger_id)
+            .distinct()
+            .where(ARTransaction.company_id == company_id)
+            .where(ARTransaction.is_deleted == False)  # noqa: E712
+            .where(
+                ARTransaction.status.in_(
+                    ["OPEN", "PARTIALLY_PAID", "OVERDUE", "DISPUTED"]
+                )
+            )
+            .where(ARTransaction.transaction_date <= as_of_date)
+            .order_by(ARTransaction.customer_ledger_id)
+            .limit(limit)
+            .offset(offset)
+        )
+        ledger_ids = [row[0] for row in self.db.execute(ledger_ids_stmt).all()]
+        if not ledger_ids:
+            return []
+
+        stmt = (
+            select(ARTransaction)
+            .where(ARTransaction.company_id == company_id)
+            .where(ARTransaction.is_deleted == False)  # noqa: E712
+            .where(
+                ARTransaction.status.in_(
+                    ["OPEN", "PARTIALLY_PAID", "OVERDUE", "DISPUTED"]
+                )
+            )
+            .where(ARTransaction.transaction_date <= as_of_date)
+            .where(ARTransaction.customer_ledger_id.in_(ledger_ids))
+            .order_by(ARTransaction.customer_ledger_id, ARTransaction.due_date)
+        )
+        return list(self.db.execute(stmt).scalars().all())
+
+    def get_ledgers_by_ids(
+        self, company_id: UUID, ledger_ids: list[UUID]
+    ) -> list[CustomerLedger]:
+        """Scoped ledger lookup for a bounded set of IDs — used by
+        ``get_ar_aging_page`` callers instead of ``list_all()`` (Epic 11
+        Reports, additive seam)."""
+        if not ledger_ids:
+            return []
+        stmt = (
+            select(CustomerLedger)
+            .where(CustomerLedger.company_id == company_id)
+            .where(CustomerLedger.id.in_(ledger_ids))
+            .where(CustomerLedger.is_deleted == False)  # noqa: E712
+        )
+        return list(self.db.execute(stmt).scalars().all())
+
     def get_opening_balance(
         self, company_id: UUID, customer_ledger_id: UUID, before_date: date
     ) -> Decimal:
