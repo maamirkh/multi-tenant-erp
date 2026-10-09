@@ -1,5 +1,7 @@
 # DEPLOYMENT_GUIDE.md
 
+> **Production topology is defined by `history/adr/0008-production-deployment-topology.md`** (Constitution v2.0.0 §6.6): Vercel frontend, Dockerized FastAPI on a VPS, managed PostgreSQL, private S3-compatible storage, transactional email. Provider recommendations in this guide (e.g. Hetzner) are **candidates, not decisions**; providers are selected in the Epic 12 plan.
+
 # DevSphere ERP
 
 ## Official Deployment Guide

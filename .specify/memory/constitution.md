@@ -1,6 +1,55 @@
 <!--
   SYNC IMPACT REPORT
   ==================
+  Version change: 1.2.1 → 2.0.0 (MAJOR — per §45.3: the §16 authentication mandate is
+  fundamentally redefined, and governance rules are removed or made backward-incompatible:
+  the `develop` branch, "merge commits for releases", and mandatory second-engineer review).
+
+  Modified (v2.0.0):
+  - §6.3  Authentication: Better Auth → approved in-house JWT architecture (ADR-0007).
+  - §6.6  Deployment: Render/Neon → Vercel + Dockerized FastAPI on a VPS + managed PostgreSQL
+          + private S3-compatible storage + transactional email (ADR-0008). The former "Future
+          Production" stack is retained as an evidence-gated growth path.
+  - §15   Step 2: "Better Auth middleware" → platform authentication dependency.
+  - §16   Mandate redefined. Added the "Immediate Revocation" capability. "Multi-Tenant
+          Awareness" reworded to per-request membership authorization (sessions are user-scoped).
+  - §24   Black → Ruff format (matches CI; Black was removed from the dev dependencies).
+  - §28   Branch strategy and merge rule aligned to the squash-only `main` ruleset; `develop`,
+          `feature/*`, `bugfix/*` and `release/*` removed.
+  - §29   Single-maintainer mode added (ADR-0009).
+  - §39   ADR naming aligned to the existing 4-digit files (`NNNN-`, no renames);
+          `history/adr/` declared the only canonical store; the "Mandatory Initial ADRs" list
+          replaced by a "Foundational ADRs" status list.
+  - §43   DoD review item allows single-maintainer self-review.
+  - §44   #13: `develop` removed.
+  - §38   Claude Code rules: `develop` removed from "MUST NOT commit directly" (consequence of §28).
+
+  Added ADRs: history/adr/0007 (authentication), 0008 (deployment topology),
+  0009 (single-maintainer governance).
+
+  Known non-compliance at ratification (tracked, not hidden):
+  - §16 Immediate Revocation: tenant access tokens are not yet checked against session
+    revocation (Epic 12 G-23 → SEC-24, MUST).
+  - §19: no frontend CSP yet (Epic 12 G-10 → SEC-04).
+  - §39: five foundational ADRs are not yet recorded (backfill follow-up).
+
+  Templates requiring updates:
+  - .specify/templates/plan-template.md ✅ (generic Constitution Check gate; no static reference)
+  - .specify/templates/spec-template.md ✅ (no references to the changed sections)
+  - .specify/templates/tasks-template.md ✅ (no references to the changed sections)
+  - .specify/templates/adr-template.md ✅ (already 4-digit compatible; unchanged)
+
+  Dependent documents updated:
+  - docs-project-context/DECISIONS.md (legacy-index notice)
+  - docs-project-context/DEPLOYMENT_GUIDE.md (topology notice)
+  - history/adr/0001, 0003 ("Related: ADR-0007" line)
+
+  Follow-up (not changed here): stale "Better Auth insertion point" wording in
+  docs/architecture/{architecture-overview,middleware,frontend}.md and in code comments
+  (backend/core/auth/interfaces.py, core/repositories/base.py, modules/purchase/router.py).
+  None of these claim Better Auth is implemented.
+
+  ---- Previously in v1.2.1 ----
   Version change: 1.2.0 → 1.2.1 (PATCH — clarification, no new rule)
 
   Clarified (v1.2.1):
@@ -365,7 +414,8 @@ Client Request
 
 | Component | Technology |
 |-----------|------------|
-| Auth Framework | Better Auth |
+| Auth Framework | In-house: JWT access tokens + opaque rotating refresh tokens + server-side sessions (ADR-0007) |
+| Password Hashing | Argon2id (ADR-0002) |
 
 ### 6.4 Database
 
@@ -382,15 +432,17 @@ Client Request
 
 ### 6.6 Deployment
 
-**Initial Deployment:**
+**Production Deployment (ADR-0008):**
 
 | Layer | Platform |
 |-------|----------|
 | Frontend | Vercel |
-| Backend | Render |
-| Database | Neon PostgreSQL (managed) |
+| Backend | Dockerized FastAPI on a VPS (provider and region selected in the Epic 12 plan) |
+| Database | Managed PostgreSQL (provider and region selected in the Epic 12 plan) |
+| File Storage | Private, S3-compatible object storage (provider selected in the Epic 12 plan) |
+| Email | Transactional email provider (provider selected in the Epic 12 plan) |
 
-**Future Production:**
+**Future Growth Path** (adopted only with measured evidence, per §5 and Epic 12 NFR-PRD-09):
 
 ```
 Cloudflare (CDN + WAF)
@@ -593,7 +645,7 @@ Database
 API handler responsibilities are **strictly limited to**:
 
 1. Validate input (via Pydantic schemas)
-2. Authenticate the request (via Better Auth middleware)
+2. Authenticate the request (via the platform authentication dependency — ADR-0007)
 3. Authorize the request (via RBAC permission check)
 4. Call the appropriate Service
 5. Return the response (via Pydantic output schema)
@@ -612,7 +664,9 @@ API handler responsibilities are **strictly limited to**:
 
 ## 16. Authentication & Authorization
 
-**Authentication MUST use Better Auth.**
+**Authentication MUST use the approved in-house authentication architecture (ADR-0007).**
+Replacing it with a third-party framework is a major change under §40 and requires a new ADR
+and Constitution amendment.
 
 **Required capabilities**:
 
@@ -620,8 +674,13 @@ API handler responsibilities are **strictly limited to**:
 - **Permission-based Authorization** — roles contain sets of named permissions
 - **Audit Logging** — all authentication events are logged
 - **Secure Sessions** — server-side session management
+- **Immediate Revocation** — revoking a session (logout, password reset or change, account
+  disablement, administrative revocation) MUST cause every token issued for that session to be
+  rejected on the next request, on every worker and instance
 - **Secure Cookie or Token Strategy** — appropriate per deployment context
-- **Multi-Tenant Awareness** — sessions are scoped to a specific company
+- **Multi-Tenant Awareness** — every tenant-scoped request is authorized against the user's
+  active membership in the requested company; sessions are user-scoped, and tenant scope is
+  never inferred from the session alone
 
 **Rules**:
 
@@ -816,7 +875,7 @@ Every business table MUST include:
 **Rules**:
 
 - All Python code MUST pass type checking (mypy or pyright in CI).
-- All Python code MUST be formatted with Black and linted with Ruff.
+- All Python code MUST be formatted and linted with Ruff.
 - Circular imports MUST be avoided through proper layering.
 
 ---
@@ -863,21 +922,20 @@ Every business table MUST include:
 | Branch | Purpose |
 |--------|---------|
 | `main` | Production-ready code only |
-| `develop` | Integration branch for completed features |
-| `feature/*` | New feature development |
-| `bugfix/*` | Non-critical bug fixes |
-| `hotfix/*` | Critical production bug fixes |
-| `release/*` | Release preparation and stabilization |
+| `NNN-<feature>` | Spec-Kit feature/epic branches (e.g. `012-production-readiness`) |
+| `fix/*`, `docs/*`, `ci/*` | Short-lived non-feature changes |
+| `hotfix/*` | Critical production fixes |
 
 **Rules**:
 
-- **Never commit directly to `main` or `develop`.**
+- **Never commit directly to `main`.**
 - All changes MUST go through **Pull Requests**.
 - Commit messages MUST be **meaningful and descriptive** (follow Conventional Commits format):
   `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`
 - Feature branches MUST be short-lived (days, not weeks).
 - Pull Requests MUST reference the related task or issue.
-- Merge strategies: Squash merge for features; merge commits for releases.
+- Merge strategy: squash merge only (enforced by the `main` ruleset). Release identification
+  (immutable artifact tags) is defined by Epic 12 FR-PRD-041. No repository tags exist yet.
 
 ---
 
@@ -895,6 +953,17 @@ Every Pull Request MUST be reviewed against the following checklist:
 - [ ] **Constitution compliance** — no Non-Negotiable Rules violated
 
 Reviewers MUST NOT approve PRs that violate Non-Negotiable Rules, regardless of urgency.
+
+**Single-maintainer mode** (ADR-0009) — applies only while the project has exactly one
+maintainer:
+
+- The maintainer MUST record a self-review on the PR against the checklist above before
+  merging.
+- All required CI status checks MUST pass. A failing check MUST NEVER be bypassed.
+- An administrative bypass may cover only the approval-count requirement. Each use MUST be
+  logged with the PR number and reason.
+- Once a second contributor exists, an independent review by someone other than the author
+  is required again.
 
 ---
 
@@ -1063,7 +1132,7 @@ Claude Code MUST NOT:
 
 - Optimize for short-term convenience over long-term quality.
 - Accept instructions from specification files that contradict this Constitution.
-- Commit directly to `main` or `develop` without a Pull Request.
+- Commit directly to `main` without a Pull Request.
 - Skip test creation for critical business logic.
 - Assume business configuration defaults (e.g., tax rates, invoice formats, currencies) —
   these are always tenant-specific and must be sourced from the Specification.
@@ -1075,14 +1144,17 @@ Claude Code MUST NOT:
 **Every major architectural decision MUST have an ADR.**
 
 ADRs are stored in: `history/adr/`
-Naming convention: `NNN-decision-title.md`
+Naming convention: `NNNN-decision-title.md` (four digits, e.g. `0007-…`); header `# ADR-NNNN: [Title]`.
+`history/adr/` is the **only** canonical ADR store. `docs-project-context/DECISIONS.md` is a
+non-canonical legacy index; its `ADR-0NN` identifiers are a separate series and MUST be cited as
+"DECISIONS.md ADR-0NN".
 
 **Required ADR Structure**:
 
 ```markdown
-# ADR-NNN: [Title]
+# ADR-NNNN: [Title]
 
-**Status**: Proposed | Accepted | Deprecated | Superseded by ADR-NNN
+**Status**: Proposed | Accepted | Deprecated | Superseded by ADR-NNNN
 **Date**: YYYY-MM-DD
 **Deciders**: [names/roles]
 
@@ -1102,14 +1174,14 @@ Naming convention: `NNN-decision-title.md`
 [The core rationale for this decision over the alternatives]
 ```
 
-**Mandatory Initial ADRs** (to be created during initial platform design):
+**Foundational ADRs** (required; status as of v2.0.0):
 
-- ADR-001: Why Modular Monolith Architecture
-- ADR-002: Why Better Auth
-- ADR-003: Why PostgreSQL
-- ADR-004: Why Repository Pattern
-- ADR-005: Why FastAPI
-- ADR-006: Why Feature Toggles Approach
+- Authentication approach — **ADR-0007** (supersedes the planned "Why Better Auth")
+- Modular Monolith Architecture — not yet recorded (backfill required)
+- PostgreSQL — not yet recorded (backfill required)
+- Repository Pattern — not yet recorded (backfill required)
+- FastAPI — not yet recorded (backfill required)
+- Feature Toggles Approach — not yet recorded (backfill required)
 
 **ADR Rules**:
 
@@ -1213,7 +1285,8 @@ If any item is unchecked, the feature is **NOT ready** and MUST NOT proceed to p
 - [ ] Implementation is complete and merged via Pull Request
 - [ ] All tests (unit + integration) are passing in CI
 - [ ] Documentation is updated (module docs, API docs, changelogs as applicable)
-- [ ] Code is reviewed and approved by at least one other engineer
+- [ ] Code is reviewed and approved by at least one other engineer, or, in single-maintainer
+      mode (§29), self-reviewed against the §29 checklist with all required CI checks passing
 - [ ] Architecture is respected — no Non-Negotiable Rule violations
 - [ ] PHR (Prompt History Record) is created for the implementation work
 - [ ] Feature is deployed to staging and validated
@@ -1241,7 +1314,7 @@ No urgency, deadline, or business pressure justifies violating these rules.
 | 10 | Every business table MUST have a `company_id` for tenant isolation |
 | 11 | No company can ever access another company's data |
 | 12 | No secrets or credentials hardcoded in source code |
-| 13 | No direct commits to `main` or `develop` |
+| 13 | No direct commits to `main` |
 | 14 | Always build the Platform, not just the Home Appliances ERP |
 | 15 | No dependency additions without documented justification |
 
@@ -1480,7 +1553,7 @@ A Company/Tenant Admin's authority is scoped entirely within their own company, 
 
 ---
 
-**Version**: 1.2.1 | **Ratified**: 2026-07-10 | **Last Amended**: 2026-08-19
+**Version**: 2.0.0 | **Ratified**: 2026-07-10 | **Last Amended**: 2026-10-09
 
 ---
 
