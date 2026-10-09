@@ -519,7 +519,7 @@ Management can generate all operational and financial reports.
 
 ---
 
-# Epic 12 — Deployment
+# Epic 12 — Deployment / Production Readiness
 
 ## Purpose
 

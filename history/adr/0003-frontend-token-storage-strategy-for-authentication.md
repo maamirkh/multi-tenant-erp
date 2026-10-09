@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-07-13
+- **Related:** ADR-0007 (formal approval of this architecture and its conditions, 2026-10-09)
 - **Feature:** 002-auth-identity
 - **Context:** Epic 002 delivers frontend authentication with two token types: a short-lived JWT access token (15 min) and a long-lived opaque refresh token (7–30 days). The frontend must persist the refresh token across page reloads/browser restarts (session persistence requirement) while minimising the XSS attack surface. The two primary threats are XSS (JavaScript code reading tokens from accessible storage) and CSRF (forged cross-site requests). The strategy must work with a stateless bearer-header authentication model (not cookies) and must not require backend changes to HTTP cookie handling in this Epic.
 

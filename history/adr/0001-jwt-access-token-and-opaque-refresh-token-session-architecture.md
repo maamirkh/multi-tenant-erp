@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-07-13
+- **Related:** ADR-0007 (formal approval of this architecture and its conditions, 2026-10-09)
 - **Feature:** 002-auth-identity
 - **Context:** Epic 002 requires a session management strategy for the DevSphere ERP platform. Users must remain authenticated across requests without re-entering credentials on every call, while the system must support session revocation (logout, password reset, lockout) and horizontal scaling. The platform targets enterprise SaaS with 500+ concurrent users and must eventually support MFA, SSO, and multi-device sessions.
 

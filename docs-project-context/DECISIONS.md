@@ -1,5 +1,7 @@
 # DECISIONS.md
 
+> **Legacy, non-canonical decision index** (Constitution v2.0.0 §39). Canonical ADRs live in `history/adr/` (`ADR-NNNN`). Identifiers in this file are a separate series and are cited as "DECISIONS.md ADR-0NN". **ADR-018 (Deployment Strategy) is superseded by `history/adr/0008-production-deployment-topology.md`.** Authentication (ADR-010) is formally recorded in `history/adr/0007-in-house-jwt-authentication-architecture.md`.
+
 # DevSphere ERP
 
 ## Architecture Decision Records (ADR)
@@ -495,6 +497,8 @@ React Testing Library
 ---
 
 # ADR-018
+
+> Superseded by `history/adr/0008-production-deployment-topology.md` (2026-10-09).
 
 ## Deployment Strategy
 

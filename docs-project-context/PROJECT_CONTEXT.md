@@ -299,7 +299,7 @@ Epic 10 — Installments
 
 Epic 11 — Reports
 
-Epic 12 — Deployment
+Epic 12 — Deployment / Production Readiness
 
 Each Epic is independently specified, implemented, tested and reviewed.
 
@@ -327,7 +327,7 @@ Pending:
 * Epic 9 — CRM
 * Epic 10 — Installments
 * Epic 11 — Reports
-* Epic 12 — Deployment
+* Epic 12 — Deployment / Production Readiness
 
 ---
 
